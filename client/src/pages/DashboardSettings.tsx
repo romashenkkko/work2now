@@ -1,10 +1,11 @@
 import { useState, useContext } from "react";
 import { useTranslation } from "react-i18next";
-import { Lock, Eye, EyeOff, MapPin } from "lucide-react";
+import { Lock, Eye, EyeOff, MapPin, Briefcase } from "lucide-react";
 import { authApi } from "../api/client";
 import { useAuth } from "../hooks/useAuth";
 import { DashboardContext } from "./DashboardLayout";
 import BranchesSection from "../components/BranchesSection";
+import ExperiencesSection from "../components/ExperiencesSection";
 
 /** Avatari din folderul Illustration care încep cu Avatar */
 const AVATAR_OPTIONS = [
@@ -24,7 +25,7 @@ const LANGUAGES = [
   { code: "ru", label: "Русский" },
 ] as const;
 
-type Section = "change-password" | "change-language" | "account-privacy" | "faq" | "contact" | "job-preferences" | "profile-info" | "branches";
+type Section = "change-password" | "change-language" | "account-privacy" | "faq" | "contact" | "job-preferences" | "profile-info" | "branches" | "experiences";
 
 const MENU_ICONS: Record<Section, React.ReactNode> = {
   "change-password": (
@@ -65,6 +66,9 @@ const MENU_ICONS: Record<Section, React.ReactNode> = {
   branches: (
     <MapPin className="w-5 h-5 text-gray-500 flex-shrink-0" />
   ),
+  experiences: (
+    <Briefcase className="w-5 h-5 text-gray-500 flex-shrink-0" />
+  ),
 };
 
 /** 0 = none, 1 = weak, 2 = fair, 3 = good, 4 = strong */
@@ -91,6 +95,7 @@ const MENU_BUTTONS: { id: Section; labelKey: string }[] = [
   { id: "job-preferences", labelKey: "profile.jobPreferences" },
   { id: "profile-info", labelKey: "profile.profileInfo" },
   { id: "branches", labelKey: "profile.branches.title" },
+  { id: "experiences", labelKey: "profile.experiences.title" },
 ];
 
 export default function DashboardSettings() {
@@ -184,6 +189,10 @@ export default function DashboardSettings() {
                 // Show branches only for business users (customer role)
                 if (id === "branches") {
                   return user?.role === "customer";
+                }
+                // Show experiences only for staff users
+                if (id === "experiences") {
+                  return user?.role === "staff";
                 }
                 return true;
               }).map(({ id, labelKey }) => (
@@ -554,6 +563,12 @@ export default function DashboardSettings() {
         )}
         {activeSection === "branches" && (
           <BranchesSection
+            onBack={() => setActiveSection(null)}
+            t={t}
+          />
+        )}
+        {activeSection === "experiences" && (
+          <ExperiencesSection
             onBack={() => setActiveSection(null)}
             t={t}
           />

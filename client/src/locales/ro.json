@@ -478,6 +478,12 @@
     "passwordStrengthWeak": "slabă",
     "passwordStrengthFair": "acceptabilă",
     "passwordStrengthGood": "bună",
-    "passwordStrengthStrong": "puternică"
+    "passwordStrengthStrong": "puternică",
+    "branches": {
+      "title": "Gestionare filiale"
+    },
+    "experiences": {
+      "title": "Experiențe profesionale"
+    }
   }
 }

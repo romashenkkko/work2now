@@ -192,11 +192,33 @@ export const branchesApi = {
     }),
 };
 
+export type Experience = {
+  id: string;
+  jobCategory: number;
+  duration: number;
+  description: string;
+};
+
 export const experiencesApi = {
   checkOnboarding: () => api<{ needsOnboarding: boolean }>("/experiences/check-onboarding"),
   submitOnboarding: (experiences: { jobCategory: number; duration: number }[]) =>
     api<{ ok: boolean; message: string }>("/experiences/onboarding", {
       method: "POST",
       body: JSON.stringify({ experiences }),
+    }),
+  list: () => api<{ experiences: Experience[] }>("/experiences"),
+  create: (data: { jobCategory: number; duration: number; description?: string }) =>
+    api<Experience>("/experiences", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  update: (id: string, data: { duration?: number; description?: string }) =>
+    api<{ ok: boolean; message: string }>(`/experiences/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    }),
+  delete: (id: string) =>
+    api<{ ok: boolean; message: string }>(`/experiences/${id}`, {
+      method: "DELETE",
     }),
 };

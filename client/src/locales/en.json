@@ -388,6 +388,12 @@
     "passwordStrengthWeak": "weak",
     "passwordStrengthFair": "fair",
     "passwordStrengthGood": "good",
-    "passwordStrengthStrong": "strong"
+    "passwordStrengthStrong": "strong",
+    "branches": {
+      "title": "Manage Branches"
+    },
+    "experiences": {
+      "title": "Professional Experiences"
+    }
   }
 }
