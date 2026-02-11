@@ -24,13 +24,11 @@ const DB_NAME = process.env.DB_NAME || "time2go";
 const GUID_COL = "CHAR(36) CHARACTER SET ascii COLLATE ascii_general_ci";
 
 /**
- * If you want to hard-reset schema automatically in dev:
+ * If you want to hard-reset schema automatically:
  * set DB_FORCE_RESET=1 in .env
- * (recommended for you right now to delete the legacy garbage).
+ * Otherwise, the database will be preserved on server restarts.
  */
-const FORCE_RESET =
-  String(process.env.DB_FORCE_RESET || "").trim() === "1" ||
-  String(process.env.NODE_ENV || "").trim() !== "production";
+const FORCE_RESET = String(process.env.DB_FORCE_RESET || "").trim() === "1";
 
 const pool = mysql.createPool({
   host: DB_HOST,
@@ -239,7 +237,6 @@ export async function initDatabase(): Promise<void> {
       CREATE TABLE IF NOT EXISTS \`employee_profiles\` (
         \`Id\` ${GUID_COL} PRIMARY KEY,
         \`UserId\` ${GUID_COL} NOT NULL UNIQUE,
-        \`IDNP\` VARCHAR(13) NOT NULL,
         \`Name\` VARCHAR(100) NOT NULL,
         \`Surname\` VARCHAR(100) NOT NULL,
         \`DateOfBirth\` DATETIME NOT NULL,
@@ -257,7 +254,6 @@ export async function initDatabase(): Promise<void> {
         \`CompanyName\` VARCHAR(200) NOT NULL,
         \`ContactPersonName\` VARCHAR(100) NOT NULL,
         \`ContactPersonSurname\` VARCHAR(100) NOT NULL,
-        \`IDNO\` VARCHAR(13) NULL,
         \`CompanyCategory\` INT NOT NULL,
         \`InfoForStaff\` VARCHAR(2000) NOT NULL DEFAULT '',
         INDEX \`idx_business_profiles_user_id\` (\`UserId\`)
@@ -503,7 +499,6 @@ export async function createUserDotNetStyle(params: {
   passwordHash: string;
   role: number; // .NET enum int
   employeeProfile?: {
-    idnp: string;
     name: string;
     surname: string;
     dateOfBirth: string; // ISO date/datetime
@@ -514,7 +509,6 @@ export async function createUserDotNetStyle(params: {
     companyName: string;
     contactPersonName: string;
     contactPersonSurname: string;
-    idno?: string | null;
     companyCategory: number; // enum int
     infoForStaff?: string;
   };
@@ -547,12 +541,11 @@ export async function createUserDotNetStyle(params: {
       const empId = randomUUID();
       await conn.query(
         `INSERT INTO \`employee_profiles\`
-         (\`Id\`, \`UserId\`, \`IDNP\`, \`Name\`, \`Surname\`, \`DateOfBirth\`, \`AboutMe\`, \`ProfilePictureFileId\`)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+         (\`Id\`, \`UserId\`, \`Name\`, \`Surname\`, \`DateOfBirth\`, \`AboutMe\`, \`ProfilePictureFileId\`)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
         [
           empId,
           userId,
-          params.employeeProfile.idnp,
           params.employeeProfile.name,
           params.employeeProfile.surname,
           new Date(params.employeeProfile.dateOfBirth),
@@ -566,15 +559,14 @@ export async function createUserDotNetStyle(params: {
       const busId = randomUUID();
       await conn.query(
         `INSERT INTO \`business_profiles\`
-         (\`Id\`, \`UserId\`, \`CompanyName\`, \`ContactPersonName\`, \`ContactPersonSurname\`, \`IDNO\`, \`CompanyCategory\`, \`InfoForStaff\`)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+         (\`Id\`, \`UserId\`, \`CompanyName\`, \`ContactPersonName\`, \`ContactPersonSurname\`, \`CompanyCategory\`, \`InfoForStaff\`)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
         [
           busId,
           userId,
           params.businessProfile.companyName,
           params.businessProfile.contactPersonName,
           params.businessProfile.contactPersonSurname,
-          params.businessProfile.idno ?? null,
           params.businessProfile.companyCategory,
           params.businessProfile.infoForStaff ?? "",
         ]

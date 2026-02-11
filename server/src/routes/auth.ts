@@ -105,10 +105,6 @@ router.post("/register", async (req: Request, res: Response): Promise<void> => {
       res.status(400).json({ error: "Prenumele și numele sunt obligatorii pentru staff." });
       return;
     }
-    if (!employeeProfile.idnp?.trim()) {
-      res.status(400).json({ error: "IDNP-ul este obligatoriu pentru staff." });
-      return;
-    }
     if (!employeeProfile.dateOfBirth) {
       res.status(400).json({ error: "Data nașterii este obligatorie pentru staff." });
       return;
@@ -122,10 +118,6 @@ router.post("/register", async (req: Request, res: Response): Promise<void> => {
     }
     if (!businessProfile.contactFirstName?.trim() || !businessProfile.contactLastName?.trim()) {
       res.status(400).json({ error: "Numele și prenumele persoanei de contact sunt obligatorii." });
-      return;
-    }
-    if (!businessProfile.idno?.trim()) {
-      res.status(400).json({ error: "IDNO-ul este obligatoriu." });
       return;
     }
     if (!branch || !branch.name?.trim() || !branch.address?.trim() || !branch.city?.trim() || !branch.phoneNumber?.trim()) {
@@ -157,7 +149,6 @@ router.post("/register", async (req: Request, res: Response): Promise<void> => {
         passwordHash: password_hash,
         role: roleEnum,
         employeeProfile: {
-          idnp: employeeProfile.idnp || "",
           name: employeeProfile.firstName || nameTrim.split(" ")[0] || "User",
           surname: employeeProfile.lastName || nameTrim.split(" ").slice(1).join(" ") || "User",
           dateOfBirth: employeeProfile.dateOfBirth || new Date("1990-01-01").toISOString(),
@@ -174,7 +165,6 @@ router.post("/register", async (req: Request, res: Response): Promise<void> => {
           companyName: businessProfile.companyName || nameTrim,
           contactPersonName: businessProfile.contactFirstName || nameTrim.split(" ")[0] || "Contact",
           contactPersonSurname: businessProfile.contactLastName || nameTrim.split(" ").slice(1).join(" ") || "Person",
-          idno: businessProfile.idno || null,
           companyCategory: businessProfile.companyCategory || 1,
           infoForStaff: businessProfile.infoForStaff || "",
         },
@@ -242,8 +232,12 @@ router.post("/login", async (req: Request, res: Response): Promise<void> => {
     // Query new schema: join with profile tables to get name/avatar
     const [rows] = await db.query(
       `SELECT u.Id, u.Email, u.PasswordHash, u.Role,
-              COALESCE(ep.Name, bp.ContactPersonName, 'User') as name,
-              COALESCE(ep.Surname, bp.ContactPersonSurname, '') as surname,
+              CASE 
+                WHEN u.Role = 2 THEN COALESCE(bp.CompanyName, 'User')
+                WHEN u.Role = 1 THEN TRIM(CONCAT(COALESCE(ep.Name, ''), ' ', COALESCE(ep.Surname, '')))
+                ELSE 'User'
+              END as name,
+              COALESCE(ep.Surname, '') as surname,
               COALESCE(ep.ProfilePictureFileId, NULL) as avatar
        FROM users u
        LEFT JOIN employee_profiles ep ON u.Id = ep.UserId
@@ -259,7 +253,7 @@ router.post("/login", async (req: Request, res: Response): Promise<void> => {
     // Map Role INT to string for backward compatibility
     const roleInt = user.Role;
     const roleStr = roleInt === UserRole.Admin ? "admin" : roleInt === UserRole.Business ? "customer" : "staff";
-    const fullName = user.surname ? `${user.name} ${user.surname}`.trim() : user.name;
+    const fullName = user.name; // Already contains full name (company name for business, full name for employees)
     const token = jwt.sign(
       { userId: user.Id, email: emailTrim } as JwtPayload,
       JWT_SECRET,
@@ -366,8 +360,12 @@ router.get("/me", authMiddleware, async (req: Request, res: Response): Promise<v
     // Query new schema: join with profile tables to get name/avatar
     const [rows] = await db.query(
       `SELECT u.Id, u.Email, u.Role,
-              COALESCE(ep.Name, bp.ContactPersonName, 'User') as name,
-              COALESCE(ep.Surname, bp.ContactPersonSurname, '') as surname,
+              CASE 
+                WHEN u.Role = 2 THEN COALESCE(bp.CompanyName, 'User')
+                WHEN u.Role = 1 THEN TRIM(CONCAT(COALESCE(ep.Name, ''), ' ', COALESCE(ep.Surname, '')))
+                ELSE 'User'
+              END as name,
+              COALESCE(ep.Surname, '') as surname,
               COALESCE(ep.ProfilePictureFileId, NULL) as avatar
        FROM users u
        LEFT JOIN employee_profiles ep ON u.Id = ep.UserId
@@ -379,7 +377,7 @@ router.get("/me", authMiddleware, async (req: Request, res: Response): Promise<v
     if (u) {
       const roleInt = u.Role;
       const roleStr = roleInt === UserRole.Admin ? "admin" : roleInt === UserRole.Business ? "customer" : "staff";
-      const fullName = u.surname ? `${u.name} ${u.surname}`.trim() : u.name;
+      const fullName = u.name; // Already contains full name (company name for business, full name for employees)
       res.json({ id: u.Id, name: fullName, email: u.Email, role: roleStr, avatar: u.avatar ?? undefined });
       return;
     }
@@ -469,8 +467,12 @@ router.patch("/me", authMiddleware, async (req: Request, res: Response): Promise
       // Fetch updated user for response
       const [rows] = await conn.query(
         `SELECT u.Id, u.Email, u.Role,
-                COALESCE(ep.Name, bp.ContactPersonName, 'User') as name,
-                COALESCE(ep.Surname, bp.ContactPersonSurname, '') as surname,
+                CASE 
+                  WHEN u.Role = 2 THEN bp.CompanyName
+                  WHEN u.Role = 1 THEN CONCAT(ep.Name, ' ', ep.Surname)
+                  ELSE 'User'
+                END as name,
+                COALESCE(ep.Surname, '') as surname,
                 COALESCE(ep.ProfilePictureFileId, NULL) as avatar
          FROM users u
          LEFT JOIN employee_profiles ep ON u.Id = ep.UserId
@@ -482,7 +484,7 @@ router.patch("/me", authMiddleware, async (req: Request, res: Response): Promise
       if (u) {
         const roleInt = u.Role;
         const roleStr = roleInt === UserRole.Admin ? "admin" : roleInt === UserRole.Business ? "customer" : "staff";
-        const fullName = u.surname ? `${u.name} ${u.surname}`.trim() : u.name;
+        const fullName = u.name; // Already contains full name (company name for business, full name for employees)
         res.json({ id: u.Id, name: fullName, email: u.Email, role: roleStr, avatar: u.avatar ?? undefined });
         return;
       }
@@ -534,8 +536,12 @@ router.get("/users", authMiddleware, async (req: Request, res: Response): Promis
     // Query all users with profile data
     const [allRows] = await db.query(
       `SELECT u.Id as id, u.Email as email, u.Role,
-              COALESCE(ep.Name, bp.ContactPersonName, 'User') as name,
-              COALESCE(ep.Surname, bp.ContactPersonSurname, '') as surname
+              CASE 
+                WHEN u.Role = 2 THEN COALESCE(bp.CompanyName, 'User')
+                WHEN u.Role = 1 THEN TRIM(CONCAT(COALESCE(ep.Name, ''), ' ', COALESCE(ep.Surname, '')))
+                ELSE 'User'
+              END as name,
+              COALESCE(ep.Surname, '') as surname
        FROM users u
        LEFT JOIN employee_profiles ep ON u.Id = ep.UserId
        LEFT JOIN business_profiles bp ON u.Id = bp.UserId
@@ -544,7 +550,7 @@ router.get("/users", authMiddleware, async (req: Request, res: Response): Promis
     if (Array.isArray(allRows)) {
       const users = allRows.map((u) => {
         const roleStr = u.Role === UserRole.Admin ? "admin" : u.Role === UserRole.Business ? "customer" : "staff";
-        const fullName = u.surname ? `${u.name} ${u.surname}`.trim() : u.name;
+        const fullName = u.name; // Already contains full name (company name for business, full name for employees)
         return { id: u.id, name: fullName, email: u.email, role: roleStr };
       });
       res.json({ users });

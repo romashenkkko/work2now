@@ -62,7 +62,6 @@ export const authApi = {
     employeeProfile?: {
       firstName: string;
       lastName: string;
-      idnp: string;
       dateOfBirth: string;
       aboutMe: string;
     };
@@ -70,7 +69,6 @@ export const authApi = {
       companyName: string;
       contactFirstName: string;
       contactLastName: string;
-      idno: string;
       companyCategory: number;
       infoForStaff: string;
     };
@@ -163,4 +161,42 @@ export const ratingsApi = {
     }),
   getUserRating: (userId: number | string) =>
     api<{ average: number; count: number }>(`/ratings/user/${userId}`),
+};
+
+export type Branch = {
+  id: string;
+  name: string;
+  address: string;
+  city: string;
+  country: string;
+  phoneNumber: string;
+  isActive: boolean;
+  createdAt: string;
+};
+
+export const branchesApi = {
+  list: () => api<{ branches: Branch[] }>("/branches"),
+  create: (data: { name: string; address: string; city: string; country?: string; phoneNumber: string }) =>
+    api<Branch>("/branches", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  update: (id: string, data: { name?: string; address?: string; city?: string; country?: string; phoneNumber?: string; isActive?: boolean }) =>
+    api<Branch>(`/branches/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    }),
+  delete: (id: string) =>
+    api<{ ok: boolean; message: string }>(`/branches/${id}`, {
+      method: "DELETE",
+    }),
+};
+
+export const experiencesApi = {
+  checkOnboarding: () => api<{ needsOnboarding: boolean }>("/experiences/check-onboarding"),
+  submitOnboarding: (experiences: { jobCategory: number; duration: number }[]) =>
+    api<{ ok: boolean; message: string }>("/experiences/onboarding", {
+      method: "POST",
+      body: JSON.stringify({ experiences }),
+    }),
 };

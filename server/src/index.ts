@@ -12,6 +12,8 @@ import os from "os";
 import authRoutes, { ensureDefaultAdmin } from "./routes/auth";
 import jobsRoutes from "./routes/jobs";
 import ratingsRoutes from "./routes/ratings";
+import branchesRoutes from "./routes/branches";
+import experiencesRoutes from "./routes/experiences";
 import db, { initDatabase } from "./db";
 import { sendTestEmail } from "./email";
 
@@ -46,6 +48,8 @@ app.get("/api/health", async (_req, res) => {
 app.use("/api/auth", authRoutes);
 app.use("/api/jobs", jobsRoutes);
 app.use("/api/ratings", ratingsRoutes);
+app.use("/api/branches", branchesRoutes);
+app.use("/api/experiences", experiencesRoutes);
 
 // Răspuns JSON la orice eroare neprinsă (evită HTML 500)
 app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {

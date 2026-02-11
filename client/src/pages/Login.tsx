@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "../hooks/useAuth";
+import { experiencesApi } from "../api/client";
 
 export default function Login() {
   const { t } = useTranslation();
@@ -19,6 +20,20 @@ export default function Login() {
     try {
       const user = await login(email, password);
       const role = user?.role?.toLowerCase?.();
+      
+      // Check if staff needs onboarding
+      if (role === "staff") {
+        try {
+          const onboardingCheck = await experiencesApi.checkOnboarding();
+          if (onboardingCheck.needsOnboarding) {
+            navigate("/onboarding", { replace: true });
+            return;
+          }
+        } catch {
+          // If check fails, proceed to dashboard
+        }
+      }
+      
       const isCustomerOrStaff = role === "customer" || role === "staff";
       navigate(isCustomerOrStaff ? "/dashboard/joburi" : "/dashboard", { replace: true });
     } catch (err) {

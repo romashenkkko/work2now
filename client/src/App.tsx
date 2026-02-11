@@ -15,6 +15,7 @@ import DashboardRapoarte from "./pages/DashboardRapoarte";
 import DashboardCalendar from "./pages/DashboardCalendar";
 import DashboardMesaje from "./pages/DashboardMesaje";
 import DashboardSettings from "./pages/DashboardSettings";
+import EmployeeOnboarding from "./pages/EmployeeOnboarding";
 import About from "./pages/About";
 import HowItWorks from "./pages/HowItWorks";
 import Employers from "./pages/Employers";
@@ -50,6 +51,7 @@ export default function App() {
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<Register />} />
             <Route path="/register/:role" element={<Register />} />
+            <Route path="/onboarding" element={<EmployeeOnboarding />} />
           </Routes>
         </Layout>
       } />

@@ -22,7 +22,7 @@ import {
 } from "lucide-react";
 import { coffeemaker } from "@lucide/lab";
 import { useAuth } from "../hooks/useAuth";
-import { jobsApi, ratingsApi } from "../api/client";
+import { jobsApi, ratingsApi, experiencesApi } from "../api/client";
 import TimePicker from "../components/TimePicker";
 import StarRating from "../components/StarRating";
 import DatePicker from "../components/DatePicker";
@@ -313,6 +313,22 @@ export default function DashboardLayout() {
       .then((r) => setUserRating({ average: r.average, count: r.count }))
       .catch(() => setUserRating(null));
   }, [user?.id]);
+
+  // Check if staff user needs onboarding
+  useEffect(() => {
+    if (loading || !user || user.role?.toLowerCase() !== "staff") return;
+    
+    experiencesApi
+      .checkOnboarding()
+      .then((result) => {
+        if (result.needsOnboarding && !location.pathname.includes("/onboarding")) {
+          navigate("/onboarding", { replace: true });
+        }
+      })
+      .catch(() => {
+        // If check fails, allow access (don't block dashboard)
+      });
+  }, [loading, user?.id, user?.role, location.pathname, navigate]);
   const [availableToWork, setAvailableToWorkState] = useState(() => {
     if (typeof window === "undefined") return true;
     try {

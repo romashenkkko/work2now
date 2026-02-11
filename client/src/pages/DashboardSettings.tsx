@@ -1,9 +1,10 @@
 import { useState, useContext } from "react";
 import { useTranslation } from "react-i18next";
-import { Lock, Eye, EyeOff } from "lucide-react";
+import { Lock, Eye, EyeOff, MapPin } from "lucide-react";
 import { authApi } from "../api/client";
 import { useAuth } from "../hooks/useAuth";
 import { DashboardContext } from "./DashboardLayout";
+import BranchesSection from "../components/BranchesSection";
 
 /** Avatari din folderul Illustration care încep cu Avatar */
 const AVATAR_OPTIONS = [
@@ -23,7 +24,7 @@ const LANGUAGES = [
   { code: "ru", label: "Русский" },
 ] as const;
 
-type Section = "change-password" | "change-language" | "account-privacy" | "faq" | "contact" | "job-preferences" | "profile-info";
+type Section = "change-password" | "change-language" | "account-privacy" | "faq" | "contact" | "job-preferences" | "profile-info" | "branches";
 
 const MENU_ICONS: Record<Section, React.ReactNode> = {
   "change-password": (
@@ -61,6 +62,9 @@ const MENU_ICONS: Record<Section, React.ReactNode> = {
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
     </svg>
   ),
+  branches: (
+    <MapPin className="w-5 h-5 text-gray-500 flex-shrink-0" />
+  ),
 };
 
 /** 0 = none, 1 = weak, 2 = fair, 3 = good, 4 = strong */
@@ -86,6 +90,7 @@ const MENU_BUTTONS: { id: Section; labelKey: string }[] = [
   { id: "contact", labelKey: "profile.contactUs" },
   { id: "job-preferences", labelKey: "profile.jobPreferences" },
   { id: "profile-info", labelKey: "profile.profileInfo" },
+  { id: "branches", labelKey: "profile.branches.title" },
 ];
 
 export default function DashboardSettings() {
@@ -175,7 +180,13 @@ export default function DashboardSettings() {
         {activeSection === null && (
           <section className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
             <div className="p-2">
-              {MENU_BUTTONS.map(({ id, labelKey }) => (
+              {MENU_BUTTONS.filter(({ id }) => {
+                // Show branches only for business users (customer role)
+                if (id === "branches") {
+                  return user?.role === "customer";
+                }
+                return true;
+              }).map(({ id, labelKey }) => (
                 <button
                   key={id}
                   type="button"
@@ -539,6 +550,12 @@ export default function DashboardSettings() {
             onBack={() => setActiveSection(null)}
             t={t}
             avatarOptions={AVATAR_OPTIONS}
+          />
+        )}
+        {activeSection === "branches" && (
+          <BranchesSection
+            onBack={() => setActiveSection(null)}
+            t={t}
           />
         )}
           </div>

@@ -7,7 +7,6 @@ export default function Register() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const { role: roleParam } = useParams<{ role: string }>();
-  const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -19,7 +18,6 @@ export default function Register() {
   // Staff/Employee fields
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
-  const [idnp, setIdnp] = useState("");
   const [dateOfBirth, setDateOfBirth] = useState("");
   const [aboutMe, setAboutMe] = useState("");
   
@@ -27,7 +25,6 @@ export default function Register() {
   const [companyName, setCompanyName] = useState("");
   const [contactFirstName, setContactFirstName] = useState("");
   const [contactLastName, setContactLastName] = useState("");
-  const [idno, setIdno] = useState("");
   const [companyCategory, setCompanyCategory] = useState("1");
   const [infoForStaff, setInfoForStaff] = useState("");
   // Branch fields (at least one branch required)
@@ -52,10 +49,6 @@ export default function Register() {
         setError("Numele și prenumele sunt obligatorii.");
         return;
       }
-      if (!idnp.trim()) {
-        setError("IDNP-ul este obligatoriu.");
-        return;
-      }
       if (!dateOfBirth) {
         setError("Data nașterii este obligatorie.");
         return;
@@ -67,10 +60,6 @@ export default function Register() {
       }
       if (!contactFirstName.trim() || !contactLastName.trim()) {
         setError("Numele și prenumele persoanei de contact sunt obligatorii.");
-        return;
-      }
-      if (!idno.trim()) {
-        setError("IDNO-ul este obligatoriu.");
         return;
       }
       if (!branchName.trim() || !branchAddress.trim() || !branchCity.trim() || !branchPhone.trim()) {
@@ -93,7 +82,6 @@ export default function Register() {
         registerData.employeeProfile = {
           firstName: firstName.trim(),
           lastName: lastName.trim(),
-          idnp: idnp.trim(),
           dateOfBirth: dateOfBirth,
           aboutMe: aboutMe.trim() || "Nu am adăugat informații despre mine.",
         };
@@ -102,7 +90,6 @@ export default function Register() {
           companyName: companyName.trim(),
           contactFirstName: contactFirstName.trim(),
           contactLastName: contactLastName.trim(),
-          idno: idno.trim(),
           companyCategory: parseInt(companyCategory, 10),
           infoForStaff: infoForStaff.trim() || "Nu am adăugat informații suplimentare.",
         };
@@ -117,6 +104,7 @@ export default function Register() {
       
       await authApi.register(registerData);
       setSuccess("Cont creat cu succes. Acum te poti autentifica.");
+      // Always redirect to login - onboarding will be checked after login
       setTimeout(() => navigate("/login"), 2000);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Eroare la inregistrare.");
@@ -243,18 +231,6 @@ export default function Register() {
                 </label>
               </div>
               <label>
-                IDNP <span style={{ color: "red" }}>*</span>
-                <input
-                  type="text"
-                  value={idnp}
-                  onChange={(e) => setIdnp(e.target.value)}
-                  required
-                  placeholder="13 cifre"
-                  pattern="[0-9]{13}"
-                  maxLength={13}
-                />
-              </label>
-              <label>
                 Data nașterii <span style={{ color: "red" }}>*</span>
                 <input
                   type="date"
@@ -314,16 +290,6 @@ export default function Register() {
                   />
                 </label>
               </div>
-              <label>
-                IDNO <span style={{ color: "red" }}>*</span>
-                <input
-                  type="text"
-                  value={idno}
-                  onChange={(e) => setIdno(e.target.value)}
-                  required
-                  placeholder="Cod fiscal"
-                />
-              </label>
               <label>
                 Categoria companiei <span style={{ color: "red" }}>*</span>
                 <select
