@@ -1,0 +1,1967 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    font-family: "Segoe UI", Arial, sans-serif;
+    @apply antialiased;
+    color: #1c1f2a;
+    background: radial-gradient(circle at top, #f3efff 0%, #e4dff7 45%, #d9d0f7 100%);
+    line-height: 1.6;
+  }
+  h1, h2, h3, h4 {
+    @apply tracking-tight;
+    color: #1e1c2f;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply inline-flex items-center justify-center px-6 py-3 rounded-2xl text-white font-semibold transition-all duration-200;
+    background: #7a63f1;
+    box-shadow: 0 10px 20px rgba(122, 99, 241, 0.25);
+  }
+  .btn-primary:hover {
+    background: #6b54e0;
+    transform: translateY(-1px);
+    box-shadow: 0 12px 28px rgba(122, 99, 241, 0.3);
+  }
+  .btn-secondary {
+    @apply inline-flex items-center justify-center px-6 py-3 rounded-2xl font-semibold transition-all duration-200;
+    background: #fff;
+    color: #6c58d6;
+    border: 1px solid #d9d0f7;
+    box-shadow: 0 8px 16px rgba(122, 99, 241, 0.12);
+  }
+  .btn-secondary:hover {
+    border-color: #7a63f1;
+    transform: translateY(-1px);
+  }
+  .btn-signup-php {
+    @apply inline-flex items-center justify-center px-6 py-3 rounded-full text-white font-bold transition-all duration-200;
+    background: linear-gradient(135deg, #7a63f1, #9d7bff);
+    box-shadow: 0 12px 22px rgba(122, 99, 241, 0.24);
+  }
+  .btn-signup-php:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 16px 28px rgba(122, 99, 241, 0.3);
+  }
+  .btn-signin-php {
+    @apply inline-flex items-center justify-center px-5 py-2.5 rounded-full font-semibold transition-all duration-200;
+    background: rgba(255, 255, 255, 0.95);
+    border: 1.5px solid rgba(177, 163, 241, 0.4);
+    color: #4b3bb4;
+    box-shadow: 0 4px 12px rgba(122, 99, 241, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.8);
+  }
+  .btn-signin-php:hover {
+    border-color: rgba(122, 99, 241, 0.6);
+    transform: translateY(-1px);
+  }
+  .btn-accent {
+    @apply inline-flex items-center justify-center px-6 py-3 rounded-2xl text-white font-semibold hover:opacity-90 transition-all duration-200;
+    background: linear-gradient(135deg, #7a63f1, #9d7bff);
+    box-shadow: 0 12px 22px rgba(122, 99, 241, 0.24);
+  }
+  .btn-accent:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 16px 28px rgba(122, 99, 241, 0.3);
+  }
+  .card-soft {
+    @apply rounded-3xl transition-all duration-300;
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.95), rgba(250, 249, 255, 0.95));
+    border: 2px solid rgba(224, 216, 247, 0.6);
+    box-shadow: 0 20px 40px rgba(75, 60, 120, 0.12), 0 4px 12px rgba(122, 99, 241, 0.08);
+  }
+  .card-soft:hover {
+    transform: translateY(-8px);
+    box-shadow: 0 28px 56px rgba(75, 60, 120, 0.18), 0 8px 20px rgba(122, 99, 241, 0.12);
+    border-color: rgba(122, 99, 241, 0.4);
+  }
+}
+
+/* ========== Hero section – redesign ========== */
+.hero-section {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.6) 0%, rgba(248, 246, 255, 0.5) 100%);
+  border-top: 1px solid rgba(224, 216, 247, 0.6);
+  border-bottom: 1px solid rgba(224, 216, 247, 0.6);
+}
+
+.hero-content {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+@media (min-width: 768px) {
+  .hero-content {
+    gap: 1.5rem;
+  }
+}
+
+.hero-eyebrow {
+  display: inline-block;
+  width: fit-content;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
+  color: #6c58d6;
+  padding: 0.5rem 1.125rem;
+  border-radius: 9999px;
+  border: 1px solid rgba(122, 99, 241, 0.35);
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(8px);
+  box-shadow: 0 2px 12px rgba(122, 99, 241, 0.08);
+}
+
+.hero-title {
+  font-size: clamp(2.25rem, 5vw, 3.5rem);
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  line-height: 1.1;
+  color: #1e1c2f;
+  margin: 0;
+}
+
+@media (min-width: 1024px) {
+  .hero-title {
+    font-size: 3.75rem;
+  }
+}
+
+.hero-lead {
+  font-size: 1.0625rem;
+  line-height: 1.75;
+  color: #4d5874;
+  max-width: 32em;
+  margin: 0;
+}
+
+@media (min-width: 768px) {
+  .hero-lead {
+    font-size: 1.1875rem;
+    line-height: 1.8;
+  }
+}
+
+.hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.875rem;
+  margin-top: 0.25rem;
+}
+
+.hero-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.875rem 1.75rem;
+  font-size: 1rem;
+  font-weight: 600;
+  border-radius: 14px;
+  text-decoration: none;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.hero-btn--primary {
+  background: linear-gradient(135deg, #7a63f1, #8b6cf7);
+  color: #fff;
+  border: none;
+  box-shadow: 0 8px 24px rgba(122, 99, 241, 0.35);
+}
+
+.hero-btn--primary:hover {
+  background: linear-gradient(135deg, #6b54e0, #7a63f1);
+  transform: translateY(-2px);
+  box-shadow: 0 12px 32px rgba(122, 99, 241, 0.4);
+}
+
+.hero-btn--secondary {
+  background: #fff;
+  color: #6c58d6;
+  border: 2px solid rgba(122, 99, 241, 0.45);
+  box-shadow: 0 4px 16px rgba(122, 99, 241, 0.12);
+}
+
+.hero-btn--secondary:hover {
+  border-color: #7a63f1;
+  color: #5a47c4;
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(122, 99, 241, 0.2);
+}
+
+/* ========== Blog page – brand purple, warm cards ========== */
+.blog-page {
+  font-family: "DM Sans", "Segoe UI", sans-serif;
+  background: linear-gradient(180deg, #faf8ff 0%, #f0ebfa 100%);
+  min-height: 100vh;
+  padding: 4rem 1.5rem 5rem;
+}
+
+.blog-page__inner {
+  max-width: 72rem;
+  margin: 0 auto;
+}
+
+.blog-page__header {
+  text-align: center;
+  margin-bottom: 3rem;
+  max-width: 32rem;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.blog-page__label {
+  display: none;
+}
+
+.blog-page__title {
+  font-size: clamp(1.875rem, 4vw, 2.5rem);
+  font-weight: 800;
+  color: #2d2640;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+  margin-bottom: 0.5rem;
+}
+
+.blog-page__lead {
+  font-size: 1rem;
+  color: #5a5276;
+  line-height: 1.6;
+}
+
+.blog-page__grid {
+  display: grid;
+  grid-template-columns: repeat(1, 1fr);
+  gap: 1.5rem;
+}
+
+@media (min-width: 640px) {
+  .blog-page__grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1.75rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  .blog-page__grid {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 2rem;
+  }
+}
+
+@keyframes blog-card-v2-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.blog-card-v2 {
+  position: relative;
+  background: #fff;
+  border-radius: 1.25rem;
+  overflow: hidden;
+  border: 1px solid rgba(122, 99, 241, 0.12);
+  box-shadow: 0 4px 20px rgba(90, 82, 118, 0.06);
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.blog-card-v2__accent {
+  display: none;
+}
+
+.blog-card-v2__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 1.25rem 1.5rem;
+  background: linear-gradient(135deg, #7a63f1 0%, #9578f5 50%, #a88aff 100%);
+  min-height: 5rem;
+}
+
+.blog-card-v2__date {
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.blog-card-v2__icon {
+  width: 3rem;
+  height: 3rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.5rem;
+  line-height: 1;
+  background: rgba(255, 255, 255, 0.95);
+  border-radius: 12px;
+  flex-shrink: 0;
+  box-shadow: 0 4px 12px rgba(45, 38, 64, 0.15);
+  transition: transform 0.25s ease;
+}
+
+.blog-card-v2:hover {
+  transform: translateY(-6px);
+  box-shadow: 0 16px 40px rgba(90, 82, 118, 0.12);
+}
+
+.blog-card-v2:hover .blog-card-v2__icon {
+  transform: scale(1.08);
+}
+
+.blog-card-v2__body {
+  padding: 1.5rem 1.5rem 1.75rem;
+}
+
+.blog-card-v2__title {
+  font-size: 1.0625rem;
+  font-weight: 700;
+  color: #2d2640;
+  line-height: 1.35;
+  margin-bottom: 0.5rem;
+  letter-spacing: -0.01em;
+}
+
+.blog-card-v2__desc {
+  font-size: 0.9rem;
+  color: #5a5276;
+  line-height: 1.55;
+  margin-bottom: 1rem;
+}
+
+.blog-card-v2__link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #7a63f1;
+  text-decoration: none;
+  transition: color 0.2s ease, gap 0.2s ease;
+}
+
+.blog-card-v2__link:hover {
+  color: #6b54e0;
+  gap: 0.5rem;
+}
+
+.blog-card-v2__arrow {
+  transition: transform 0.2s ease;
+}
+
+.blog-card-v2__link:hover .blog-card-v2__arrow {
+  transform: translateX(4px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .blog-card-v2,
+  .blog-card-v2__icon {
+    transition: none;
+  }
+  .blog-card-v2:hover .blog-card-v2__icon {
+    transform: none;
+  }
+}
+
+/* ========== Jobs search dropdown – design îmbunătățit ========== */
+.jobs-search-dropdown-panel {
+  overflow: hidden;
+  transition: opacity 0.22s ease, transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1);
+  transform-origin: top;
+}
+.jobs-search-dropdown-panel.is-closed {
+  opacity: 0;
+  transform: translateY(-6px) scale(0.98);
+  pointer-events: none;
+}
+.jobs-search-dropdown-panel.is-open {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  pointer-events: auto;
+}
+.jobs-search-dropdown-btn {
+  transition: box-shadow 0.2s ease, border-color 0.2s ease, background-color 0.2s ease;
+  border: 1px solid transparent;
+  border-radius: 10px;
+}
+.jobs-search-dropdown-btn.is-open {
+  border-color: rgba(122, 99, 241, 0.4);
+  box-shadow: 0 4px 14px rgba(122, 99, 241, 0.15);
+}
+.jobs-search-dropdown-menu {
+  background: #ffffff;
+  border: 1px solid rgba(122, 99, 241, 0.12);
+  border-radius: 14px;
+  box-shadow: 0 10px 40px rgba(75, 60, 120, 0.12), 0 2px 10px rgba(0, 0, 0, 0.04);
+  padding: 6px;
+}
+.jobs-search-dropdown-item {
+  position: relative;
+  border-left: 3px solid transparent;
+  transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease, transform 0.15s ease;
+  color: #374151;
+  font-size: 0.9375rem;
+  padding-left: 14px;
+  border-radius: 10px;
+}
+.jobs-search-dropdown-item:hover {
+  background: linear-gradient(90deg, rgba(122, 99, 241, 0.08) 0%, rgba(122, 99, 241, 0.04) 100%);
+  color: #4b5563;
+}
+.jobs-search-dropdown-item.is-selected {
+  background: linear-gradient(90deg, rgba(122, 99, 241, 0.14) 0%, rgba(245, 243, 255, 0.95) 100%);
+  border-left-color: transparent;
+  font-weight: 600;
+  color: #5a47c4;
+  border-radius: 10px;
+  margin: 2px 4px;
+  padding-left: 14px;
+  box-shadow: 0 1px 3px rgba(122, 99, 241, 0.08);
+}
+.jobs-search-dropdown-item.is-selected::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 6px;
+  bottom: 6px;
+  width: 3px;
+  background: linear-gradient(180deg, #7a63f1 0%, #9f8ef7 100%);
+  border-radius: 0 3px 3px 0;
+  pointer-events: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .jobs-search-dropdown-panel,
+  .jobs-search-dropdown-btn,
+  .jobs-search-dropdown-item {
+    transition: none;
+  }
+}
+
+/* ========== Job cards – animație apariție ========== */
+@keyframes job-card-enter {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.job-card-enter {
+  animation: job-card-enter 0.45s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+.job-card-enter:nth-child(1) { animation-delay: 0.03s; }
+.job-card-enter:nth-child(2) { animation-delay: 0.08s; }
+.job-card-enter:nth-child(3) { animation-delay: 0.13s; }
+.job-card-enter:nth-child(4) { animation-delay: 0.18s; }
+.job-card-enter:nth-child(5) { animation-delay: 0.23s; }
+.job-card-enter:nth-child(6) { animation-delay: 0.28s; }
+.job-card-enter:nth-child(7) { animation-delay: 0.33s; }
+.job-card-enter:nth-child(8) { animation-delay: 0.38s; }
+.job-card-enter:nth-child(9) { animation-delay: 0.43s; }
+.job-card-enter:nth-child(n+10) { animation-delay: 0.48s; }
+@media (prefers-reduced-motion: reduce) {
+  .job-card-enter,
+  .job-card-enter:nth-child(n) {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* ========== Stats section – Time2Go în cifre (fără carduri) ========== */
+.stats-section {
+  background: transparent;
+  border-top: 1px solid rgba(224, 216, 247, 0.35);
+  border-bottom: 1px solid rgba(224, 216, 247, 0.35);
+}
+
+.stats-section__title {
+  font-size: 1.875rem;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1.2;
+}
+
+@media (min-width: 768px) {
+  .stats-section__title {
+    font-size: 2.25rem;
+  }
+}
+
+.stats-item {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.stats-item__illus {
+  margin-bottom: 1.25rem;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100px;
+}
+@media (min-width: 768px) {
+  .stats-item__illus {
+    min-height: 120px;
+  }
+}
+
+.stats-illus {
+  width: 100%;
+  max-width: 100px;
+  height: auto;
+}
+
+.stats-illus--pretty {
+  filter: drop-shadow(0 4px 12px rgba(122, 99, 241, 0.15));
+}
+
+@media (min-width: 768px) {
+  .stats-illus {
+    max-width: 120px;
+  }
+}
+
+.stats-item__value {
+  font-size: 2.25rem;
+  font-weight: 800;
+  color: #1e1c2f;
+  letter-spacing: -0.03em;
+  line-height: 1.15;
+  margin-bottom: 0.5rem;
+}
+
+@media (min-width: 768px) {
+  .stats-item__value {
+    font-size: 2.75rem;
+  }
+}
+
+.stats-item__label {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #7a63f1;
+}
+
+/* Testimonial cards – animații din PHP: hover card + avatar + ghilimele */
+.testimonial-card-php {
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.testimonial-card-php:hover {
+  transform: translateY(-12px) scale(1.02);
+  box-shadow: 0 24px 56px rgba(66, 50, 120, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.8);
+  border-color: rgba(122, 99, 241, 0.6);
+}
+.testimonial-card-php:hover .testimonial-card-php__avatar {
+  transform: translate(-50%, -5px) scale(1.05);
+  box-shadow: 0 16px 36px rgba(122, 99, 241, 0.35);
+}
+.testimonial-card-php:hover .testimonial-card-php__quote {
+  color: rgba(122, 99, 241, 0.3);
+}
+.testimonial-card-php__avatar {
+  transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.testimonial-card-php__quote {
+  transition: color 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Footer – animație apariție când intră în viewport */
+@keyframes footerAppear {
+  from {
+    opacity: 0;
+    transform: translateY(24px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.footer-appear .footer-appear__block {
+  opacity: 0;
+  transform: translateY(24px);
+}
+
+.footer-appear.footer-in-view .footer-appear__block--0 {
+  animation: footerAppear 0.55s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  animation-delay: 0s;
+}
+.footer-appear.footer-in-view .footer-appear__block--1 {
+  animation: footerAppear 0.55s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  animation-delay: 0.06s;
+}
+.footer-appear.footer-in-view .footer-appear__block--2 {
+  animation: footerAppear 0.55s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  animation-delay: 0.12s;
+}
+.footer-appear.footer-in-view .footer-appear__block--3 {
+  animation: footerAppear 0.55s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  animation-delay: 0.18s;
+}
+.footer-appear.footer-in-view .footer-appear__block--4 {
+  animation: footerAppear 0.55s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  animation-delay: 0.24s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .footer-appear .footer-appear__block {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+  }
+}
+
+/* Scroll reveal – opacity + translate */
+.reveal {
+  opacity: 0;
+  transform: translateY(28px);
+  transition: opacity 0.7s ease-out, transform 0.7s ease-out;
+}
+.reveal.in-view {
+  opacity: 1;
+  transform: translateY(0);
+}
+.reveal-scale {
+  opacity: 0;
+  transform: scale(0.96);
+  transition: opacity 0.6s ease-out, transform 0.6s ease-out;
+}
+.reveal-scale.in-view {
+  opacity: 1;
+  transform: scale(1);
+}
+
+/* Language dropdown item – hover: light purple bg + left purple bar */
+.lang-dropdown-item {
+  position: relative;
+  padding: 10px 14px;
+  border-radius: 10px;
+  transition: background 0.2s ease, color 0.2s ease, padding-left 0.2s ease;
+  text-align: left;
+  display: flex;
+  align-items: center;
+  width: 100%;
+  justify-content: center;
+}
+.lang-dropdown-item::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 0;
+  background: linear-gradient(135deg, #7a63f1, #9d7bff);
+  border-radius: 0 3px 3px 0;
+  transition: height 0.2s ease;
+}
+.lang-dropdown-item:hover {
+  background: linear-gradient(135deg, rgba(122, 99, 241, 0.12), rgba(157, 123, 255, 0.08));
+  color: #5a47c4;
+  padding-left: 18px;
+}
+.lang-dropdown-item:hover::before {
+  height: 60%;
+}
+
+/* Animație apariție dropdown limbă – copiată din PHP (.lang-menu) */
+.lang-dropdown-wrap {
+  position: relative;
+}
+.lang-dropdown-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  background: rgba(255, 255, 255, 0.98);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-radius: 16px;
+  border: 1.5px solid rgba(224, 216, 247, 0.6);
+  box-shadow: 0 20px 40px rgba(66, 50, 120, 0.15),
+              0 8px 16px rgba(66, 50, 120, 0.1),
+              inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  padding: 10px 6px;
+  display: grid;
+  gap: 4px;
+  min-width: 100px;
+  z-index: 1000;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-10px) scale(0.95);
+  transition: opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+              transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.lang-dropdown-menu::before {
+  content: "";
+  position: absolute;
+  top: -1px;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(122, 99, 241, 0.3), transparent);
+}
+.lang-dropdown-wrap.lang-dropdown-open .lang-dropdown-menu {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0) scale(1);
+}
+.lang-btn-php {
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(12px);
+  border: 1.5px solid rgba(177, 163, 241, 0.4);
+  color: #4b3bb4;
+  border-radius: 999px;
+  padding: 9px 16px;
+  font-weight: 700;
+  font-size: 14px;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(122, 99, 241, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.8);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.lang-btn-php:hover {
+  background: rgba(255, 255, 255, 1);
+  border-color: rgba(122, 99, 241, 0.6);
+  box-shadow: 0 6px 20px rgba(122, 99, 241, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  transform: translateY(-1px);
+}
+.lang-btn-php:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 8px rgba(122, 99, 241, 0.2);
+}
+
+/* Custom dropdown – Toate categoriile / Toate locatiile (copiat din PHP style.css) */
+.custom-dropdown {
+  position: relative;
+  min-width: 180px;
+}
+
+.dropdown-btn {
+  width: 100%;
+  padding: 14px 20px;
+  border-radius: 14px;
+  border: 1.5px solid rgba(122, 99, 241, 0.3);
+  font-size: 1rem;
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: 0 4px 12px rgba(122, 99, 241, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.8);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  color: #1e1c2f;
+  font-weight: 500;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.dropdown-btn:hover {
+  border-color: rgba(122, 99, 241, 0.5);
+  box-shadow: 0 6px 20px rgba(122, 99, 241, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  transform: translateY(-1px);
+}
+
+.dropdown-btn:active,
+.dropdown-btn.active {
+  border-color: rgba(122, 99, 241, 0.7);
+  box-shadow: 0 4px 16px rgba(122, 99, 241, 0.25), inset 0 2px 4px rgba(122, 99, 241, 0.1);
+  transform: translateY(0);
+}
+
+.dropdown-btn .chevron {
+  font-size: 0.85rem;
+  color: #7a63f1;
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  display: inline-block;
+}
+
+.dropdown-btn.active .chevron {
+  transform: rotate(180deg);
+}
+
+.dropdown-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  right: 0;
+  background: rgba(255, 255, 255, 0.98);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-radius: 16px;
+  border: 1.5px solid rgba(224, 216, 247, 0.6);
+  box-shadow: 0 20px 40px rgba(66, 50, 120, 0.15),
+              0 8px 16px rgba(66, 50, 120, 0.1),
+              inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  padding: 10px 6px;
+  display: grid;
+  gap: 4px;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-10px) scale(0.95);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  z-index: 1000;
+  overflow: hidden;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.dropdown-menu::before {
+  content: "";
+  position: absolute;
+  top: -1px;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(122, 99, 241, 0.3), transparent);
+}
+
+.dropdown-menu.active {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0) scale(1);
+}
+
+.dropdown-item {
+  padding: 12px 16px;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  color: #1e1c2f;
+  font-weight: 500;
+  font-size: 0.95rem;
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.dropdown-item::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 0;
+  background: linear-gradient(135deg, #7a63f1, #9d7bff);
+  border-radius: 0 3px 3px 0;
+  transition: height 0.2s ease;
+}
+
+.dropdown-item:hover {
+  background: linear-gradient(135deg, rgba(122, 99, 241, 0.12), rgba(157, 123, 255, 0.08));
+  color: #5a47c4;
+  transform: translateX(2px);
+  padding-left: 20px;
+}
+
+.dropdown-item:hover::before {
+  height: 60%;
+}
+
+.dropdown-item.selected {
+  background: linear-gradient(135deg, rgba(122, 99, 241, 0.2), rgba(157, 123, 255, 0.15));
+  color: #4b3bb4;
+  font-weight: 600;
+  padding-left: 20px;
+}
+
+.dropdown-item.selected::before {
+  height: 70%;
+}
+
+/* Custom dropdown în bară pill (Dashboard Joburi) – același HTML/CSS ca Find Jobs, buton fără bordură */
+.dropdown-btn.in-bar {
+  min-width: 140px;
+  padding: 0 16px;
+  height: 48px;
+  border: none;
+  background: transparent;
+  box-shadow: none;
+  border-radius: 10px;
+  font-size: 0.875rem;
+}
+.dropdown-btn.in-bar:hover {
+  background: rgba(0, 0, 0, 0.04);
+  transform: none;
+  box-shadow: none;
+}
+.dropdown-btn.in-bar.active {
+  background: rgba(0, 0, 0, 0.04);
+  transform: none;
+  box-shadow: none;
+}
+.custom-dropdown.in-bar {
+  min-width: 140px;
+}
+
+/* ========== Role modal – design și animații din PHP (style.css) ========== */
+.role-modal {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Centrat fix pe viewport (modal randat în body prin portal) */
+.role-modal--centered {
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+}
+
+.role-modal.active {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.role-modal-overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(36, 28, 70, 0.6);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+/* Wrapper pentru centrare perfectă pe ecran */
+.role-modal-center {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  box-sizing: border-box;
+  pointer-events: none;
+}
+
+.role-modal-center .role-modal-content {
+  pointer-events: auto;
+}
+
+.role-modal-content {
+  position: relative;
+  background: rgba(255, 255, 255, 0.98);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-radius: 24px;
+  border: 1.5px solid rgba(224, 216, 247, 0.8);
+  box-shadow: 0 24px 48px rgba(66, 50, 120, 0.2),
+              0 8px 16px rgba(66, 50, 120, 0.15),
+              inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  padding: 40px;
+  max-width: 540px;
+  width: 90%;
+  transform: scale(0.9) translateY(20px);
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  z-index: 1;
+}
+
+.role-modal.active .role-modal-content {
+  transform: scale(1) translateY(0);
+}
+
+.role-modal-close {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  width: 36px;
+  height: 36px;
+  border: none;
+  background: rgba(122, 99, 241, 0.1);
+  border-radius: 50%;
+  color: #4b3bb4;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s ease;
+  z-index: 2;
+}
+
+.role-modal-close svg {
+  display: block;
+}
+
+.role-modal-close:hover {
+  background: rgba(122, 99, 241, 0.2);
+}
+
+.role-modal-title {
+  font-size: 28px;
+  font-weight: 700;
+  color: #1e1c2f;
+  margin: 0 0 12px 0;
+  text-align: center;
+}
+
+.role-modal-question {
+  font-size: 16px;
+  color: #6b748a;
+  margin: 0 0 32px 0;
+  text-align: center;
+}
+
+.role-options {
+  display: grid;
+  gap: 16px;
+}
+
+.role-option {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 24px;
+  background: rgba(255, 255, 255, 0.8);
+  border: 2px solid rgba(224, 216, 247, 0.6);
+  border-radius: 16px;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  overflow: hidden;
+  text-decoration: none;
+  color: inherit;
+}
+
+.role-option::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 4px;
+  height: 100%;
+  background: linear-gradient(135deg, #7a63f1, #9d7bff);
+  transform: scaleY(0);
+  transition: transform 0.3s ease;
+}
+
+.role-option:hover {
+  background: rgba(255, 255, 255, 1);
+  border-color: rgba(122, 99, 241, 0.8);
+  box-shadow: 0 8px 24px rgba(122, 99, 241, 0.15),
+              0 4px 12px rgba(122, 99, 241, 0.1);
+  transform: translateY(-2px);
+}
+
+.role-option:hover::before {
+  transform: scaleY(1);
+}
+
+.role-option:active {
+  transform: translateY(0);
+}
+
+.role-icon {
+  width: 64px;
+  height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, rgba(122, 99, 241, 0.1), rgba(157, 123, 255, 0.08));
+  border-radius: 16px;
+  flex-shrink: 0;
+  transition: all 0.3s ease;
+  color: #7a63f1;
+}
+
+.role-icon svg {
+  width: 48px;
+  height: 48px;
+  transition: all 0.3s ease;
+}
+
+.role-option:hover .role-icon {
+  background: linear-gradient(135deg, rgba(122, 99, 241, 0.2), rgba(157, 123, 255, 0.15));
+  transform: scale(1.1);
+  color: #5a47c4;
+}
+
+.role-option:hover .role-icon svg {
+  transform: scale(1.05);
+}
+
+.role-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.role-info h3 {
+  font-size: 24px;
+  font-weight: 700;
+  color: #1e1c2f;
+  margin: 0 0 6px 0;
+}
+
+.role-info p {
+  font-size: 15px;
+  color: #6b748a;
+  margin: 0;
+  line-height: 1.5;
+}
+
+@media (max-width: 600px) {
+  .role-modal-content {
+    padding: 32px 24px;
+    max-width: 95%;
+  }
+  .role-modal-title {
+    font-size: 24px;
+  }
+  .role-option {
+    padding: 20px;
+    gap: 16px;
+  }
+  .role-icon {
+    width: 56px;
+    height: 56px;
+  }
+  .role-icon svg {
+    width: 40px;
+    height: 40px;
+  }
+  .role-info h3 {
+    font-size: 20px;
+  }
+}
+
+/* ========== Time picker dropdown – design îmbunătățit ========== */
+.time-picker-dropdown {
+  animation: timePickerIn 0.2s ease-out;
+}
+
+@keyframes timePickerIn {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.time-picker-column {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(122, 99, 241, 0.4) transparent;
+}
+
+.time-picker-column::-webkit-scrollbar {
+  width: 6px;
+}
+
+.time-picker-column::-webkit-scrollbar-track {
+  background: transparent;
+  border-radius: 3px;
+}
+
+.time-picker-column::-webkit-scrollbar-thumb {
+  background: rgba(122, 99, 241, 0.35);
+  border-radius: 3px;
+}
+
+.time-picker-column::-webkit-scrollbar-thumb:hover {
+  background: rgba(122, 99, 241, 0.55);
+}
+
+.time-picker-option:active {
+  transform: scale(0.98);
+}
+
+/* ========== Auth (Login / Register) – design și animații din PHP ========== */
+@keyframes authCardAppear {
+  from {
+    opacity: 0;
+    transform: translateY(30px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes authFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Animație apariție pagină întreagă */
+@keyframes pageEnter {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.page-enter {
+  animation: pageEnter 0.5s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .page-enter,
+  .page-enter-stagger > * {
+    animation: none !important;
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Stagger pentru secțiuni (opțional) */
+.page-enter-stagger > * {
+  opacity: 0;
+  animation: pageEnter 0.45s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+.page-enter-stagger > *:nth-child(1) { animation-delay: 0.05s; }
+.page-enter-stagger > *:nth-child(2) { animation-delay: 0.1s; }
+.page-enter-stagger > *:nth-child(3) { animation-delay: 0.15s; }
+.page-enter-stagger > *:nth-child(4) { animation-delay: 0.2s; }
+.page-enter-stagger > *:nth-child(5) { animation-delay: 0.25s; }
+.page-enter-stagger > *:nth-child(6) { animation-delay: 0.3s; }
+.page-enter-stagger > *:nth-child(7) { animation-delay: 0.35s; }
+.page-enter-stagger > *:nth-child(8) { animation-delay: 0.4s; }
+.page-enter-stagger > *:nth-child(9) { animation-delay: 0.45s; }
+.page-enter-stagger > *:nth-child(10) { animation-delay: 0.5s; }
+
+/* Animație apariție modale (Post job, Adresă, Documente) */
+@keyframes modalOverlayIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes modalContentIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95) translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+.modal-overlay-enter {
+  animation: modalOverlayIn 0.25s ease-out forwards;
+}
+.modal-content-enter {
+  animation: modalContentIn 0.3s cubic-bezier(0.22, 1, 0.36, 1) 0.05s forwards;
+  opacity: 0;
+}
+@media (prefers-reduced-motion: reduce) {
+  .modal-overlay-enter,
+  .modal-content-enter {
+    animation: none !important;
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Animație apariție conținut pe pași în modal (Cum vrei să postezi?, Formular) */
+@keyframes modalStepIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.modal-step-enter {
+  animation: modalStepIn 0.35s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+.modal-step-stagger > * {
+  opacity: 0;
+  animation: modalStepIn 0.3s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+.modal-step-stagger > *:nth-child(1) { animation-delay: 0.05s; }
+.modal-step-stagger > *:nth-child(2) { animation-delay: 0.1s; }
+.modal-step-stagger > *:nth-child(3) { animation-delay: 0.15s; }
+.modal-step-stagger > *:nth-child(4) { animation-delay: 0.2s; }
+.modal-step-stagger > *:nth-child(5) { animation-delay: 0.25s; }
+.modal-step-stagger > *:nth-child(6) { animation-delay: 0.3s; }
+.modal-step-stagger > *:nth-child(7) { animation-delay: 0.35s; }
+.modal-step-stagger > *:nth-child(8) { animation-delay: 0.4s; }
+@media (prefers-reduced-motion: reduce) {
+  .modal-step-enter,
+  .modal-step-stagger > * {
+    animation: none !important;
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes dropdownIn {
+  from {
+    opacity: 0;
+    transform: scaleY(0.92) translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: scaleY(1) translateY(0);
+  }
+}
+.dropdown-enter {
+  animation: dropdownIn 0.2s ease-out forwards;
+}
+@media (prefers-reduced-motion: reduce) {
+  .dropdown-enter { animation: none !important; }
+}
+
+.auth-page {
+  min-height: 70vh;
+  display: grid;
+  place-items: center;
+  padding: 40px 16px;
+}
+
+.auth-card {
+  width: min(420px, 92%);
+  background: rgba(255, 255, 255, 0.75);
+  border: 1px solid rgba(224, 216, 247, 0.9);
+  border-radius: 24px;
+  padding: 32px;
+  box-shadow: 0 20px 40px rgba(66, 50, 120, 0.12);
+  backdrop-filter: blur(16px);
+  animation: authCardAppear 0.6s ease-out both;
+}
+
+.auth-card h1 {
+  margin-bottom: 8px;
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: #1e1c2f;
+  animation: authFadeIn 0.6s ease-out 0.2s both;
+}
+
+.auth-card .auth-muted {
+  color: #6b748a;
+  font-size: 0.95rem;
+  margin-bottom: 0;
+  animation: authFadeIn 0.6s ease-out 0.3s both;
+}
+
+.auth-form {
+  display: grid;
+  gap: 14px;
+  margin-top: 18px;
+  animation: authFadeIn 0.6s ease-out 0.4s both;
+}
+
+.auth-form label {
+  display: grid;
+  gap: 6px;
+  font-weight: 600;
+  color: #34324a;
+  font-size: 0.9rem;
+}
+
+.auth-form label:nth-of-type(1) { animation: authFadeIn 0.5s ease-out 0.5s both; }
+.auth-form label:nth-of-type(2) { animation: authFadeIn 0.5s ease-out 0.6s both; }
+.auth-form label:nth-of-type(3) { animation: authFadeIn 0.5s ease-out 0.55s both; }
+.auth-form label:nth-of-type(4) { animation: authFadeIn 0.5s ease-out 0.6s both; }
+.auth-form label:nth-of-type(5) { animation: authFadeIn 0.5s ease-out 0.65s both; }
+
+.auth-form button {
+  animation: authFadeIn 0.5s ease-out 0.7s both;
+}
+
+.auth-form input {
+  border-radius: 12px;
+  border: 1px solid rgba(224, 216, 247, 0.9);
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.8);
+  font-size: 1rem;
+}
+
+.auth-form input:focus {
+  outline: none;
+  border-color: #7a63f1;
+  box-shadow: 0 0 0 3px rgba(122, 99, 241, 0.15);
+}
+
+.auth-link {
+  margin-top: 14px;
+  font-weight: 600;
+  color: #4d5874;
+  font-size: 0.9rem;
+  animation: authFadeIn 0.6s ease-out 0.8s both;
+}
+
+.auth-link a {
+  color: #6c58d6;
+}
+
+.auth-alert {
+  margin-top: 16px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  font-weight: 600;
+  font-size: 0.9rem;
+  animation: authFadeIn 0.5s ease-out 0.4s both;
+}
+
+.auth-alert.error {
+  background: rgba(255, 230, 230, 0.9);
+  color: #9b2c2c;
+  border: 1px solid rgba(245, 186, 186, 0.9);
+}
+
+.auth-alert.success {
+  background: rgba(225, 247, 233, 0.9);
+  color: #1f7a45;
+  border: 1px solid rgba(177, 230, 199, 0.9);
+}
+
+/* Pagina Register – alegere rol (Staff/Customer) pe aceeași pagină */
+.auth-card--choose-role {
+  max-width: 560px;
+}
+
+.role-options--page {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+  margin-top: 8px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .role-modal,
+  .role-modal-content,
+  .role-option,
+  .role-icon,
+  .auth-card,
+  .auth-card h1,
+  .auth-card .auth-muted,
+  .auth-form,
+  .auth-form label,
+  .auth-form button,
+  .auth-link,
+  .auth-alert {
+    animation: none !important;
+  }
+}
+
+/* Animație apariție meniu mobil – exact ca în PHP (slideInActions, slideInNav, doar când overlay.active) */
+@keyframes slideInActions {
+  from {
+    opacity: 0;
+    transform: translateX(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+@keyframes slideInNav {
+  from {
+    opacity: 0;
+    transform: translateX(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* Stare inițială – elemente ascunse (ca în PHP) */
+.mobile-menu-overlay .mobile-menu-actions > *,
+.mobile-menu-overlay .mobile-menu-nav a {
+  opacity: 0;
+  transform: translateX(-20px);
+}
+
+/* Animații doar când meniul e deschis */
+.mobile-menu-overlay.active .mobile-menu-actions > *:nth-child(1) {
+  animation: slideInActions 0.5s ease 0.1s forwards;
+}
+.mobile-menu-overlay.active .mobile-menu-actions > *:nth-child(2) {
+  animation: slideInActions 0.5s ease 0.16s forwards;
+}
+.mobile-menu-overlay.active .mobile-menu-actions > *:nth-child(3) {
+  animation: slideInActions 0.5s ease 0.22s forwards;
+}
+.mobile-menu-overlay.active .mobile-menu-nav a:nth-child(1) { animation: slideInNav 0.5s ease 0.15s forwards; }
+.mobile-menu-overlay.active .mobile-menu-nav a:nth-child(2) { animation: slideInNav 0.5s ease 0.2s forwards; }
+.mobile-menu-overlay.active .mobile-menu-nav a:nth-child(3) { animation: slideInNav 0.5s ease 0.25s forwards; }
+.mobile-menu-overlay.active .mobile-menu-nav a:nth-child(4) { animation: slideInNav 0.5s ease 0.3s forwards; }
+.mobile-menu-overlay.active .mobile-menu-nav a:nth-child(5) { animation: slideInNav 0.5s ease 0.35s forwards; }
+
+@media (prefers-reduced-motion: reduce) {
+  .mobile-menu-overlay .mobile-menu-actions > *,
+  .mobile-menu-overlay .mobile-menu-nav a {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+  }
+}
+
+/* ========== Navbar hamburger + overlay – copiat din PHP (style.css) ========== */
+.mobile-menu-toggle {
+  display: none;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 10px;
+  z-index: 1001;
+  position: relative;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  min-width: 44px;
+  min-height: 44px;
+  width: 44px;
+  height: 44px;
+  justify-content: center;
+  align-items: center;
+}
+@media (min-width: 768px) {
+  .mobile-menu-toggle {
+    display: none !important;
+  }
+}
+@media (max-width: 767px) {
+  .mobile-menu-toggle {
+    display: flex !important;
+    padding: 8px;
+  }
+}
+.mobile-menu-toggle span {
+  width: 24px;
+  height: 2.5px;
+  background: #1e1c2f;
+  border-radius: 2px;
+  display: block;
+  pointer-events: none;
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  transform-origin: center center;
+  transition: width 0.25s ease-in-out, top 0.25s ease-in-out, left 0.25s ease-in-out, transform 0.25s ease-in-out;
+}
+.mobile-menu-toggle span:nth-child(1) {
+  top: 8px;
+}
+.mobile-menu-toggle span:nth-child(2) {
+  top: 18px;
+}
+.mobile-menu-toggle span:nth-child(3) {
+  top: 28px;
+}
+.mobile-menu-toggle.active span:nth-child(1) {
+  top: 18px;
+  width: 0%;
+  left: 50%;
+  transform: translateX(-50%);
+}
+.mobile-menu-toggle.active span:nth-child(2) {
+  top: 18px;
+  transform: translateX(-50%) rotate(45deg);
+}
+.mobile-menu-toggle.active span:nth-child(3) {
+  top: 18px;
+  transform: translateX(-50%) rotate(-45deg);
+}
+
+/* Overlay meniu mobil – slide from top (PHP: translateY(-100%) -> 0) */
+.mobile-menu-overlay {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100vh;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 1) 0%, rgba(248, 246, 255, 1) 100%);
+  backdrop-filter: blur(40px);
+  -webkit-backdrop-filter: blur(40px);
+  box-shadow: 0 0 60px rgba(36, 28, 70, 0.2);
+  transform: translateY(-100%);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: transform 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+              opacity 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+              visibility 0.4s;
+  z-index: 1000;
+  overflow-y: auto;
+  flex-direction: column;
+  padding-top: 72px;
+  padding-left: 1.25rem;
+  padding-right: 1.25rem;
+  padding-bottom: 1.5rem;
+  -webkit-overflow-scrolling: touch;
+}
+@media (min-width: 768px) {
+  .mobile-menu-overlay {
+    display: none !important;
+  }
+}
+@media (max-width: 767px) {
+  .mobile-menu-overlay {
+    display: flex !important;
+    padding-top: 60px;
+    padding-left: 0;
+    padding-right: 0;
+  }
+  .mobile-menu-overlay.active {
+    transform: translateY(0) !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+    pointer-events: auto !important;
+  }
+
+  /* Panel + ordine ca în PHP (actions sus, nav jos) */
+  .mobile-menu-panel {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    width: 100%;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Bloc actions = Sign In, Sign Up, limbă (ca .header-actions din PHP) */
+  .mobile-menu-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 24px 20px;
+    width: 100%;
+    background: linear-gradient(135deg, rgba(122, 99, 241, 0.05) 0%, rgba(107, 84, 224, 0.03) 100%);
+    border: none;
+    box-shadow: 0 2px 20px rgba(122, 99, 241, 0.08);
+    border-bottom: 2px solid rgba(122, 99, 241, 0.1);
+    flex-shrink: 0;
+    order: -1;
+  }
+
+  .mobile-menu-actions .btn {
+    width: 100%;
+    justify-content: center;
+    padding: 14px 24px;
+    font-size: 1rem;
+    font-weight: 600;
+    border-radius: 14px;
+    box-shadow: 0 4px 12px rgba(122, 99, 241, 0.2);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    text-decoration: none;
+    border: none;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+  }
+
+  .mobile-menu-actions .btn-signin {
+    background: rgba(255, 255, 255, 0.95);
+    border: 1.5px solid rgba(177, 163, 241, 0.4);
+    color: #4b3bb4;
+    box-shadow: 0 4px 12px rgba(122, 99, 241, 0.15);
+  }
+
+  .mobile-menu-actions .btn-signin:hover {
+    background: #fff;
+    border-color: rgba(122, 99, 241, 0.6);
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(122, 99, 241, 0.25);
+  }
+
+  .mobile-menu-actions .btn-signup {
+    background: linear-gradient(135deg, #7a63f1, #9d7bff);
+    color: #fff;
+  }
+
+  .mobile-menu-actions .btn-signup:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(122, 99, 241, 0.3);
+  }
+
+  /* Limbă în meniu mobil – RO, EN, RU (ca .lang-menu a din PHP) */
+  .mobile-menu-lang {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+  }
+
+  .mobile-lang-option {
+    padding: 14px 20px;
+    border-radius: 12px;
+    font-size: 1rem;
+    font-weight: 600;
+    color: #4b3bb4;
+    background: rgba(255, 255, 255, 0.9);
+    border: 2px solid rgba(122, 99, 241, 0.2);
+    cursor: pointer;
+    transition: all 0.2s ease;
+    text-align: center;
+  }
+
+  .mobile-lang-option:hover {
+    background: linear-gradient(135deg, rgba(122, 99, 241, 0.12), rgba(107, 84, 224, 0.1));
+    color: #5a47c4;
+    transform: translateX(4px);
+  }
+
+  /* Nav links – exact ca .mobile-menu-overlay .nav a din PHP */
+  .mobile-menu-nav {
+    display: flex;
+    flex-direction: column;
+    padding: 20px 0;
+    gap: 8px;
+    width: 100%;
+    flex: 1;
+    order: 1;
+  }
+
+  .mobile-menu-nav a {
+    padding: 16px 24px;
+    margin: 0 16px;
+    border-radius: 14px;
+    width: calc(100% - 32px);
+    text-align: left;
+    font-size: 1.05rem;
+    font-weight: 600;
+    color: #1e1c2f;
+    text-decoration: none;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    min-height: 56px;
+    display: flex;
+    align-items: center;
+    background: rgba(255, 255, 255, 0.6);
+    border: 1px solid rgba(224, 216, 247, 0.3);
+    box-shadow: 0 2px 8px rgba(122, 99, 241, 0.05);
+    position: relative;
+    overflow: hidden;
+  }
+
+  .mobile-menu-nav a::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 4px;
+    height: 100%;
+    background: linear-gradient(180deg, #7a63f1 0%, #6b54e0 100%);
+    transform: scaleY(0);
+    transition: transform 0.3s ease;
+  }
+
+  .mobile-menu-nav a:hover {
+    background: linear-gradient(135deg, rgba(122, 99, 241, 0.1) 0%, rgba(107, 84, 224, 0.08) 100%);
+    border-color: rgba(122, 99, 241, 0.4);
+    transform: translateX(4px);
+    box-shadow: 0 4px 16px rgba(122, 99, 241, 0.15);
+  }
+
+  .mobile-menu-nav a:hover::before {
+    transform: scaleY(1);
+  }
+}
+
+/* ========== Secțiune telefoane – copiată din PHP (style.css) ========== */
+.section.alt {
+  background: transparent;
+}
+.phone-stack-container {
+  position: relative;
+  width: 100%;
+  min-height: 500px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: visible;
+}
+@media (min-width: 769px) {
+  .phone-stack-container {
+    min-height: 800px;
+  }
+}
+.phone-section .phone-main {
+  position: relative;
+  z-index: 2;
+  width: auto;
+  max-width: none;
+  object-fit: contain;
+  opacity: 0;
+  transform: scale(0.8);
+  transition: transform 0.3s ease;
+}
+.phone-section .phone-main:hover {
+  transform: scale(1.02);
+}
+.phone-section.animate-phones .phone-main {
+  animation: phoneMainAppear 0.8s ease-out forwards;
+}
+@keyframes phoneMainAppear {
+  0% {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+.phone-section .phone-behind {
+  position: absolute;
+  z-index: 1;
+  left: 50%;
+  top: 50%;
+  width: auto;
+  max-width: none;
+  object-fit: contain;
+  opacity: 0;
+}
+.phone-section .phone-behind.phone-left {
+  transform: translate(-50%, -50%) rotate(-5deg) translateY(20px);
+}
+.phone-section .phone-behind.phone-right {
+  transform: translate(-50%, -50%) rotate(5deg) translateY(20px);
+}
+.phone-section.animate-phones .phone-left {
+  animation: phoneBehindSlideOutLeft 1.2s ease-out 0.5s forwards;
+}
+.phone-section.animate-phones .phone-right {
+  animation: phoneBehindSlideOutRight 1.2s ease-out 0.7s forwards;
+}
+@keyframes phoneBehindSlideOutLeft {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) rotate(-5deg) translateY(20px) scale(0.95);
+  }
+  100% {
+    opacity: 0.9;
+    transform: translate(calc(-50% - 200px), -50%) rotate(-5deg) translateY(20px) scale(1);
+  }
+}
+@keyframes phoneBehindSlideOutRight {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) rotate(5deg) translateY(20px) scale(0.95);
+  }
+  100% {
+    opacity: 0.9;
+    transform: translate(calc(-50% + 200px), -50%) rotate(5deg) translateY(20px) scale(1);
+  }
+}
+@media (max-width: 768px) {
+  .phone-section .phone-main {
+    height: 400px !important;
+  }
+  .phone-section .phone-behind {
+    height: 380px !important;
+  }
+  .phone-section .phone-behind.phone-left {
+    transform: translate(-50%, -50%) rotate(-5deg) translateY(15px);
+  }
+  .phone-section .phone-behind.phone-right {
+    transform: translate(-50%, -50%) rotate(5deg) translateY(15px);
+  }
+  .phone-section.animate-phones .phone-left {
+    animation: phoneBehindSlideOutLeftMobile 1.2s ease-out 0.5s forwards;
+  }
+  .phone-section.animate-phones .phone-right {
+    animation: phoneBehindSlideOutRightMobile 1.2s ease-out 0.7s forwards;
+  }
+  @keyframes phoneBehindSlideOutLeftMobile {
+    0% {
+      opacity: 0;
+      transform: translate(-50%, -50%) rotate(-5deg) translateY(15px) scale(0.95);
+    }
+    100% {
+      opacity: 0.9;
+      transform: translate(calc(-50% - 120px), -50%) rotate(-5deg) translateY(15px) scale(1);
+    }
+  }
+  @keyframes phoneBehindSlideOutRightMobile {
+    0% {
+      opacity: 0;
+      transform: translate(-50%, -50%) rotate(5deg) translateY(15px) scale(0.95);
+    }
+    100% {
+      opacity: 0.9;
+      transform: translate(calc(-50% + 120px), -50%) rotate(5deg) translateY(15px) scale(1);
+    }
+  }
+}
+@media (min-width: 769px) {
+  .phone-section .phone-main {
+    height: 700px;
+  }
+  .phone-section .phone-behind {
+    height: 650px;
+  }
+}
+
+/* PHP: respect reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .animate-fade-up,
+  .animate-nav-appear,
+  .animate-pulse-glow,
+  .animate-shimmer-btn,
+  .animate-phone-main-appear,
+  .animate-phone-behind-left,
+  .animate-phone-behind-right,
+  .animate-phone-behind-left-mobile,
+  .animate-phone-behind-right-mobile {
+    animation: none !important;
+  }
+  header.animate-nav-appear,
+  header[class*="opacity-0"] {
+    opacity: 1;
+    transform: none;
+  }
+  .phone-section.animate-phones .phone-main {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: scale(1) !important;
+  }
+  .phone-section.animate-phones .phone-left {
+    animation: none !important;
+    opacity: 0.9 !important;
+    transform: translate(calc(-50% - 200px), -50%) rotate(-5deg) translateY(20px) scale(1) !important;
+  }
+  .phone-section.animate-phones .phone-right {
+    animation: none !important;
+    opacity: 0.9 !important;
+    transform: translate(calc(-50% + 200px), -50%) rotate(5deg) translateY(20px) scale(1) !important;
+  }
+  @media (max-width: 768px) {
+    .phone-section.animate-phones .phone-left {
+      transform: translate(calc(-50% - 120px), -50%) rotate(-5deg) translateY(15px) scale(1) !important;
+    }
+    .phone-section.animate-phones .phone-right {
+      transform: translate(calc(-50% + 120px), -50%) rotate(5deg) translateY(15px) scale(1) !important;
+    }
+  }
+}
