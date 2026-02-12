@@ -33,7 +33,6 @@ $name = $_SESSION["user_name"] ?? "Utilizator";
           <a class="nav-item" href="#">Aplicatii</a>
           <a class="nav-item" href="#">Rapoarte</a>
           <a class="nav-item" href="#">Calendar</a>
-          <a class="nav-item" href="#">Mesaje</a>
         </nav>
 
         <div class="sidebar-footer">
