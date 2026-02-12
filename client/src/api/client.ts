@@ -1,4 +1,4 @@
-/** URL-ul API: setează VITE_API_URL în .env când accesezi de pe alt PC (ex. http://192.168.1.5:5175/api). */
+/** URL-ul API: setează VITE_API_URL în .env când accesezi de pe alt PC (ex. http://192.168.1.5:5600/api). */
 function getApiBase(): string {
   if (typeof window === "undefined") return "/api";
   const envUrl = import.meta.env.VITE_API_URL;
@@ -8,8 +8,8 @@ function getApiBase(): string {
   }
   const host = window.location.hostname;
   if (host === "localhost" || host === "127.0.0.1") return "/api";
-  // Use VITE_API_PORT from environment or default to 5175
-  const apiPort = import.meta.env.VITE_API_PORT || "5175";
+  // Use VITE_API_PORT from environment or default to 5600
+  const apiPort = import.meta.env.VITE_API_PORT || "5600";
   return `http://${host}:${apiPort}/api`;
 }
 

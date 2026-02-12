@@ -1358,6 +1358,10 @@
   animation: authCardAppear 0.6s ease-out both;
 }
 
+.auth-card--register {
+  width: min(560px, 94%);
+}
+
 .auth-card h1 {
   margin-bottom: 8px;
   font-size: 1.75rem;
@@ -1394,7 +1398,7 @@
 .auth-form label:nth-of-type(4) { animation: authFadeIn 0.5s ease-out 0.6s both; }
 .auth-form label:nth-of-type(5) { animation: authFadeIn 0.5s ease-out 0.65s both; }
 
-.auth-form button {
+.auth-form > button {
   animation: authFadeIn 0.5s ease-out 0.7s both;
 }
 
@@ -1410,6 +1414,203 @@
   outline: none;
   border-color: #7a63f1;
   box-shadow: 0 0 0 3px rgba(122, 99, 241, 0.15);
+}
+
+.auth-form textarea,
+.auth-form select {
+  border-radius: 12px;
+  border: 1px solid rgba(224, 216, 247, 0.9);
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.8);
+  font-size: 1rem;
+  font-family: inherit;
+}
+
+.auth-form textarea {
+  resize: vertical;
+  min-height: 96px;
+}
+
+.auth-form textarea:focus,
+.auth-form select:focus {
+  outline: none;
+  border-color: #7a63f1;
+  box-shadow: 0 0 0 3px rgba(122, 99, 241, 0.15);
+}
+
+.auth-section-title {
+  margin-top: 24px;
+  margin-bottom: 12px;
+  font-size: 18px;
+  font-weight: 600;
+  color: #2a2740;
+}
+
+.auth-field-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.auth-field-row--address {
+  grid-template-columns: 2fr 1fr;
+}
+
+.auth-date-wrap {
+  position: relative;
+  z-index: 2;
+}
+
+.auth-date-wrap .date-picker-label {
+  font-weight: 600;
+  color: #34324a;
+  font-size: 0.9rem;
+}
+
+.auth-date-wrap .date-picker-trigger {
+  border-color: rgba(170, 153, 235, 0.75);
+  background: rgba(255, 255, 255, 0.88);
+  color: #24213b;
+  box-shadow: 0 4px 12px rgba(122, 99, 241, 0.08);
+}
+
+.auth-date-wrap .date-picker-trigger:hover {
+  border-color: #8e78f4;
+}
+
+.auth-date-wrap .date-picker-panel {
+  z-index: 80;
+  border-color: rgba(203, 191, 243, 0.9);
+  background: rgba(255, 255, 255, 0.98);
+  box-shadow: 0 18px 36px rgba(66, 50, 120, 0.18), 0 6px 16px rgba(122, 99, 241, 0.12);
+}
+
+.auth-date-wrap .date-picker-panel button {
+  animation: none !important;
+}
+
+.auth-date-wrap .date-picker-year-trigger {
+  border-color: rgba(203, 191, 243, 0.9);
+  color: #2a2740;
+  background: #fff;
+}
+
+.auth-date-wrap .date-picker-year-trigger:focus {
+  outline: none;
+  border-color: #7a63f1;
+  box-shadow: 0 0 0 3px rgba(122, 99, 241, 0.12);
+}
+
+.auth-date-wrap .date-picker-year-list {
+  border-color: rgba(203, 191, 243, 0.95);
+  box-shadow: 0 12px 26px rgba(66, 50, 120, 0.16), 0 4px 10px rgba(122, 99, 241, 0.12);
+}
+
+.auth-date-wrap .date-picker-year-option {
+  color: #2a2740;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.auth-date-wrap .date-picker-year-option:hover {
+  background: rgba(122, 99, 241, 0.12);
+  color: #5f49d2;
+}
+
+.auth-date-wrap .date-picker-year-option--active,
+.auth-date-wrap .date-picker-year-option--active:hover {
+  background: linear-gradient(135deg, rgba(122, 99, 241, 0.24), rgba(157, 123, 255, 0.24));
+  color: #4e39b9;
+  font-weight: 700;
+}
+
+.auth-date-wrap .date-picker-day {
+  border: 1px solid rgba(212, 203, 245, 0.85);
+}
+
+.auth-custom-dropdown {
+  position: relative;
+}
+
+.auth-custom-dropdown__trigger {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(224, 216, 247, 0.9);
+  background: rgba(255, 255, 255, 0.9);
+  color: #2a2740;
+  font-size: 1rem;
+  text-align: left;
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.auth-custom-dropdown__trigger:hover {
+  border-color: #8e78f4;
+}
+
+.auth-custom-dropdown__trigger:focus {
+  outline: none;
+  border-color: #7a63f1;
+  box-shadow: 0 0 0 3px rgba(122, 99, 241, 0.15);
+}
+
+.auth-custom-dropdown__chevron {
+  width: 18px;
+  height: 18px;
+  color: #6c58d6;
+  transition: transform 0.2s ease;
+}
+
+.auth-custom-dropdown__trigger.is-open .auth-custom-dropdown__chevron {
+  transform: rotate(180deg);
+}
+
+.auth-custom-dropdown__menu {
+  position: absolute;
+  z-index: 90;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  list-style: none;
+  margin: 0;
+  padding: 6px;
+  border-radius: 12px;
+  border: 1px solid rgba(203, 191, 243, 0.95);
+  background: #fff;
+  box-shadow: 0 14px 28px rgba(66, 50, 120, 0.18), 0 6px 12px rgba(122, 99, 241, 0.12);
+  max-height: 260px;
+  overflow-y: auto;
+  animation: dropdownIn 0.12s ease-out forwards;
+}
+
+.auth-custom-dropdown__item {
+  width: 100%;
+  text-align: left;
+  padding: 9px 10px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: #2a2740;
+  font-size: 1rem;
+  transition: background 0.15s ease, color 0.15s ease;
+  animation: none !important;
+  opacity: 1 !important;
+  transform: none !important;
+}
+
+.auth-custom-dropdown__item:hover {
+  background: rgba(122, 99, 241, 0.12);
+  color: #5f49d2;
+}
+
+.auth-custom-dropdown__item.is-selected,
+.auth-custom-dropdown__item.is-selected:hover {
+  background: linear-gradient(135deg, rgba(122, 99, 241, 0.24), rgba(157, 123, 255, 0.24));
+  color: #4e39b9;
+  font-weight: 700;
 }
 
 .auth-link {
@@ -1448,6 +1649,18 @@
 /* Pagina Register – alegere rol (Staff/Customer) pe aceeași pagină */
 .auth-card--choose-role {
   max-width: 560px;
+}
+
+@media (max-width: 640px) {
+  .auth-card--register {
+    width: min(520px, 96%);
+    padding: 24px;
+  }
+
+  .auth-field-row,
+  .auth-field-row--address {
+    grid-template-columns: 1fr;
+  }
 }
 
 .role-options--page {

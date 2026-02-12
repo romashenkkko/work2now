@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react";
-import { Briefcase, Plus, Edit, Trash2, Save, X } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
+import { Briefcase, Plus, Edit, Trash2, Save, X, ChevronDown } from "lucide-react";
 import { experiencesApi } from "../api/client";
 
 // Job categories matching the enum
@@ -66,9 +66,26 @@ export default function ExperiencesSection({ onBack, t }: ExperiencesSectionProp
   const [editingDescription, setEditingDescription] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [categoryOpen, setCategoryOpen] = useState(false);
+  const [durationOpen, setDurationOpen] = useState(false);
+  const categoryRef = useRef<HTMLDivElement>(null);
+  const durationRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     loadExperiences();
+  }, []);
+
+  useEffect(() => {
+    const onOutsideClick = (e: MouseEvent) => {
+      if (categoryRef.current && !categoryRef.current.contains(e.target as Node)) {
+        setCategoryOpen(false);
+      }
+      if (durationRef.current && !durationRef.current.contains(e.target as Node)) {
+        setDurationOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onOutsideClick);
+    return () => document.removeEventListener("mousedown", onOutsideClick);
   }, []);
 
   const loadExperiences = async () => {
@@ -194,6 +211,9 @@ export default function ExperiencesSection({ onBack, t }: ExperiencesSectionProp
     return JOB_CATEGORIES.find((c) => c.id === categoryId)?.icon || "💼";
   };
 
+  const selectedCategory = JOB_CATEGORIES.find((c) => c.id === formData.jobCategory);
+  const selectedDuration = EXPERIENCE_DURATIONS.find((d) => d.id === formData.duration);
+
   const getDurationLabel = (durationId: number) => {
     return EXPERIENCE_DURATIONS.find((d) => d.id === durationId)?.label || "Unknown";
   };
@@ -260,41 +280,105 @@ export default function ExperiencesSection({ onBack, t }: ExperiencesSectionProp
                   <span className="text-sm font-medium text-gray-700 mb-1.5 block">
                     Categoria de job <span className="text-red-500">*</span>
                   </span>
-                  <select
-                    value={formData.jobCategory}
-                    onChange={(e) =>
-                      setFormData((prev) => ({ ...prev, jobCategory: parseInt(e.target.value, 10) }))
-                    }
-                    disabled={editingId !== null}
-                    className="w-full px-4 py-2.5 rounded-xl border border-gray-200 bg-white focus:ring-2 focus:ring-primary focus:border-primary"
-                  >
-                    <option value={0}>Selectează categoria</option>
-                    {JOB_CATEGORIES.map((cat) => (
-                      <option key={cat.id} value={cat.id}>
-                        {cat.icon} {cat.name}
-                      </option>
-                    ))}
-                  </select>
+                  <div className="relative" ref={categoryRef}>
+                    <button
+                      type="button"
+                      disabled={editingId !== null}
+                      onClick={() => {
+                        setCategoryOpen((v) => !v);
+                        setDurationOpen(false);
+                      }}
+                      className="w-full px-4 py-2.5 rounded-xl border border-violet-200 bg-white focus:ring-2 focus:ring-primary focus:border-primary transition-colors inline-flex items-center justify-between gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
+                    >
+                      <span className="inline-flex items-center gap-2 text-gray-800">
+                        {selectedCategory ? (
+                          <>
+                            <span>{selectedCategory.icon}</span>
+                            <span>{selectedCategory.name}</span>
+                          </>
+                        ) : (
+                          <span className="text-gray-500">Selectează categoria</span>
+                        )}
+                      </span>
+                      <ChevronDown
+                        className={`w-4 h-4 text-violet-500 transition-transform ${categoryOpen ? "rotate-180" : ""}`}
+                      />
+                    </button>
+
+                    {categoryOpen && editingId === null && (
+                      <div className="absolute z-30 mt-1 w-full rounded-xl border border-violet-200 bg-white shadow-lg overflow-hidden">
+                        <ul className="max-h-64 overflow-y-auto py-1">
+                          {JOB_CATEGORIES.map((cat) => (
+                            <li key={cat.id}>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setFormData((prev) => ({ ...prev, jobCategory: cat.id }));
+                                  setCategoryOpen(false);
+                                }}
+                                className={`w-full px-4 py-2 text-left inline-flex items-center gap-2 transition-colors ${
+                                  formData.jobCategory === cat.id
+                                    ? "bg-violet-100 text-violet-800 font-medium"
+                                    : "text-gray-800 hover:bg-violet-50"
+                                }`}
+                              >
+                                <span>{cat.icon}</span>
+                                <span>{cat.name}</span>
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
                 </label>
 
                 <label className="block">
                   <span className="text-sm font-medium text-gray-700 mb-1.5 block">
                     Durata experienței <span className="text-red-500">*</span>
                   </span>
-                  <select
-                    value={formData.duration}
-                    onChange={(e) =>
-                      setFormData((prev) => ({ ...prev, duration: parseInt(e.target.value, 10) }))
-                    }
-                    className="w-full px-4 py-2.5 rounded-xl border border-gray-200 bg-white focus:ring-2 focus:ring-primary focus:border-primary"
-                  >
-                    <option value={0}>Selectează durata</option>
-                    {EXPERIENCE_DURATIONS.map((dur) => (
-                      <option key={dur.id} value={dur.id}>
-                        {dur.label}
-                      </option>
-                    ))}
-                  </select>
+                  <div className="relative" ref={durationRef}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDurationOpen((v) => !v);
+                        setCategoryOpen(false);
+                      }}
+                      className="w-full px-4 py-2.5 rounded-xl border border-violet-200 bg-white focus:ring-2 focus:ring-primary focus:border-primary transition-colors inline-flex items-center justify-between gap-2"
+                    >
+                      <span className={selectedDuration ? "text-gray-800" : "text-gray-500"}>
+                        {selectedDuration ? selectedDuration.label : "Selectează durata"}
+                      </span>
+                      <ChevronDown
+                        className={`w-4 h-4 text-violet-500 transition-transform ${durationOpen ? "rotate-180" : ""}`}
+                      />
+                    </button>
+
+                    {durationOpen && (
+                      <div className="absolute z-30 mt-1 w-full rounded-xl border border-violet-200 bg-white shadow-lg overflow-hidden">
+                        <ul className="max-h-64 overflow-y-auto py-1">
+                          {EXPERIENCE_DURATIONS.map((dur) => (
+                            <li key={dur.id}>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setFormData((prev) => ({ ...prev, duration: dur.id }));
+                                  setDurationOpen(false);
+                                }}
+                                className={`w-full px-4 py-2 text-left transition-colors ${
+                                  formData.duration === dur.id
+                                    ? "bg-violet-100 text-violet-800 font-medium"
+                                    : "text-gray-800 hover:bg-violet-50"
+                                }`}
+                              >
+                                {dur.label}
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
                 </label>
 
                 <label className="block">
@@ -328,6 +412,8 @@ export default function ExperiencesSection({ onBack, t }: ExperiencesSectionProp
                       setEditingId(null);
                       setFormData({ jobCategory: 0, duration: 0, description: "" });
                       setMessage(null);
+                      setCategoryOpen(false);
+                      setDurationOpen(false);
                     }}
                     className="px-4 py-2.5 rounded-xl border border-gray-300 text-gray-700 font-medium hover:bg-gray-50 transition-colors"
                   >

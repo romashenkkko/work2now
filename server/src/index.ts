@@ -18,7 +18,7 @@ import db, { initDatabase } from "./db";
 import { sendTestEmail } from "./email";
 
 const app = express();
-const PORT = process.env.PORT || 5175;
+const PORT = process.env.PORT || 5600;
 
 app.use(cors({ origin: true, credentials: true }));
 app.use(express.json());

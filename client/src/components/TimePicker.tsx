@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 
 type Props = {
   name: string;
@@ -12,6 +13,7 @@ const HOURS = Array.from({ length: 24 }, (_, i) => i.toString().padStart(2, "0")
 const MINUTES = Array.from({ length: 60 }, (_, i) => i.toString().padStart(2, "0"));
 
 export default function TimePicker({ name, value, onChange, label, "aria-label": ariaLabel }: Props) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [hour, min] = value.split(":");
   const hourVal = hour || "00";
@@ -52,12 +54,12 @@ export default function TimePicker({ name, value, onChange, label, "aria-label":
       {open && (
         <div className="time-picker-dropdown absolute z-50 mt-2 left-0 right-0 rounded-2xl border border-gray-200/90 bg-white shadow-2xl shadow-primary/10 overflow-hidden">
           <div className="px-4 py-3 bg-gradient-to-b from-gray-50 to-white border-b border-gray-100">
-            <span className="text-xs font-medium uppercase tracking-wider text-gray-500">Ora selectată</span>
+            <span className="text-xs font-medium uppercase tracking-wider text-gray-500">{t("dashboard.timeSelected")}</span>
             <p className="font-bold text-lg text-gray-900 tabular-nums mt-0.5">{hourVal}:{minVal}</p>
           </div>
           <div className="flex max-h-52">
             <div className="time-picker-column flex-1 overflow-y-auto py-2 px-1.5">
-              <div className="text-center text-xs font-medium text-gray-400 uppercase tracking-wider pb-1.5">Ore</div>
+              <div className="text-center text-xs font-medium text-gray-400 uppercase tracking-wider pb-1.5">{t("dashboard.hours")}</div>
               {HOURS.map((h) => (
                 <button
                   key={h}
@@ -71,7 +73,7 @@ export default function TimePicker({ name, value, onChange, label, "aria-label":
             </div>
             <div className="w-px self-stretch my-2 bg-gradient-to-b from-transparent via-gray-200 to-transparent" />
             <div className="time-picker-column flex-1 overflow-y-auto py-2 px-1.5">
-              <div className="text-center text-xs font-medium text-gray-400 uppercase tracking-wider pb-1.5">Min</div>
+              <div className="text-center text-xs font-medium text-gray-400 uppercase tracking-wider pb-1.5">{t("dashboard.minutes")}</div>
               {MINUTES.map((m) => (
                 <button
                   key={m}

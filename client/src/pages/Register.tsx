@@ -1,7 +1,18 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { authApi } from "../api/client";
+import DatePicker from "../components/DatePicker";
+
+const COMPANY_CATEGORY_OPTIONS = [
+  { value: "1", labelKey: "auth.companyCategoryCanteen" },
+  { value: "2", labelKey: "auth.companyCategoryCatering" },
+  { value: "3", labelKey: "auth.companyCategoryCafe" },
+  { value: "4", labelKey: "auth.companyCategoryRestaurant" },
+  { value: "5", labelKey: "auth.companyCategoryNightClub" },
+  { value: "6", labelKey: "auth.companyCategoryHotel" },
+  { value: "7", labelKey: "auth.companyCategoryBar" },
+];
 
 export default function Register() {
   const { t } = useTranslation();
@@ -26,6 +37,8 @@ export default function Register() {
   const [contactFirstName, setContactFirstName] = useState("");
   const [contactLastName, setContactLastName] = useState("");
   const [companyCategory, setCompanyCategory] = useState("1");
+  const [companyCategoryOpen, setCompanyCategoryOpen] = useState(false);
+  const companyCategoryRef = useRef<HTMLDivElement>(null);
   const [infoForStaff, setInfoForStaff] = useState("");
   // Branch fields (at least one branch required)
   const [branchName, setBranchName] = useState("");
@@ -34,36 +47,46 @@ export default function Register() {
   const [branchCountry, setBranchCountry] = useState("Moldova");
   const [branchPhone, setBranchPhone] = useState("");
 
+  useEffect(() => {
+    const onOutsideClick = (e: MouseEvent) => {
+      if (companyCategoryRef.current && !companyCategoryRef.current.contains(e.target as Node)) {
+        setCompanyCategoryOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onOutsideClick);
+    return () => document.removeEventListener("mousedown", onOutsideClick);
+  }, []);
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
     setSuccess("");
     if (password !== confirm) {
-      setError("Parolele nu coincid.");
+      setError(t("auth.passwordMismatch"));
       return;
     }
     
     // Validate role-specific required fields
     if (role === "staff") {
       if (!firstName.trim() || !lastName.trim()) {
-        setError("Numele și prenumele sunt obligatorii.");
+        setError(t("auth.requiredNameSurname"));
         return;
       }
       if (!dateOfBirth) {
-        setError("Data nașterii este obligatorie.");
+        setError(t("auth.dateOfBirthRequired"));
         return;
       }
     } else if (role === "customer") {
       if (!companyName.trim()) {
-        setError("Numele companiei este obligatoriu.");
+        setError(t("auth.companyNameRequired"));
         return;
       }
       if (!contactFirstName.trim() || !contactLastName.trim()) {
-        setError("Numele și prenumele persoanei de contact sunt obligatorii.");
+        setError(t("auth.contactNameRequired"));
         return;
       }
       if (!branchName.trim() || !branchAddress.trim() || !branchCity.trim() || !branchPhone.trim()) {
-        setError("Toate câmpurile filialei sunt obligatorii.");
+        setError(t("auth.branchFieldsRequired"));
         return;
       }
     }
@@ -83,7 +106,7 @@ export default function Register() {
           firstName: firstName.trim(),
           lastName: lastName.trim(),
           dateOfBirth: dateOfBirth,
-          aboutMe: aboutMe.trim() || "Nu am adăugat informații despre mine.",
+          aboutMe: aboutMe.trim() || t("auth.aboutMeDefault"),
         };
       } else if (role === "customer") {
         registerData.businessProfile = {
@@ -91,7 +114,7 @@ export default function Register() {
           contactFirstName: contactFirstName.trim(),
           contactLastName: contactLastName.trim(),
           companyCategory: parseInt(companyCategory, 10),
-          infoForStaff: infoForStaff.trim() || "Nu am adăugat informații suplimentare.",
+          infoForStaff: infoForStaff.trim() || t("auth.infoForStaffDefault"),
         };
         registerData.branch = {
           name: branchName.trim(),
@@ -103,11 +126,11 @@ export default function Register() {
       }
       
       await authApi.register(registerData);
-      setSuccess("Cont creat cu succes. Acum te poti autentifica.");
+      setSuccess(t("auth.registerSuccess"));
       // Always redirect to login - onboarding will be checked after login
       setTimeout(() => navigate("/login"), 2000);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Eroare la inregistrare.");
+      setError(err instanceof Error ? err.message : t("auth.registerError"));
     } finally {
       setLoading(false);
     }
@@ -160,7 +183,7 @@ export default function Register() {
   /* Formular înregistrare după ce s-a ales Staff sau Customer */
   return (
     <div className="auth-page">
-      <div className="auth-card">
+      <div className="auth-card auth-card--register">
         <h1>{t("auth.register")}</h1>
         <p className="auth-muted">{registerDesc}</p>
         {error && (
@@ -205,12 +228,10 @@ export default function Register() {
           {/* Staff/Employee specific fields */}
           {role === "staff" && (
             <>
-              <h3 style={{ marginTop: "24px", marginBottom: "12px", fontSize: "18px", fontWeight: "600" }}>
-                Informații personale
-              </h3>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+              <h3 className="auth-section-title">{t("auth.personalInfo")}</h3>
+              <div className="auth-field-row">
                 <label>
-                  Prenume <span style={{ color: "red" }}>*</span>
+                  {t("auth.firstName")}
                   <input
                     type="text"
                     value={firstName}
@@ -220,7 +241,7 @@ export default function Register() {
                   />
                 </label>
                 <label>
-                  Nume <span style={{ color: "red" }}>*</span>
+                  {t("auth.lastName")}
                   <input
                     type="text"
                     value={lastName}
@@ -230,23 +251,22 @@ export default function Register() {
                   />
                 </label>
               </div>
+              <DatePicker
+                name="dateOfBirth"
+                value={dateOfBirth}
+                onChange={setDateOfBirth}
+                label={t("auth.dateOfBirth")}
+                className="auth-date-wrap"
+                openUpward
+                disableFutureDates
+              />
               <label>
-                Data nașterii <span style={{ color: "red" }}>*</span>
-                <input
-                  type="date"
-                  value={dateOfBirth}
-                  onChange={(e) => setDateOfBirth(e.target.value)}
-                  required
-                  max={new Date().toISOString().split("T")[0]}
-                />
-              </label>
-              <label>
-                Despre mine
+                {t("auth.aboutMe")}
                 <textarea
                   value={aboutMe}
                   onChange={(e) => setAboutMe(e.target.value)}
                   rows={4}
-                  placeholder="Descrie-te pe scurt (opțional)"
+                  placeholder={t("auth.aboutMePlaceholder")}
                 />
               </label>
             </>
@@ -255,11 +275,9 @@ export default function Register() {
           {/* Business/Customer specific fields */}
           {role === "customer" && (
             <>
-              <h3 style={{ marginTop: "24px", marginBottom: "12px", fontSize: "18px", fontWeight: "600" }}>
-                Informații companie
-              </h3>
+              <h3 className="auth-section-title">{t("auth.companyInfo")}</h3>
               <label>
-                Nume companie <span style={{ color: "red" }}>*</span>
+                {t("auth.companyName")}
                 <input
                   type="text"
                   value={companyName}
@@ -268,9 +286,9 @@ export default function Register() {
                   minLength={2}
                 />
               </label>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+              <div className="auth-field-row">
                 <label>
-                  Prenume persoană contact <span style={{ color: "red" }}>*</span>
+                  {t("auth.contactFirstName")}
                   <input
                     type="text"
                     value={contactFirstName}
@@ -280,7 +298,7 @@ export default function Register() {
                   />
                 </label>
                 <label>
-                  Nume persoană contact <span style={{ color: "red" }}>*</span>
+                  {t("auth.contactLastName")}
                   <input
                     type="text"
                     value={contactLastName}
@@ -291,57 +309,80 @@ export default function Register() {
                 </label>
               </div>
               <label>
-                Categoria companiei <span style={{ color: "red" }}>*</span>
-                <select
-                  value={companyCategory}
-                  onChange={(e) => setCompanyCategory(e.target.value)}
-                  required
-                >
-                  <option value="1">Cantină</option>
-                  <option value="2">Catering</option>
-                  <option value="3">Café</option>
-                  <option value="4">Restaurant</option>
-                  <option value="5">Club de noapte</option>
-                  <option value="6">Hotel</option>
-                  <option value="7">Bar</option>
-                </select>
+                {t("auth.companyCategory")}
+                <div className="auth-custom-dropdown" ref={companyCategoryRef}>
+                  <button
+                    type="button"
+                    className={`auth-custom-dropdown__trigger ${companyCategoryOpen ? "is-open" : ""}`}
+                    onClick={() => setCompanyCategoryOpen((v) => !v)}
+                    aria-haspopup="listbox"
+                    aria-expanded={companyCategoryOpen}
+                  >
+                    <span>
+                      {t(COMPANY_CATEGORY_OPTIONS.find((o) => o.value === companyCategory)?.labelKey ?? "auth.companyCategoryCanteen")}
+                    </span>
+                    <svg className="auth-custom-dropdown__chevron" viewBox="0 0 24 24" fill="none" aria-hidden>
+                      <path d="M7 10l5 5 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  </button>
+                  {companyCategoryOpen && (
+                    <ul className="auth-custom-dropdown__menu" role="listbox" aria-label={t("auth.companyCategory")}>
+                      {COMPANY_CATEGORY_OPTIONS.map((opt) => (
+                        <li key={opt.value}>
+                          <button
+                            type="button"
+                            className={`auth-custom-dropdown__item ${companyCategory === opt.value ? "is-selected" : ""}`}
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              setCompanyCategory(opt.value);
+                              setCompanyCategoryOpen(false);
+                            }}
+                            role="option"
+                            aria-selected={companyCategory === opt.value}
+                          >
+                            {t(opt.labelKey)}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
               </label>
               <label>
-                Informații pentru angajați
+                {t("auth.infoForStaff")}
                 <textarea
                   value={infoForStaff}
                   onChange={(e) => setInfoForStaff(e.target.value)}
                   rows={3}
-                  placeholder="Informații suplimentare pentru angajați (opțional)"
+                  placeholder={t("auth.infoForStaffPlaceholder")}
                 />
               </label>
               
-              <h3 style={{ marginTop: "24px", marginBottom: "12px", fontSize: "18px", fontWeight: "600" }}>
-                Filială principală
-              </h3>
+              <h3 className="auth-section-title">{t("auth.mainBranch")}</h3>
               <label>
-                Nume filială <span style={{ color: "red" }}>*</span>
+                {t("auth.branchName")}
                 <input
                   type="text"
                   value={branchName}
                   onChange={(e) => setBranchName(e.target.value)}
                   required
-                  placeholder="ex: Filiala Centru"
+                  placeholder={t("auth.branchNamePlaceholder")}
                 />
               </label>
               <label>
-                Adresă <span style={{ color: "red" }}>*</span>
+                {t("auth.branchAddress")}
                 <input
                   type="text"
                   value={branchAddress}
                   onChange={(e) => setBranchAddress(e.target.value)}
                   required
-                  placeholder="Strada, număr"
+                  placeholder={t("auth.branchAddressPlaceholder")}
                 />
               </label>
-              <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: "12px" }}>
+              <div className="auth-field-row auth-field-row--address">
                 <label>
-                  Oraș <span style={{ color: "red" }}>*</span>
+                  {t("auth.branchCity")}
                   <input
                     type="text"
                     value={branchCity}
@@ -350,7 +391,7 @@ export default function Register() {
                   />
                 </label>
                 <label>
-                  Țară <span style={{ color: "red" }}>*</span>
+                  {t("auth.branchCountry")}
                   <input
                     type="text"
                     value={branchCountry}
@@ -360,13 +401,13 @@ export default function Register() {
                 </label>
               </div>
               <label>
-                Telefon <span style={{ color: "red" }}>*</span>
+                {t("auth.phone")}
                 <input
                   type="tel"
                   value={branchPhone}
                   onChange={(e) => setBranchPhone(e.target.value)}
                   required
-                  placeholder="+373XXXXXXXX"
+                  placeholder={t("auth.branchPhonePlaceholder")}
                 />
               </label>
             </>

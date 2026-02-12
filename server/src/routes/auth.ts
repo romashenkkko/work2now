@@ -98,9 +98,17 @@ router.post("/register", async (req: Request, res: Response): Promise<void> => {
   const emailTrim = emailStr;
   const passwordStr = String(password ?? "");
 
-  // MIGRATION FIX: Validate role-specific fields if provided (for new registrations)
-  // If not provided, we'll use defaults for backward compatibility
-  if (allowedRole === "staff" && employeeProfile) {
+  if (allowedRole === "user") {
+    res.status(400).json({ error: "Selectează un rol valid: staff sau customer." });
+    return;
+  }
+
+  // Validate role-specific required fields.
+  if (allowedRole === "staff") {
+    if (!employeeProfile) {
+      res.status(400).json({ error: "Profilul staff este obligatoriu." });
+      return;
+    }
     if (!employeeProfile.firstName?.trim() || !employeeProfile.lastName?.trim()) {
       res.status(400).json({ error: "Prenumele și numele sunt obligatorii pentru staff." });
       return;
@@ -111,7 +119,11 @@ router.post("/register", async (req: Request, res: Response): Promise<void> => {
     }
   }
   
-  if (allowedRole === "customer" && businessProfile) {
+  if (allowedRole === "customer") {
+    if (!businessProfile) {
+      res.status(400).json({ error: "Profilul business este obligatoriu pentru customer." });
+      return;
+    }
     if (!businessProfile.companyName?.trim()) {
       res.status(400).json({ error: "Numele companiei este obligatoriu." });
       return;
@@ -126,12 +138,6 @@ router.post("/register", async (req: Request, res: Response): Promise<void> => {
     }
   }
   
-  // MIGRATION FIX: For backward compatibility, if role is staff/customer but profile data not provided,
-  // we'll still create the user but with default profile values (logged as warning)
-  if ((allowedRole === "staff" || allowedRole === "customer") && !employeeProfile && !businessProfile) {
-    console.warn(`[MIGRATION FIX] User registered as ${allowedRole} without profile data - using defaults`);
-  }
-
   try {
     const [rows] = await db.query("SELECT Id FROM users WHERE Email = ?", [emailTrim]) as [{ Id: string }[], unknown];
     if (Array.isArray(rows) && rows.length > 0) {
@@ -186,21 +192,23 @@ router.post("/register", async (req: Request, res: Response): Promise<void> => {
     }
     res.status(201).json({ message: "Cont creat cu succes. Acum te poti autentifica." });
   } catch (e) {
-    /* La orice eroare DB încercăm întotdeauna fallback în memorie (fără MySQL) */
-    try {
-      const existing = memoryUsers.find((u) => u.email.toLowerCase() === emailTrim.toLowerCase());
-      if (existing) {
-        res.status(400).json({ error: "Email deja folosit." });
+    /* Fallback în memorie DOAR la erori reale de conexiune DB. */
+    if (useMemoryFallback() && isDbConnectionError(e)) {
+      try {
+        const existing = memoryUsers.find((u) => u.email.toLowerCase() === emailTrim.toLowerCase());
+        if (existing) {
+          res.status(400).json({ error: "Email deja folosit." });
+          return;
+        }
+        const password_hash = await bcrypt.hash(passwordStr, 10);
+        const id = memoryNextId++;
+        memoryUsers.push({ id, name: nameTrim, email: emailTrim, password_hash, role: allowedRole });
+        console.warn("[Auth] DB indisponibil – utilizator salvat în memorie.", (e as Error)?.message);
+        res.status(201).json({ message: "Cont creat cu succes. Acum te poti autentifica." });
         return;
+      } catch (memErr) {
+        console.error("Memory fallback failed:", memErr);
       }
-      const password_hash = await bcrypt.hash(passwordStr, 10);
-      const id = memoryNextId++;
-      memoryUsers.push({ id, name: nameTrim, email: emailTrim, password_hash, role: allowedRole });
-      console.warn("[Auth] DB indisponibil – utilizator salvat în memorie.", (e as Error)?.message);
-      res.status(201).json({ message: "Cont creat cu succes. Acum te poti autentifica." });
-      return;
-    } catch (memErr) {
-      console.error("Memory fallback failed:", memErr);
     }
     const err = e as Error;
     console.error("Register error:", err);
@@ -232,27 +240,33 @@ router.post("/login", async (req: Request, res: Response): Promise<void> => {
     // Query new schema: join with profile tables to get name/avatar
     const [rows] = await db.query(
       `SELECT u.Id, u.Email, u.PasswordHash, u.Role,
-              CASE 
-                WHEN u.Role = 2 THEN COALESCE(bp.CompanyName, 'User')
-                WHEN u.Role = 1 THEN TRIM(CONCAT(COALESCE(ep.Name, ''), ' ', COALESCE(ep.Surname, '')))
+              CASE
+                WHEN bp.UserId IS NOT NULL THEN COALESCE(bp.CompanyName, 'User')
+                WHEN ep.UserId IS NOT NULL THEN TRIM(CONCAT(COALESCE(ep.Name, ''), ' ', COALESCE(ep.Surname, '')))
                 ELSE 'User'
               END as name,
               COALESCE(ep.Surname, '') as surname,
-              COALESCE(ep.ProfilePictureFileId, NULL) as avatar
+              COALESCE(ep.ProfilePictureFileId, NULL) as avatar,
+              CASE
+                WHEN u.Role = 3 THEN 'admin'
+                WHEN bp.UserId IS NOT NULL THEN 'customer'
+                WHEN ep.UserId IS NOT NULL THEN 'staff'
+                WHEN u.Role = 2 THEN 'customer'
+                ELSE 'staff'
+              END as resolved_role
        FROM users u
        LEFT JOIN employee_profiles ep ON u.Id = ep.UserId
        LEFT JOIN business_profiles bp ON u.Id = bp.UserId
        WHERE u.Email = ?`,
       [emailTrim]
-    ) as [{ Id: string; Email: string; PasswordHash: string; Role: number; name: string; surname: string; avatar?: string | null }[], unknown];
+    ) as [{ Id: string; Email: string; PasswordHash: string; Role: number; name: string; surname: string; avatar?: string | null; resolved_role: string }[], unknown];
     const user = Array.isArray(rows) ? rows[0] : undefined;
     if (!user || !(await bcrypt.compare(String(passStr), user.PasswordHash))) {
       res.status(401).json({ error: "Email sau parola incorecta." });
       return;
     }
     // Map Role INT to string for backward compatibility
-    const roleInt = user.Role;
-    const roleStr = roleInt === UserRole.Admin ? "admin" : roleInt === UserRole.Business ? "customer" : "staff";
+    const roleStr = String(user.resolved_role || "").trim() || "staff";
     const fullName = user.name; // Already contains full name (company name for business, full name for employees)
     const token = jwt.sign(
       { userId: user.Id, email: emailTrim } as JwtPayload,
@@ -270,18 +284,20 @@ router.post("/login", async (req: Request, res: Response): Promise<void> => {
       } 
     });
   } catch (e) {
-    /* La orice eroare DB încercăm utilizatori din memorie – asigurăm că admin există */
-    await ensureAdminInMemory();
-    const mem = memoryUsers.find((u) => u.email.toLowerCase() === emailTrim.toLowerCase());
-    if (mem && (await bcrypt.compare(String(passStr), mem.password_hash))) {
-      const token = jwt.sign(
-        { userId: String(mem.id), email: emailTrim } as JwtPayload,
-        JWT_SECRET,
-        { expiresIn: "7d" }
-      );
-      const role = typeof mem.role === "string" ? mem.role.toLowerCase().trim() : "user";
-      res.json({ token, user: { id: String(mem.id), name: mem.name, email: mem.email, role, avatar: mem.avatar } });
-      return;
+    /* Fallback în memorie DOAR când DB e indisponibil. */
+    if (useMemoryFallback() && isDbConnectionError(e)) {
+      await ensureAdminInMemory();
+      const mem = memoryUsers.find((u) => u.email.toLowerCase() === emailTrim.toLowerCase());
+      if (mem && (await bcrypt.compare(String(passStr), mem.password_hash))) {
+        const token = jwt.sign(
+          { userId: String(mem.id), email: emailTrim } as JwtPayload,
+          JWT_SECRET,
+          { expiresIn: "7d" }
+        );
+        const role = typeof mem.role === "string" ? mem.role.toLowerCase().trim() : "user";
+        res.json({ token, user: { id: String(mem.id), name: mem.name, email: mem.email, role, avatar: mem.avatar } });
+        return;
+      }
     }
     if (!res.headersSent) {
       if (isDbConnectionError(e)) {
@@ -360,23 +376,29 @@ router.get("/me", authMiddleware, async (req: Request, res: Response): Promise<v
     // Query new schema: join with profile tables to get name/avatar
     const [rows] = await db.query(
       `SELECT u.Id, u.Email, u.Role,
-              CASE 
-                WHEN u.Role = 2 THEN COALESCE(bp.CompanyName, 'User')
-                WHEN u.Role = 1 THEN TRIM(CONCAT(COALESCE(ep.Name, ''), ' ', COALESCE(ep.Surname, '')))
+              CASE
+                WHEN bp.UserId IS NOT NULL THEN COALESCE(bp.CompanyName, 'User')
+                WHEN ep.UserId IS NOT NULL THEN TRIM(CONCAT(COALESCE(ep.Name, ''), ' ', COALESCE(ep.Surname, '')))
                 ELSE 'User'
               END as name,
               COALESCE(ep.Surname, '') as surname,
-              COALESCE(ep.ProfilePictureFileId, NULL) as avatar
+              COALESCE(ep.ProfilePictureFileId, NULL) as avatar,
+              CASE
+                WHEN u.Role = 3 THEN 'admin'
+                WHEN bp.UserId IS NOT NULL THEN 'customer'
+                WHEN ep.UserId IS NOT NULL THEN 'staff'
+                WHEN u.Role = 2 THEN 'customer'
+                ELSE 'staff'
+              END as resolved_role
        FROM users u
        LEFT JOIN employee_profiles ep ON u.Id = ep.UserId
        LEFT JOIN business_profiles bp ON u.Id = bp.UserId
        WHERE u.Id = ?`,
       [user.userId]
-    ) as [{ Id: string; Email: string; Role: number; name: string; surname: string; avatar?: string | null }[], unknown];
+    ) as [{ Id: string; Email: string; Role: number; name: string; surname: string; avatar?: string | null; resolved_role: string }[], unknown];
     const u = Array.isArray(rows) ? rows[0] : undefined;
     if (u) {
-      const roleInt = u.Role;
-      const roleStr = roleInt === UserRole.Admin ? "admin" : roleInt === UserRole.Business ? "customer" : "staff";
+      const roleStr = String(u.resolved_role || "").trim() || "staff";
       const fullName = u.name; // Already contains full name (company name for business, full name for employees)
       res.json({ id: u.Id, name: fullName, email: u.Email, role: roleStr, avatar: u.avatar ?? undefined });
       return;
@@ -389,11 +411,13 @@ router.get("/me", authMiddleware, async (req: Request, res: Response): Promise<v
     }
     res.status(404).json({ error: "Utilizator negasit." });
   } catch (e) {
-    const mem = memoryUsers.find((m) => String(m.id) === user.userId);
-    if (mem) {
-      const role = typeof mem.role === "string" ? mem.role.toLowerCase().trim() : (mem.role ?? "user");
-      res.json({ id: String(mem.id), name: mem.name, email: mem.email, role, avatar: mem.avatar });
-      return;
+    if (useMemoryFallback() && isDbConnectionError(e)) {
+      const mem = memoryUsers.find((m) => String(m.id) === user.userId);
+      if (mem) {
+        const role = typeof mem.role === "string" ? mem.role.toLowerCase().trim() : (mem.role ?? "user");
+        res.json({ id: String(mem.id), name: mem.name, email: mem.email, role, avatar: mem.avatar });
+        return;
+      }
     }
     console.error("/me error:", e);
     if (!res.headersSent) res.status(500).json({ error: "Eroare server." });
@@ -467,23 +491,29 @@ router.patch("/me", authMiddleware, async (req: Request, res: Response): Promise
       // Fetch updated user for response
       const [rows] = await conn.query(
         `SELECT u.Id, u.Email, u.Role,
-                CASE 
-                  WHEN u.Role = 2 THEN bp.CompanyName
-                  WHEN u.Role = 1 THEN CONCAT(ep.Name, ' ', ep.Surname)
+                CASE
+                  WHEN bp.UserId IS NOT NULL THEN COALESCE(bp.CompanyName, 'User')
+                  WHEN ep.UserId IS NOT NULL THEN TRIM(CONCAT(COALESCE(ep.Name, ''), ' ', COALESCE(ep.Surname, '')))
                   ELSE 'User'
                 END as name,
                 COALESCE(ep.Surname, '') as surname,
-                COALESCE(ep.ProfilePictureFileId, NULL) as avatar
+                COALESCE(ep.ProfilePictureFileId, NULL) as avatar,
+                CASE
+                  WHEN u.Role = 3 THEN 'admin'
+                  WHEN bp.UserId IS NOT NULL THEN 'customer'
+                  WHEN ep.UserId IS NOT NULL THEN 'staff'
+                  WHEN u.Role = 2 THEN 'customer'
+                  ELSE 'staff'
+                END as resolved_role
          FROM users u
          LEFT JOIN employee_profiles ep ON u.Id = ep.UserId
          LEFT JOIN business_profiles bp ON u.Id = bp.UserId
          WHERE u.Id = ?`,
         [user.userId]
-      ) as [{ Id: string; Email: string; Role: number; name: string; surname: string; avatar?: string | null }[], unknown];
+      ) as [{ Id: string; Email: string; Role: number; name: string; surname: string; avatar?: string | null; resolved_role: string }[], unknown];
       const u = Array.isArray(rows) ? rows[0] : undefined;
       if (u) {
-        const roleInt = u.Role;
-        const roleStr = roleInt === UserRole.Admin ? "admin" : roleInt === UserRole.Business ? "customer" : "staff";
+        const roleStr = String(u.resolved_role || "").trim() || "staff";
         const fullName = u.name; // Already contains full name (company name for business, full name for employees)
         res.json({ id: u.Id, name: fullName, email: u.Email, role: roleStr, avatar: u.avatar ?? undefined });
         return;
@@ -536,20 +566,27 @@ router.get("/users", authMiddleware, async (req: Request, res: Response): Promis
     // Query all users with profile data
     const [allRows] = await db.query(
       `SELECT u.Id as id, u.Email as email, u.Role,
-              CASE 
-                WHEN u.Role = 2 THEN COALESCE(bp.CompanyName, 'User')
-                WHEN u.Role = 1 THEN TRIM(CONCAT(COALESCE(ep.Name, ''), ' ', COALESCE(ep.Surname, '')))
+              CASE
+                WHEN bp.UserId IS NOT NULL THEN COALESCE(bp.CompanyName, 'User')
+                WHEN ep.UserId IS NOT NULL THEN TRIM(CONCAT(COALESCE(ep.Name, ''), ' ', COALESCE(ep.Surname, '')))
                 ELSE 'User'
               END as name,
-              COALESCE(ep.Surname, '') as surname
+              COALESCE(ep.Surname, '') as surname,
+              CASE
+                WHEN u.Role = 3 THEN 'admin'
+                WHEN bp.UserId IS NOT NULL THEN 'customer'
+                WHEN ep.UserId IS NOT NULL THEN 'staff'
+                WHEN u.Role = 2 THEN 'customer'
+                ELSE 'staff'
+              END as resolved_role
        FROM users u
        LEFT JOIN employee_profiles ep ON u.Id = ep.UserId
        LEFT JOIN business_profiles bp ON u.Id = bp.UserId
        ORDER BY u.CreatedAt`
-    ) as [{ id: string; email: string; Role: number; name: string; surname: string }[], unknown];
+    ) as [{ id: string; email: string; Role: number; name: string; surname: string; resolved_role: string }[], unknown];
     if (Array.isArray(allRows)) {
       const users = allRows.map((u) => {
-        const roleStr = u.Role === UserRole.Admin ? "admin" : u.Role === UserRole.Business ? "customer" : "staff";
+        const roleStr = String(u.resolved_role || "").trim() || "staff";
         const fullName = u.name; // Already contains full name (company name for business, full name for employees)
         return { id: u.id, name: fullName, email: u.email, role: roleStr };
       });

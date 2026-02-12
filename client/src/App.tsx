@@ -1,4 +1,4 @@
-import { Routes, Route } from "react-router-dom";
+import { Routes, Route, Navigate } from "react-router-dom";
 import Layout from "./components/Layout";
 import Home from "./pages/Home";
 import FindJobs from "./pages/FindJobs";
@@ -34,11 +34,14 @@ export default function App() {
         <Route path="calendar" element={<DashboardCalendar />} />
         <Route path="mesaje" element={<DashboardMesaje />} />
         <Route path="settings" element={<DashboardSettings />} />
+        <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Route>
       <Route path="/*" element={
         <Layout>
           <Routes>
             <Route path="/" element={<Home />} />
+            <Route path="/customer" element={<Navigate to="/register/customer" replace />} />
+            <Route path="/staff" element={<Navigate to="/register/staff" replace />} />
             <Route path="/find-jobs" element={<FindJobs />} />
             <Route path="/find-staff" element={<FindStaff />} />
             <Route path="/contact" element={<Contact />} />
@@ -52,6 +55,7 @@ export default function App() {
             <Route path="/register" element={<Register />} />
             <Route path="/register/:role" element={<Register />} />
             <Route path="/onboarding" element={<EmployeeOnboarding />} />
+            <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </Layout>
       } />

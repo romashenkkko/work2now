@@ -602,4 +602,19 @@ export async function createUserDotNetStyle(params: {
   }
 }
 
+/**
+ * Backward-compatible helper used by routes.
+ * In canonical schema user IDs are already UUID strings.
+ */
+export async function getUserUuidFromLegacyId(legacyId: string | number): Promise<string | null> {
+  const id = String(legacyId ?? "").trim();
+  if (!id) return null;
+  const [rows] = await pool.query<RowDataPacket[]>(
+    "SELECT Id FROM users WHERE Id = ? LIMIT 1",
+    [id]
+  );
+  const userId = Array.isArray(rows) && rows[0] ? String(rows[0].Id ?? "").trim() : "";
+  return userId || null;
+}
+
 export default pool;
