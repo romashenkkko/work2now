@@ -100,7 +100,7 @@ async function start() {
   }
   await ensureDefaultAdmin().catch((e) => console.error("Seed admin:", e));
   app.listen(Number(PORT), HOST, () => {
-    console.log(`Time2Go API: http://localhost:${PORT}`);
+    console.log(`Work2Now API: http://localhost:${PORT}`);
     if (HOST === "0.0.0.0") {
       const nets = os.networkInterfaces();
       for (const name of Object.keys(nets)) {

@@ -14,15 +14,15 @@ $name = $_SESSION["user_name"] ?? "Utilizator";
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Time2Go - Dashboard</title>
+    <title>Work2Now - Dashboard</title>
     <link rel="stylesheet" href="dashboard.css" />
   </head>
   <body class="dashboard-body">
     <div class="dashboard">
       <aside class="sidebar">
         <div class="brand">
-          <img src="LogoTime2Go.png" alt="Time2Go" />
-          <span>Time2Go</span>
+          <img src="LogoWork2Now.png" alt="Work2Now" />
+          <span>Work2Now</span>
         </div>
 
         <button class="primary-btn">+ Posteaza un job</button>

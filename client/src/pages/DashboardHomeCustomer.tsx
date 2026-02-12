@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "../hooks/useAuth";
 import { DashboardContext } from "./DashboardLayout";
+import StarRating from "../components/StarRating";
 
 const STATS_ICONS = {
   applications: (
@@ -21,11 +22,6 @@ const STATS_ICONS = {
     </svg>
   ),
 };
-
-const CANDIDATES = [
-  { name: "Maria Popa", role: "Hospitality · 5 ani", img: "/Illustration/AvatarWhiteGirl.png" },
-  { name: "David Ionescu", role: "Barista · 3 ani", img: "/Illustration/AvatarBlackGuy.png" },
-];
 
 export default function DashboardHomeCustomer() {
   const { t } = useTranslation();
@@ -52,7 +48,7 @@ export default function DashboardHomeCustomer() {
     () => [
       { labelKey: "statsApplications", value: String(totalApplications), icon: STATS_ICONS.applications },
       { labelKey: "statsCheckin", value: String(totalCheckins), icon: STATS_ICONS.checkin },
-      { labelKey: "statsRating", value: ratingReviews === 0 ? "—" : String(ratingValue), icon: STATS_ICONS.rating },
+      { labelKey: "statsRating", value: ratingReviews === 0 ? "—" : String(ratingValue), icon: STATS_ICONS.rating, isRating: true, ratingAverage: ratingValue, ratingCount: ratingReviews },
     ],
     [totalApplications, totalCheckins, ratingValue, ratingReviews]
   );
@@ -73,17 +69,30 @@ export default function DashboardHomeCustomer() {
       </header>
 
       <section className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-6 mb-6 md:mb-8">
-        {statsWithValues.map((s) => (
-          <article key={s.labelKey} className="p-4 sm:p-6 rounded-xl sm:rounded-2xl bg-white border border-gray-200 shadow-sm flex items-start gap-3 sm:gap-4">
-            <div className="flex-shrink-0 w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-primary/10 flex items-center justify-center">
-              {s.icon}
-            </div>
-            <div className="min-w-0 flex-1">
-              <h3 className="text-xs sm:text-sm font-medium text-gray-500 mb-0.5 truncate">{t(`dashboard.${s.labelKey}`)}</h3>
-              <p className="text-xl sm:text-2xl font-bold text-gray-900">{s.value}</p>
-            </div>
-          </article>
-        ))}
+        {statsWithValues.map((s) => {
+          const isRating = "isRating" in s && s.isRating;
+          const ratingAverage = isRating && "ratingAverage" in s ? (s as { ratingAverage: number }).ratingAverage : 0;
+          const ratingCount = isRating && "ratingCount" in s ? (s as { ratingCount: number }).ratingCount : 0;
+          return (
+            <article key={s.labelKey} className="p-4 sm:p-6 rounded-xl sm:rounded-2xl bg-white border border-gray-200 shadow-sm flex items-start gap-3 sm:gap-4">
+              <div className="flex-shrink-0 w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-primary/10 flex items-center justify-center">
+                {s.icon}
+              </div>
+              <div className="min-w-0 flex-1">
+                <h3 className="text-xs sm:text-sm font-medium text-gray-500 mb-0.5 truncate">{t(`dashboard.${s.labelKey}`)}</h3>
+                {!isRating && <p className="text-xl sm:text-2xl font-bold text-gray-900">{s.value}</p>}
+                {isRating && (
+                  <div className="flex items-center gap-1.5 mt-2">
+                    <StarRating value={ratingAverage} size={18} />
+                    {ratingCount > 0 && (
+                      <span className="text-xs text-gray-500">({ratingCount})</span>
+                    )}
+                  </div>
+                )}
+              </div>
+            </article>
+          );
+        })}
       </section>
 
       <section className="mb-6 md:mb-8">
@@ -174,36 +183,6 @@ export default function DashboardHomeCustomer() {
         </div>
       </section>
 
-      <section className="grid lg:grid-cols-2 gap-6 md:gap-8">
-        <div className="bg-white rounded-xl sm:rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-          <div className="p-3 sm:p-4 border-b border-gray-200 flex items-center justify-between gap-2">
-            <h2 className="font-bold text-gray-900 text-sm sm:text-base truncate">{t("dashboard.recommendedCandidates")}</h2>
-            <Link to="/dashboard/aplicatii" className="text-sm text-primary font-medium hover:underline flex-shrink-0">
-              {t("dashboard.seeAll")}
-            </Link>
-          </div>
-          <div className="divide-y divide-gray-100">
-            {CANDIDATES.map((c) => (
-              <div key={c.name} className="p-3 sm:p-4 flex items-center justify-between gap-3 hover:bg-gray-50/50">
-                <div className="flex items-center gap-3 min-w-0">
-                  <img src={c.img} alt="" className="w-10 h-10 sm:w-12 sm:h-12 rounded-full object-cover flex-shrink-0" />
-                  <div className="min-w-0">
-                    <p className="font-semibold text-gray-900 text-sm sm:text-base truncate">{c.name}</p>
-                    <span className="text-xs sm:text-sm text-gray-500 truncate block">{c.role}</span>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => showToast(`${t("dashboard.invite")} ${c.name}`)}
-                  className="px-3 py-2 rounded-lg border border-gray-200 hover:bg-gray-50 text-xs sm:text-sm font-medium flex-shrink-0 min-h-[40px]"
-                >
-                  {t("dashboard.invite")}
-                </button>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
       </div>
     </>
   );

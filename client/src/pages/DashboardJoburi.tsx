@@ -26,6 +26,37 @@ export default function DashboardJoburi() {
   const [staffLoading, setStaffLoading] = useState(false);
   const [staffLoadError, setStaffLoadError] = useState<string | null>(null);
   const [checkInOutLoading, setCheckInOutLoading] = useState<string | null>(null);
+  const [checkInOutConfirm, setCheckInOutConfirm] = useState<{ type: "checkin" | "checkout"; time: string } | null>(null);
+  const [checkInOutError, setCheckInOutError] = useState<string | null>(null);
+  const [confirmCheckIn, setConfirmCheckIn] = useState<{ applicationId: string; workDate?: string; jobId?: string } | null>(null);
+  const [confirmCheckOut, setConfirmCheckOut] = useState<{ applicationId: string; workDate?: string; jobId?: string } | null>(null);
+  const optimisticStorageKey = `work2now_optimistic_sessions_${user?.id ?? ""}`;
+  const [optimisticSessions, setOptimisticSessions] = useState<Record<string, { checkedInAt?: string; checkedOutAt?: string }>>(() => {
+    if (typeof window === "undefined" || !user?.id) return {};
+    try {
+      const raw = sessionStorage.getItem(`work2now_optimistic_sessions_${user.id}`);
+      if (!raw) return {};
+      const parsed = JSON.parse(raw) as Record<string, { checkedInAt?: string; checkedOutAt?: string }>;
+      return typeof parsed === "object" && parsed !== null ? parsed : {};
+    } catch {
+      return {};
+    }
+  });
+  const persistOptimistic = (next: Record<string, { checkedInAt?: string; checkedOutAt?: string }>) => {
+    try {
+      sessionStorage.setItem(optimisticStorageKey, JSON.stringify(next));
+    } catch (_) {}
+  };
+  const getOptimisticBase = (): Record<string, { checkedInAt?: string; checkedOutAt?: string }> => {
+    try {
+      const raw = sessionStorage.getItem(optimisticStorageKey);
+      if (!raw) return {};
+      const parsed = JSON.parse(raw) as Record<string, { checkedInAt?: string; checkedOutAt?: string }>;
+      return typeof parsed === "object" && parsed !== null ? parsed : {};
+    } catch {
+      return {};
+    }
+  };
   const [searchQuery, setSearchQuery] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [locationFilter, setLocationFilter] = useState<string>("all");
@@ -37,11 +68,14 @@ export default function DashboardJoburi() {
   const locationRef = useRef<HTMLDivElement>(null);
   const professionRef = useRef<HTMLDivElement>(null);
 
-  const refreshStaffData = () => {
-    if (!isStaff) return;
-    setStaffLoading(true);
-    setStaffLoadError(null);
-    Promise.all([jobsApi.list(), jobsApi.myApplications()])
+  const refreshStaffData = (opts?: { silent?: boolean }): Promise<void> => {
+    if (!isStaff) return Promise.resolve();
+    const silent = opts?.silent === true;
+    if (!silent) {
+      setStaffLoading(true);
+      setStaffLoadError(null);
+    }
+    return Promise.all([jobsApi.list(), jobsApi.myApplications()])
       .then(([jobsRes, appRes]) => {
         const list = (jobsRes.jobs || []).map((j: Record<string, unknown>) => ({
           id: j.id,
@@ -62,7 +96,41 @@ export default function DashboardJoburi() {
           postedBy: j.postedBy ?? (j.posted_by_name as string),
         }));
         setPublicJobs(list);
-        setApplicationsByJob(appRes.byJob ?? {});
+        const byJob = appRes.byJob ?? {};
+        const nextByJob = typeof byJob === "object" && byJob !== null ? { ...byJob } : {};
+        Object.keys(nextByJob).forEach((k) => {
+          const v = nextByJob[k];
+          if (v && typeof v === "object" && Array.isArray((v as { workSessions?: unknown }).workSessions)) {
+            (nextByJob as Record<string, MyAppInfo>)[k] = { ...v, workSessions: [...(v as MyAppInfo).workSessions!] };
+          }
+        });
+        setApplicationsByJob(nextByJob);
+        setOptimisticSessions((prev) => {
+          let next = { ...prev };
+          let changed = false;
+          Object.keys(next).forEach((key) => {
+            const dash = key.indexOf("-");
+            if (dash <= 0) return;
+            const jobId = key.slice(0, dash);
+            const wd = key.slice(dash + 1).trim().slice(0, 10);
+            const sessions = (nextByJob as Record<string, MyAppInfo>)[jobId]?.workSessions ?? [];
+            const serverSession = sessions.find((s) => (s.workDate || "").trim().slice(0, 10) === wd);
+            const opt = prev[key];
+            // Șterge optimistul doar când serverul confirmă aceeași stare (evită loop la răspuns întârziat)
+            if (serverSession && opt) {
+              const serverHasIn = !!serverSession.checkedInAt;
+              const serverHasOut = !!serverSession.checkedOutAt;
+              const optHasIn = !!opt.checkedInAt;
+              const optHasOut = !!opt.checkedOutAt;
+              if (optHasIn && !serverHasIn) return;
+              if (optHasOut && !serverHasOut) return;
+              delete next[key];
+              changed = true;
+            }
+          });
+          if (changed) persistOptimistic(next);
+          return next;
+        });
       })
       .catch((err) => {
         setStaffLoadError(err instanceof Error ? err.message : "Eroare la încărcare");
@@ -75,7 +143,7 @@ export default function DashboardJoburi() {
         setApplicationsByJob(byJob);
         setPublicJobs([]);
       })
-      .finally(() => setStaffLoading(false));
+      .finally(() => { if (!silent) setStaffLoading(false); });
   };
   useEffect(() => {
     if (!isStaff) return;
@@ -118,25 +186,143 @@ export default function DashboardJoburi() {
         setApplicationsByJob((prev) => ({ ...prev, [job.id!]: { status: "pending", applicationId: newApp.id } }));
       });
   };
-  const handleCheckIn = (e: React.MouseEvent, applicationId: string, workDate?: string) => {
+  const showCheckInOutConfirm = (type: "checkin" | "checkout") => {
+    const time = new Date().toLocaleTimeString("ro-RO", { hour: "2-digit", minute: "2-digit" });
+    setCheckInOutError(null);
+    setCheckInOutConfirm({ type, time });
+    setTimeout(() => setCheckInOutConfirm(null), 5000);
+  };
+  const normDate = (s: string) => (s || "").trim().slice(0, 10);
+  const normJobId = (id: string | number | undefined) => (id == null ? "" : String(id));
+  const applyCheckInOptimistic = (applicationId: string, workDate: string, jobIdHint?: string) => {
+    const wd = normDate(workDate);
+    const hint = normJobId(jobIdHint);
+    setApplicationsByJob((prev) => {
+      const jobId = hint && prev[hint] ? hint : Object.entries(prev).find(([, a]) => String(a.applicationId) === String(applicationId))?.[0];
+      if (!jobId || !prev[jobId]) return prev;
+      const app = prev[jobId];
+      const now = new Date().toISOString();
+      const sessions = [...(app.workSessions || [])];
+      const idx = sessions.findIndex((s) => normDate(s.workDate) === wd);
+      if (idx >= 0) {
+        sessions[idx] = { ...sessions[idx], checkedInAt: now };
+      } else {
+        sessions.push({ workDate: wd, checkedInAt: now });
+      }
+      return { ...prev, [jobId]: { ...app, workSessions: sessions } };
+    });
+  };
+  const applyCheckOutOptimistic = (applicationId: string, workDate: string, jobIdHint?: string) => {
+    const wd = normDate(workDate);
+    const hint = normJobId(jobIdHint);
+    setApplicationsByJob((prev) => {
+      const jobId = hint && prev[hint] ? hint : Object.entries(prev).find(([, a]) => String(a.applicationId) === String(applicationId))?.[0];
+      if (!jobId || !prev[jobId]) return prev;
+      const app = prev[jobId];
+      const now = new Date().toISOString();
+      const sessions = [...(app.workSessions || [])];
+      const idx = sessions.findIndex((s) => normDate(s.workDate) === wd);
+      if (idx >= 0) {
+        sessions[idx] = { ...sessions[idx], checkedOutAt: now };
+      } else {
+        sessions.push({ workDate: wd, checkedInAt: app.workSessions?.[0]?.checkedInAt ?? now, checkedOutAt: now });
+      }
+      return { ...prev, [jobId]: { ...app, workSessions: sessions } };
+    });
+  };
+  const handleCheckIn = (e: React.MouseEvent, applicationId: string, workDate?: string, jobId?: string) => {
     e?.stopPropagation?.();
     const key = workDate ? `${applicationId}-${workDate}` : applicationId;
+    const wd = workDate ?? (() => { const d = new Date(); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); })();
+    const jid = normJobId(jobId);
+    setConfirmCheckIn(null);
+    setConfirmCheckOut(null);
     setCheckInOutLoading(key);
-    jobsApi.checkIn(applicationId, workDate).then(() => refreshStaffData()).finally(() => setCheckInOutLoading(null));
+    setCheckInOutError(null);
+    const now = new Date().toISOString();
+    const sessionKey = jid ? `${jid}-${wd}` : (Object.entries(applicationsByJob).find(([, a]) => String(a.applicationId) === String(applicationId))?.[0] ?? "") + "-" + wd;
+    if (sessionKey.length > wd.length + 1) {
+      setOptimisticSessions((prev) => {
+        const base = { ...getOptimisticBase(), ...prev };
+        const next = { ...base, [sessionKey]: { ...base[sessionKey], checkedInAt: now } };
+        persistOptimistic(next);
+        return next;
+      });
+    }
+    applyCheckInOptimistic(applicationId, wd, jobId);
+    jobsApi
+      .checkIn(applicationId, wd)
+      .then(async (data) => {
+        showCheckInOutConfirm("checkin");
+        try {
+          await new Promise((r) => setTimeout(r, 350));
+          await refreshStaffData({ silent: true });
+        } catch (_) {
+          // refresh failed; UI already updated optimistically
+        }
+      })
+      .catch(async (err) => {
+        setConfirmCheckIn(null);
+        setConfirmCheckOut(null);
+        const msg = err instanceof Error ? err.message : (typeof err === "object" && err !== null && "error" in (err as { error?: string }) ? (err as { error: string }).error : String(err)) || "Eroare la check-in";
+        const msgLower = String(msg).toLowerCase();
+        if (msgLower.includes("deja efectuat") || msgLower.includes("already")) {
+          try { await refreshStaffData({ silent: true }); } catch (_) {}
+          showCheckInOutConfirm("checkin");
+        } else {
+          try { await refreshStaffData({ silent: true }); } catch (_) {}
+          setCheckInOutError(msg);
+          setTimeout(() => setCheckInOutError(null), 5000);
+        }
+      })
+      .finally(() => setCheckInOutLoading(null));
   };
-  const handleCheckOut = (e: React.MouseEvent, applicationId: string, workDate?: string) => {
+  const handleCheckOut = (e: React.MouseEvent, applicationId: string, workDate?: string, jobId?: string) => {
     e?.stopPropagation?.();
     const key = workDate ? `${applicationId}-${workDate}` : applicationId;
+    const wdOut = workDate ?? (() => { const d = new Date(); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); })();
+    const jid = normJobId(jobId);
+    setConfirmCheckIn(null);
+    setConfirmCheckOut(null);
     setCheckInOutLoading(key);
-    jobsApi.checkOut(applicationId, workDate).then(() => refreshStaffData()).finally(() => setCheckInOutLoading(null));
-  };
-  const handleCheckInFromModal = (applicationId: string, workDate: string) => {
-    setCheckInOutLoading(`${applicationId}-${workDate}`);
-    jobsApi.checkIn(applicationId, workDate).then(() => refreshStaffData()).finally(() => setCheckInOutLoading(null));
-  };
-  const handleCheckOutFromModal = (applicationId: string, workDate: string) => {
-    setCheckInOutLoading(`${applicationId}-${workDate}`);
-    jobsApi.checkOut(applicationId, workDate).then(() => refreshStaffData()).finally(() => setCheckInOutLoading(null));
+    setCheckInOutError(null);
+    const now = new Date().toISOString();
+    const sessionKeyOut = jid ? `${jid}-${wdOut}` : (Object.entries(applicationsByJob).find(([, a]) => String(a.applicationId) === String(applicationId))?.[0] ?? "") + "-" + wdOut;
+    if (sessionKeyOut.length > wdOut.length + 1) {
+      setOptimisticSessions((prev) => {
+        const base = { ...getOptimisticBase(), ...prev };
+        const next = { ...base, [sessionKeyOut]: { ...base[sessionKeyOut], checkedOutAt: now } };
+        persistOptimistic(next);
+        return next;
+      });
+    }
+    applyCheckOutOptimistic(applicationId, wdOut, jobId);
+    jobsApi
+      .checkOut(applicationId, wdOut)
+      .then(async (data) => {
+        showCheckInOutConfirm("checkout");
+        try {
+          await new Promise((r) => setTimeout(r, 350));
+          await refreshStaffData({ silent: true });
+        } catch (_) {
+          // refresh failed; UI already updated optimistically
+        }
+      })
+      .catch(async (err) => {
+        setConfirmCheckIn(null);
+        setConfirmCheckOut(null);
+        const msg = err instanceof Error ? err.message : (typeof err === "object" && err !== null && "error" in (err as { error?: string }) ? (err as { error: string }).error : String(err)) || "Eroare la check-out";
+        const msgLower = String(msg).toLowerCase();
+        if (msgLower.includes("deja efectuat") || msgLower.includes("already")) {
+          try { await refreshStaffData({ silent: true }); } catch (_) {}
+          showCheckInOutConfirm("checkout");
+        } else {
+          try { await refreshStaffData({ silent: true }); } catch (_) {}
+          setCheckInOutError(msg);
+          setTimeout(() => setCheckInOutError(null), 5000);
+        }
+      })
+      .finally(() => setCheckInOutLoading(null));
   };
   const formatTime = (iso: string) => {
     try {
@@ -150,15 +336,29 @@ export default function DashboardJoburi() {
     const d = new Date();
     return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
   })();
+  const formatWorkDateLabel = (ymd: string | undefined) => {
+    if (!ymd || normDate(ymd) === todayYMD) return null;
+    const [y, m, d] = ymd.split("-").map(Number);
+    if (!y || !m || !d) return null;
+    const date = new Date(y, m - 1, d);
+    return date.toLocaleDateString("ro-RO", { day: "numeric", month: "short", year: "numeric" });
+  };
   const getTodaySession = (app: MyAppInfo) => {
-    const fromSessions = app.workSessions?.find((s) => s.workDate === todayYMD);
-    if (fromSessions) return { ...fromSessions, workDate: todayYMD };
+    const session = app.workSessions?.find((s) => normDate(s.workDate) === todayYMD);
+    if (session) return { ...session, workDate: todayYMD };
     if (app.checkedInAt) return { workDate: todayYMD, checkedInAt: app.checkedInAt, checkedOutAt: app.checkedOutAt };
     return null;
   };
+  const getTodaySessionWithOptimistic = (app: MyAppInfo, jobId: string) => {
+    const fromApp = getTodaySession(app);
+    const optKey = `${normJobId(jobId)}-${todayYMD}`;
+    const opt = optimisticSessions[optKey];
+    if (!opt) return fromApp;
+    return { workDate: todayYMD, ...fromApp, ...opt } as { workDate: string; checkedInAt?: string; checkedOutAt?: string };
+  };
 
   if (isStaff) {
-    const myApp = (jobId: string) => applicationsByJob[jobId];
+    const myApp = (jobId: string) => applicationsByJob[String(jobId)];
     const staffJobsWithLocation = publicJobs.filter((j) => j.location?.trim());
     const q = searchQuery.trim().toLowerCase();
     const filteredJobs = publicJobs.filter((row) => {
@@ -203,6 +403,93 @@ export default function DashboardJoburi() {
     ];
     return (
       <>
+        {checkInOutConfirm && (
+          <div className="fixed top-4 left-4 right-4 sm:left-auto sm:right-6 sm:max-w-sm z-[70]">
+            <div className={`rounded-2xl shadow-lg border-2 p-4 flex items-center gap-3 ${
+              checkInOutConfirm.type === "checkin"
+                ? "bg-green-50 border-green-200 text-green-900"
+                : "bg-amber-50 border-amber-200 text-amber-900"
+            }`}>
+              <div className={`flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center ${
+                checkInOutConfirm.type === "checkin" ? "bg-green-200" : "bg-amber-200"
+              }`}>
+                <span className="text-lg font-bold">
+                  {checkInOutConfirm.type === "checkin" ? "✓" : "✓"}
+                </span>
+              </div>
+              <div>
+                <p className="font-semibold">
+                  {checkInOutConfirm.type === "checkin" ? t("dashboard.checkInConfirm") : t("dashboard.checkOutConfirm")}
+                </p>
+                <p className="text-sm opacity-90">
+                  {checkInOutConfirm.type === "checkin"
+                    ? t("dashboard.checkInAtTime", { time: checkInOutConfirm.time })
+                    : t("dashboard.checkOutAtTime", { time: checkInOutConfirm.time })}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+        {checkInOutError && (
+          <div className="fixed bottom-4 left-4 right-4 sm:left-auto sm:right-6 sm:max-w-sm z-[70] px-4 py-3 rounded-xl bg-red-600 text-white text-sm font-medium shadow-lg">
+            {checkInOutError}
+          </div>
+        )}
+        {(confirmCheckIn || confirmCheckOut) && (
+          <div
+            className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/50 modal-overlay-enter"
+            onClick={() => { setConfirmCheckIn(null); setConfirmCheckOut(null); }}
+          >
+            <div
+              className="modal-content-enter bg-white rounded-2xl shadow-2xl max-w-sm w-full overflow-hidden border border-gray-100"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className={`p-6 pt-7 flex flex-col gap-5 ${confirmCheckIn ? "bg-gradient-to-b from-green-50/80 to-white" : "bg-gradient-to-b from-amber-50/80 to-white"}`}>
+                <div className="flex items-start gap-4">
+                  <div className={`flex-shrink-0 w-12 h-12 rounded-xl flex items-center justify-center ${confirmCheckIn ? "bg-green-100 text-green-600" : "bg-amber-100 text-amber-600"}`}>
+                    <Clock className="w-6 h-6" strokeWidth={2} />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-gray-900 font-semibold text-base leading-snug">
+                      {confirmCheckIn ? t("dashboard.confirmCheckIn") : t("dashboard.confirmCheckOut")}
+                    </p>
+                    {(() => {
+                      const forDateLabel = formatWorkDateLabel(confirmCheckIn?.workDate ?? confirmCheckOut?.workDate);
+                      return forDateLabel ? <p className="mt-2 text-sm text-gray-600">{t("dashboard.forDate", { date: forDateLabel })}</p> : null;
+                    })()}
+                    <div className="mt-3 flex items-center gap-2 text-sm text-gray-600">
+                      <Clock className="w-4 h-4 text-gray-400 shrink-0" />
+                      <span>{t("dashboard.currentTime")}: <strong className="text-gray-900 font-mono">{new Date().toLocaleTimeString("ro-RO", { hour: "2-digit", minute: "2-digit" })}</strong></span>
+                    </div>
+                  </div>
+                </div>
+                <div className="flex gap-3 justify-end pt-1">
+                  <button
+                    type="button"
+                    onClick={() => { setConfirmCheckIn(null); setConfirmCheckOut(null); }}
+                    className="px-5 py-2.5 rounded-xl border border-gray-200 text-gray-700 font-medium hover:bg-gray-50 transition-colors"
+                  >
+                    {t("dashboard.cancel")}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!!checkInOutLoading}
+                    onClick={() => {
+                      if (confirmCheckIn) {
+                        handleCheckIn({ stopPropagation: () => {} } as React.MouseEvent, confirmCheckIn.applicationId, confirmCheckIn.workDate, confirmCheckIn.jobId);
+                      } else if (confirmCheckOut) {
+                        handleCheckOut({ stopPropagation: () => {} } as React.MouseEvent, confirmCheckOut.applicationId, confirmCheckOut.workDate, confirmCheckOut.jobId);
+                      }
+                    }}
+                    className={`px-5 py-2.5 rounded-xl font-semibold text-white shadow-sm transition-colors disabled:opacity-60 disabled:pointer-events-none ${confirmCheckIn ? "bg-green-600 hover:bg-green-700" : "bg-amber-600 hover:bg-amber-700"}`}
+                  >
+                    {checkInOutLoading ? "..." : t("dashboard.confirm")}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
         <header className="mb-6 md:mb-8 flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">{t("dashboard.joburi")}</h1>
@@ -342,12 +629,13 @@ export default function DashboardJoburi() {
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5 md:gap-6">
             {filteredJobs.map((row, i) => {
-              const app = myApp(row.id ?? "");
+              const app = myApp(normJobId(row.id));
               const status = app?.status;
               const isAccepted = status === "accepted";
+              const todaySession = app ? getTodaySessionWithOptimistic(app, normJobId(row.id)) : null;
               return (
                 <article
-                  key={row.id ?? `pj-${i}`}
+                  key={`job-${normJobId(row.id)}-${todaySession?.checkedInAt ?? ""}-${todaySession?.checkedOutAt ?? ""}`}
                   className="job-card-enter bg-white rounded-2xl border border-gray-100 shadow-md overflow-hidden hover:shadow-lg transition-shadow flex flex-col cursor-pointer opacity-0"
                   onClick={() => setScheduleJob(row)}
                 >
@@ -359,9 +647,9 @@ export default function DashboardJoburi() {
                         <div className="absolute inset-0 bg-gradient-to-b from-black/10 to-transparent" />
                         <div className="relative flex items-center gap-2.5">
                           <div className="w-11 h-11 rounded-full bg-white/95 shadow flex items-center justify-center overflow-hidden ring-2 ring-white/50">
-                            <img src="/LogoTime2Go.png" alt="" className="w-7 h-7 object-contain" />
+                            <img src="/LogoWork2Now.png" alt="" className="w-7 h-7 object-contain" />
                           </div>
-                          <span className="text-white font-semibold text-base">Time2Go</span>
+                          <span className="text-white font-semibold text-base">Work2Now</span>
                         </div>
                       </>
                     )}
@@ -417,16 +705,14 @@ export default function DashboardJoburi() {
                           {status === "refused" ? t("dashboard.refused") : t("dashboard.pending")}
                         </span>
                       ) : (() => {
-                        const todaySession = getTodaySession(app);
                         const loadingKey = `${app.applicationId}-${todayYMD}`;
                         const loading = checkInOutLoading === app.applicationId || checkInOutLoading === loadingKey;
-                        const hasMultipleDays = (app.workSessions?.length ?? 0) > 0 || (row.date && row.endDate && row.endDate !== row.date);
                         return (
                           <>
                             {!todaySession?.checkedInAt ? (
                               <button
                                 type="button"
-                                onClick={(e) => handleCheckIn(e, app.applicationId, todayYMD)}
+                                onClick={(e) => { e.stopPropagation(); setConfirmCheckIn({ applicationId: app.applicationId, workDate: todayYMD, jobId: String(row.id ?? "") }); }}
                                 disabled={!!checkInOutLoading}
                                 className="w-full py-2.5 rounded-xl bg-green-600 text-white font-medium hover:bg-green-700 transition-colors disabled:opacity-50"
                               >
@@ -437,7 +723,7 @@ export default function DashboardJoburi() {
                                 <p className="text-xs text-gray-500">{t("dashboard.checkedInAt")} {formatTime(todaySession.checkedInAt)}</p>
                                 <button
                                   type="button"
-                                  onClick={(e) => handleCheckOut(e, app.applicationId, todayYMD)}
+                                  onClick={(e) => { e.stopPropagation(); setConfirmCheckOut({ applicationId: app.applicationId, workDate: todayYMD, jobId: String(row.id ?? "") }); }}
                                   disabled={!!checkInOutLoading}
                                   className="w-full py-2.5 rounded-xl bg-amber-600 text-white font-medium hover:bg-amber-700 transition-colors disabled:opacity-50"
                                 >
@@ -447,11 +733,6 @@ export default function DashboardJoburi() {
                             ) : (
                               <p className="text-sm text-gray-600 py-1">
                                 {t("dashboard.checkedInAt")} {formatTime(todaySession.checkedInAt)} · {t("dashboard.checkedOutAt")} {formatTime(todaySession.checkedOutAt)}
-                              </p>
-                            )}
-                            {hasMultipleDays && (
-                              <p className="text-xs text-primary mt-1">
-                                {t("dashboard.upcomingJobs")} → {t("dashboard.listView")}
                               </p>
                             )}
                           </>
@@ -473,9 +754,31 @@ export default function DashboardJoburi() {
           open={scheduleJob !== null}
           onClose={() => setScheduleJob(null)}
           job={scheduleJob}
-          myAppInfo={scheduleJob?.id && applicationsByJob[scheduleJob.id]?.status === "accepted" ? { applicationId: applicationsByJob[scheduleJob.id].applicationId, workSessions: applicationsByJob[scheduleJob.id].workSessions ?? [] } : null}
-          onCheckIn={handleCheckInFromModal}
-          onCheckOut={handleCheckOutFromModal}
+          myAppInfo={scheduleJob?.id && applicationsByJob[String(scheduleJob.id)]?.status === "accepted" ? (() => {
+            const jid = normJobId(scheduleJob!.id);
+            const app = applicationsByJob[jid];
+            const baseSessions = app?.workSessions ?? [];
+            const merged: { workDate: string; checkedInAt?: string; checkedOutAt?: string }[] = baseSessions.map((s) => {
+              const wd = normDate(s.workDate);
+              const opt = optimisticSessions[`${jid}-${wd}`];
+              return opt ? { ...s, workDate: wd, ...opt } : { ...s, workDate: wd };
+            });
+            Object.keys(optimisticSessions).forEach((key) => {
+              if (!key.startsWith(jid + "-")) return;
+              const wd = key.slice(jid.length + 1);
+              if (merged.some((s) => normDate(s.workDate) === wd)) return;
+              merged.push({ workDate: wd, ...optimisticSessions[key] });
+            });
+            return { applicationId: app!.applicationId, workSessions: merged };
+          })() : null}
+          onCheckIn={(applicationId, workDate) => {
+            setConfirmCheckIn({ applicationId, workDate, jobId: scheduleJob?.id != null ? String(scheduleJob.id) : undefined });
+            setScheduleJob(null);
+          }}
+          onCheckOut={(applicationId, workDate) => {
+            setConfirmCheckOut({ applicationId, workDate, jobId: scheduleJob?.id != null ? String(scheduleJob.id) : undefined });
+            setScheduleJob(null);
+          }}
           checkInOutLoading={checkInOutLoading}
         />
       </>
@@ -539,7 +842,7 @@ export default function DashboardJoburi() {
               onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setScheduleJob(row); } }}
               className="job-card-enter bg-white rounded-2xl border border-gray-100 shadow-md overflow-hidden hover:shadow-xl transition-shadow duration-200 flex flex-col cursor-pointer opacity-0"
             >
-              {/* Fără imagine: logo Time2Go + violet. Cu imagine: doar imaginea customerului. */}
+              {/* Fără imagine: logo Work2Now + violet. Cu imagine: doar imaginea customerului. */}
               <div className="relative h-24 sm:h-28 bg-primary flex items-center justify-center overflow-hidden">
                 {row.imageUrl ? (
                   <img src={row.imageUrl} alt="" className="absolute inset-0 w-full h-full object-cover" />
@@ -548,9 +851,9 @@ export default function DashboardJoburi() {
                     <div className="absolute inset-0 bg-gradient-to-b from-black/10 to-transparent" />
                     <div className="relative flex items-center gap-2.5">
                       <div className="w-11 h-11 rounded-full bg-white/95 shadow flex items-center justify-center overflow-hidden ring-2 ring-white/50">
-                        <img src="/LogoTime2Go.png" alt="" className="w-7 h-7 object-contain" />
+                        <img src="/LogoWork2Now.png" alt="" className="w-7 h-7 object-contain" />
                       </div>
-                      <span className="text-white font-semibold text-base drop-shadow-sm">Time2Go</span>
+                      <span className="text-white font-semibold text-base drop-shadow-sm">Work2Now</span>
                     </div>
                   </>
                 )}

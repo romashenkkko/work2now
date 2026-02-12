@@ -8,17 +8,17 @@ $userName = $_SESSION["user_name"] ?? null;
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Time2Go - Aplicatie</title>
+    <title>Work2Now - Aplicatie</title>
     <link rel="stylesheet" href="style.css" />
   </head>
   <body>
     <header class="site-header">
       <div class="container header-inner">
-        <div class="logo" aria-label="Time2Go logo">
+        <div class="logo" aria-label="Work2Now logo">
           <span class="logo-mark">
-            <img src="LogoTime2Go.png" alt="Time2Go" />
+            <img src="LogoWork2Now.png" alt="Work2Now" />
           </span>
-          <span class="logo-text">Time2Go</span>
+          <span class="logo-text">Work2Now</span>
         </div>
         <nav class="nav">
           <a href="index.php">Home</a>
@@ -52,7 +52,7 @@ $userName = $_SESSION["user_name"] ?? null;
       <div class="container">
         <h2>Aplicatie si utilizare</h2>
         <p>
-          Exista si o aplicatie mobila Time2Go pentru iOS si Android, unde
+          Exista si o aplicatie mobila Work2Now pentru iOS si Android, unde
           utilizatorii pot gestiona joburile, programarile si salariile printr-o
           interfata simpla.
         </p>
@@ -68,11 +68,11 @@ $userName = $_SESSION["user_name"] ?? null;
     <footer class="site-footer">
       <div class="container footer-inner">
         <div class="footer-brand">
-          <div class="logo small" aria-label="Time2Go logo">
+          <div class="logo small" aria-label="Work2Now logo">
             <span class="logo-mark">
-              <img src="LogoTime2Go.png" alt="Time2Go" />
+              <img src="LogoWork2Now.png" alt="Work2Now" />
             </span>
-            <span class="logo-text">Time2Go</span>
+            <span class="logo-text">Work2Now</span>
           </div>
           <p>Platforma digitala pentru recrutare flexibila in Moldova si Romania.</p>
         </div>
@@ -94,7 +94,7 @@ $userName = $_SESSION["user_name"] ?? null;
           <a href="locatii.php">Locatii</a>
         </div>
         <div class="footer-note">
-          <p>© 2026 Time2Go. Toate drepturile rezervate.</p>
+          <p>© 2026 Work2Now. Toate drepturile rezervate.</p>
           <div>
             <a href="#">Politica de confidentialitate</a>
             <span style="margin: 0 12px;">•</span>

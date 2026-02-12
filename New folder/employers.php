@@ -8,17 +8,17 @@ $userName = $_SESSION["user_name"] ?? null;
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Time2Go - Angajatori</title>
+    <title>Work2Now - Angajatori</title>
     <link rel="stylesheet" href="style.css" />
   </head>
   <body>
     <header class="site-header">
       <div class="container header-inner">
-        <div class="logo" aria-label="Time2Go logo">
+        <div class="logo" aria-label="Work2Now logo">
           <span class="logo-mark">
-            <img src="LogoTime2Go.png" alt="Time2Go" />
+            <img src="LogoWork2Now.png" alt="Work2Now" />
           </span>
-          <span class="logo-text">Time2Go</span>
+          <span class="logo-text">Work2Now</span>
         </div>
         <nav class="nav">
           <a href="index.php">Home</a>
@@ -58,7 +58,7 @@ $userName = $_SESSION["user_name"] ?? null;
           <div>
             <h2>Pentru angajatori</h2>
             <p>
-              Time2Go permite firmelor sa posteze joburi si sa gaseasca personal
+              Work2Now permite firmelor sa posteze joburi si sa gaseasca personal
               calificat rapid si eficient. Poti testa lucratorii pentru cateva ore
               si ii poti pastra pe cei buni fara costuri suplimentare.
             </p>

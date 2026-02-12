@@ -1,4 +1,4 @@
-# Pornire Time2Go
+# Pornire Work2Now
 
 ## O singură comandă (obligatoriu)
 
@@ -34,6 +34,6 @@ Pentru ca conturile să se salveze în baza de date (nu doar în memorie):
 1. **Pornește MySQL** – în XAMPP apasă **Start** la **MySQL**.
 2. **Pornește aplicația** – `npm run dev` din rădăcina proiectului.
 
-La primul start, serverul creează automat baza `time2go` și tabelul `users` dacă nu există. Setările sunt în `server/.env` (implicit: `localhost`, user `root`, parolă goală, baza `time2go`).
+La primul start, serverul creează automat baza `work2now` și tabelul `users` dacă nu există. Setările sunt în `server/.env` (implicit: `localhost`, user `root`, parolă goală, baza `work2now`).
 
 Dacă MySQL nu rulează, conturile sunt salvate temporar în memorie (se pierd la repornirea serverului).

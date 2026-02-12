@@ -42,7 +42,7 @@ async function geocodeAddress(address: string): Promise<[number, number] | null>
   try {
     const res = await fetch(
       `${NOMINATIM_SEARCH}?format=json&q=${encodeURIComponent(q)}&addressdetails=1&limit=1`,
-      { headers: { "Accept-Language": "ro,en", "User-Agent": "Time2GoApp/1.0 (contact@time2go.app)" } }
+      { headers: { "Accept-Language": "ro,en", "User-Agent": "Work2NowApp/1.0 (contact@work2now.app)" } }
     );
     const data = await res.json();
     if (Array.isArray(data) && data[0]) {

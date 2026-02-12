@@ -64,8 +64,8 @@ export type Application = {
   ratingScore?: number;
 };
 
-const APPLICATIONS_KEY = "time2go_applications";
-const PUBLIC_JOBS_KEY = "time2go_public_jobs";
+const APPLICATIONS_KEY = "work2now_applications";
+const PUBLIC_JOBS_KEY = "work2now_public_jobs";
 
 export function getApplications(): Record<string, Application[]> {
   try {
@@ -259,7 +259,7 @@ export default function DashboardLayout() {
   const [jobsAdded, setJobsAdded] = useState<JobRow[]>(() => {
     if (typeof window === "undefined") return [];
     try {
-      const raw = localStorage.getItem("time2go_jobs_added");
+      const raw = localStorage.getItem("work2now_jobs_added");
       if (!raw) return [];
       const parsed = JSON.parse(raw) as JobRow[];
       return Array.isArray(parsed) ? parsed : [];
@@ -269,7 +269,7 @@ export default function DashboardLayout() {
   });
   useEffect(() => {
     try {
-      localStorage.setItem("time2go_jobs_added", JSON.stringify(jobsAdded));
+      localStorage.setItem("work2now_jobs_added", JSON.stringify(jobsAdded));
     } catch {}
   }, [jobsAdded]);
   const [jobsLoadError, setJobsLoadError] = useState(false);
@@ -301,7 +301,7 @@ export default function DashboardLayout() {
         }));
         setJobsAdded(list);
         try {
-          localStorage.setItem("time2go_jobs_added", JSON.stringify(list));
+          localStorage.setItem("work2now_jobs_added", JSON.stringify(list));
         } catch {
           // cache local pentru când serverul e indisponibil
         }
@@ -435,17 +435,17 @@ export default function DashboardLayout() {
     return () => document.removeEventListener("mousedown", close);
   }, [unpaidBreakOpen]);
 
+  // Keep page start consistent between dashboard sections. Must be before any conditional return (Rules of Hooks).
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  }, [location.pathname]);
+
   if (loading) return <div className="container mx-auto px-4 py-16 text-center">{t("dashboard.loading")}</div>;
   if (!user) return <Navigate to="/login" replace />;
   const userRole = user.role?.toLowerCase?.().trim?.() ?? "";
   const isCustomer = userRole === "customer";
 
   const closeSidebar = () => setSidebarOpen(false);
-
-  // Keep page start consistent between dashboard sections.
-  useEffect(() => {
-    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
-  }, [location.pathname]);
 
   return (
     <div className="flex min-h-screen bg-gray-100">
@@ -462,8 +462,8 @@ export default function DashboardLayout() {
           </svg>
         </button>
         <div className="flex items-center gap-2 min-w-0">
-          <img src="/LogoTime2Go.png" alt="Time2Go" className="h-7 w-auto" />
-          <span className="font-bold text-gray-900 truncate">Time2Go</span>
+          <img src="/LogoWork2Now.png" alt="Work2Now" className="h-7 w-auto" />
+          <span className="font-bold text-gray-900 truncate">Work2Now</span>
         </div>
         {isCustomer && (
           <button
@@ -497,8 +497,8 @@ export default function DashboardLayout() {
       >
         <div className="p-4 border-b border-secondary/10 flex items-center justify-between gap-2 flex-shrink-0">
           <div className="flex items-center gap-2">
-            <img src="/LogoTime2Go.png" alt="Time2Go" className="h-8 w-auto" />
-            <span className="font-bold text-gray-900">Time2Go</span>
+            <img src="/LogoWork2Now.png" alt="Work2Now" className="h-8 w-auto" />
+            <span className="font-bold text-gray-900">Work2Now</span>
           </div>
           <button type="button" onClick={closeSidebar} className="md:hidden p-2 rounded-lg text-gray-500 hover:bg-gray-100" aria-label="Închide">
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>

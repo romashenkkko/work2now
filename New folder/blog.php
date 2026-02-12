@@ -8,17 +8,17 @@ $userName = $_SESSION["user_name"] ?? null;
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Time2Go - Blog</title>
+    <title>Work2Now - Blog</title>
     <link rel="stylesheet" href="style.css" />
   </head>
   <body>
     <header class="site-header">
       <div class="container header-inner">
-        <div class="logo" aria-label="Time2Go logo">
+        <div class="logo" aria-label="Work2Now logo">
           <span class="logo-mark">
-            <img src="LogoTime2Go.png" alt="Time2Go" />
+            <img src="LogoWork2Now.png" alt="Work2Now" />
           </span>
-          <span class="logo-text">Time2Go</span>
+          <span class="logo-text">Work2Now</span>
         </div>
         <button class="mobile-menu-toggle" aria-label="Toggle menu" type="button">
           <span></span>
@@ -55,7 +55,7 @@ $userName = $_SESSION["user_name"] ?? null;
     <main>
       <section class="section">
         <div class="container">
-          <h1>Blog Time2Go</h1>
+          <h1>Blog Work2Now</h1>
           <p class="lead">Articole, sfaturi si noutati despre recrutare flexibila si piata muncii.</p>
 
           <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 32px; margin-top: 48px;">
@@ -63,7 +63,7 @@ $userName = $_SESSION["user_name"] ?? null;
               <div style="background: linear-gradient(135deg, #7a63f1, #9d7bff); height: 180px; display: flex; align-items: center; justify-content: center; font-size: 3rem; color: white;">📝</div>
               <div style="padding: 24px;">
                 <div style="color: #7a63f1; font-size: 0.85rem; font-weight: 600; margin-bottom: 12px;">15 Ianuarie 2026</div>
-                <h3 style="margin: 0 0 12px 0; color: #1e1c2f;">Cum sa iti creezi un profil atractiv pe Time2Go</h3>
+                <h3 style="margin: 0 0 12px 0; color: #1e1c2f;">Cum sa iti creezi un profil atractiv pe Work2Now</h3>
                 <p style="color: #6b748a; margin: 0 0 20px 0; line-height: 1.6;">Sfaturi practice pentru a-ti optimiza profilul si a atrage mai multe oferte de joburi. Afla ce fac angajatorii sa te aleaga.</p>
                 <a href="#" style="color: #7a63f1; font-weight: 600; text-decoration: none;">Citeste mai mult →</a>
               </div>
@@ -83,7 +83,7 @@ $userName = $_SESSION["user_name"] ?? null;
               <div style="background: linear-gradient(135deg, #7a63f1, #9d7bff); height: 180px; display: flex; align-items: center; justify-content: center; font-size: 3rem; color: white;">🚀</div>
               <div style="padding: 24px;">
                 <div style="color: #7a63f1; font-size: 0.85rem; font-weight: 600; margin-bottom: 12px;">5 Ianuarie 2026</div>
-                <h3 style="margin: 0 0 12px 0; color: #1e1c2f;">Time2Go se extinde in Romania</h3>
+                <h3 style="margin: 0 0 12px 0; color: #1e1c2f;">Work2Now se extinde in Romania</h3>
                 <p style="color: #6b748a; margin: 0 0 20px 0; line-height: 1.6;">Anuntam lansarea platformei in Romania. Afla cum poti beneficia de serviciile noastre in noul market.</p>
                 <a href="#" style="color: #7a63f1; font-weight: 600; text-decoration: none;">Citeste mai mult →</a>
               </div>
@@ -94,7 +94,7 @@ $userName = $_SESSION["user_name"] ?? null;
               <div style="padding: 24px;">
                 <div style="color: #7a63f1; font-size: 0.85rem; font-weight: 600; margin-bottom: 12px;">28 Decembrie 2025</div>
                 <h3 style="margin: 0 0 12px 0; color: #1e1c2f;">Plata rapida: cum functioneaza</h3>
-                <p style="color: #6b748a; margin: 0 0 20px 0; line-height: 1.6;">Explicam procesul de plata rapida pe Time2Go si de ce primesti salariul in maxim 48 de ore dupa finalizarea jobului.</p>
+                <p style="color: #6b748a; margin: 0 0 20px 0; line-height: 1.6;">Explicam procesul de plata rapida pe Work2Now si de ce primesti salariul in maxim 48 de ore dupa finalizarea jobului.</p>
                 <a href="#" style="color: #7a63f1; font-weight: 600; text-decoration: none;">Citeste mai mult →</a>
               </div>
             </article>
@@ -103,7 +103,7 @@ $userName = $_SESSION["user_name"] ?? null;
               <div style="background: linear-gradient(135deg, #7a63f1, #9d7bff); height: 180px; display: flex; align-items: center; justify-content: center; font-size: 3rem; color: white;">📱</div>
               <div style="padding: 24px;">
                 <div style="color: #7a63f1; font-size: 0.85rem; font-weight: 600; margin-bottom: 12px;">20 Decembrie 2025</div>
-                <h3 style="margin: 0 0 12px 0; color: #1e1c2f;">Aplicatia mobila Time2Go</h3>
+                <h3 style="margin: 0 0 12px 0; color: #1e1c2f;">Aplicatia mobila Work2Now</h3>
                 <p style="color: #6b748a; margin: 0 0 20px 0; line-height: 1.6;">Descopera functiile aplicatiei mobile: gestionare joburi, notificari, plata si multe altele.</p>
                 <a href="#" style="color: #7a63f1; font-weight: 600; text-decoration: none;">Citeste mai mult →</a>
               </div>
@@ -114,7 +114,7 @@ $userName = $_SESSION["user_name"] ?? null;
               <div style="padding: 24px;">
                 <div style="color: #7a63f1; font-size: 0.85rem; font-weight: 600; margin-bottom: 12px;">15 Decembrie 2025</div>
                 <h3 style="margin: 0 0 12px 0; color: #1e1c2f;">Sfaturi pentru angajatori</h3>
-                <p style="color: #6b748a; margin: 0 0 20px 0; line-height: 1.6;">Cum sa scrii anunturi eficiente si sa gasesti personalul potrivit rapid pe Time2Go.</p>
+                <p style="color: #6b748a; margin: 0 0 20px 0; line-height: 1.6;">Cum sa scrii anunturi eficiente si sa gasesti personalul potrivit rapid pe Work2Now.</p>
                 <a href="#" style="color: #7a63f1; font-weight: 600; text-decoration: none;">Citeste mai mult →</a>
               </div>
             </article>
@@ -131,11 +131,11 @@ $userName = $_SESSION["user_name"] ?? null;
     <footer class="site-footer">
       <div class="container footer-inner">
         <div class="footer-brand">
-          <div class="logo small" aria-label="Time2Go logo">
+          <div class="logo small" aria-label="Work2Now logo">
             <span class="logo-mark">
-              <img src="LogoTime2Go.png" alt="Time2Go" />
+              <img src="LogoWork2Now.png" alt="Work2Now" />
             </span>
-            <span class="logo-text">Time2Go</span>
+            <span class="logo-text">Work2Now</span>
           </div>
           <p>Platforma digitala pentru recrutare flexibila in Moldova si Romania.</p>
         </div>
@@ -157,7 +157,7 @@ $userName = $_SESSION["user_name"] ?? null;
           <a href="locatii.php">Locatii</a>
         </div>
         <div class="footer-note">
-          <p>© 2026 Time2Go. Toate drepturile rezervate.</p>
+          <p>© 2026 Work2Now. Toate drepturile rezervate.</p>
           <div>
             <a href="#">Politica de confidentialitate</a>
             <span style="margin: 0 12px;">•</span>

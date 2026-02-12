@@ -1,4 +1,4 @@
-# Time2Go – React + Node.js (TypeScript)
+# Work2Now – React + Node.js (TypeScript)
 
 Proiectul a fost migrat la:
 
@@ -11,7 +11,7 @@ Proiectul a fost migrat la:
 ## Cerințe
 
 - **Node.js** 18+
-- **MySQL** (XAMPP sau standalone) – baza `time2go` și tabelul `users` create din `server/database/schema.sql`
+- **MySQL** (XAMPP sau standalone) – baza `work2now` și tabelul `users` create din `server/database/schema.sql`
 - **npm** sau **yarn**
 
 ---
@@ -25,8 +25,8 @@ Proiectul a fost migrat la:
 ```sql
 -- Rulează conținutul din:
 -- server/database/schema.sql
-CREATE DATABASE IF NOT EXISTS time2go CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;
-USE time2go;
+CREATE DATABASE IF NOT EXISTS work2now CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;
+USE work2now;
 CREATE TABLE IF NOT EXISTS users ( ... );
 ```
 
