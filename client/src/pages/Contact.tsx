@@ -49,7 +49,7 @@ export default function Contact() {
         {/* Left: contact cards */}
         <div className="space-y-5">
           <a
-            href="mailto:contact@time2go.local"
+            href="mailto:contact@work2now.local"
             className="contact-card group flex items-center gap-5 p-5 rounded-2xl bg-white/90 border border-[rgba(224,216,247,0.5)] shadow-[0_4px_24px_-4px_rgba(122,99,241,0.12)] hover:shadow-[0_12px_40px_-8px_rgba(122,99,241,0.2)] hover:border-[rgba(122,99,241,0.35)] transition-all duration-300"
           >
             <span className="contact-card__icon flex-shrink-0 w-14 h-14 rounded-2xl bg-gradient-to-br from-[#7a63f1] to-[#9d7bff] flex items-center justify-center text-white shadow-lg shadow-primary/25 group-hover:scale-105 transition-transform">
@@ -57,7 +57,7 @@ export default function Contact() {
             </span>
             <div className="min-w-0">
               <span className="block text-xs font-semibold uppercase tracking-wider text-[#7a63f1] mb-1">{t("contactPage.email")}</span>
-              <span className="text-[#1e1c2f] font-semibold group-hover:text-[#6c58d6] transition-colors">contact@time2go.local</span>
+              <span className="text-[#1e1c2f] font-semibold group-hover:text-[#6c58d6] transition-colors">contact@work2now.local</span>
             </div>
           </a>
           <a

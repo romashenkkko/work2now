@@ -28,8 +28,8 @@ export default function Dashboard() {
     <div className="flex min-h-screen bg-gray-100">
       <aside className="w-64 bg-white border-r border-secondary/10 flex flex-col shadow-soft">
         <div className="p-4 border-b border-secondary/10 flex items-center gap-2">
-          <img src="/LogoTime2Go.png" alt="Time2Go" className="h-8 w-auto" />
-          <span className="font-bold text-gray-900">Time2Go</span>
+          <img src="/LogoWork2Now.png" alt="Work2Now" className="h-8 w-auto" />
+          <span className="font-bold text-gray-900">Work2Now</span>
         </div>
         <button type="button" className="m-4 py-3 rounded-2xl bg-primary text-white font-semibold hover:bg-primary-dark shadow-soft transition-all">
           + Posteaza un job

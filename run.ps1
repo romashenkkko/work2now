@@ -1,4 +1,4 @@
-# Porneste Time2Go din terminal (PowerShell / Cursor)
+# Porneste Work2Now din terminal (PowerShell / Cursor)
 # Utilizare: .\run.ps1   sau   npm run dev
 # 
 # Pentru a schimba porturile, setează variabilele de mediu:

@@ -65,7 +65,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Time2Go - Inregistrare</title>
+    <title>Work2Now - Inregistrare</title>
     <link rel="stylesheet" href="style.css" />
   </head>
   <body class="auth-page">
@@ -76,7 +76,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
       <?php elseif ($selectedRole === "customer"): ?>
         <p class="muted">Creeaza-ti cont ca Customer pentru a gasi personal calificat.</p>
       <?php else: ?>
-        <p class="muted">Intra in platforma Time2Go rapid si sigur.</p>
+        <p class="muted">Intra in platforma Work2Now rapid si sigur.</p>
       <?php endif; ?>
 
       <?php if ($errors): ?>

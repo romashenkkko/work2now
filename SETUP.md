@@ -1,9 +1,9 @@
-# Setup Time2Go – tot ce este nevoie
+# Setup Work2Now – tot ce este nevoie
 
 ## Ce este deja făcut
 
 - **Dependențe** – instalate (root, server, client)
-- **Conexiune MySQL** – la pornirea serverului se creează automat baza `time2go` și tabelul `users`
+- **Conexiune MySQL** – la pornirea serverului se creează automat baza `work2now` și tabelul `users`
 - **Cont admin** – se creează automat: **admin@admin.com** / **admin1**
 - **Porturi** – backend: **5175**, frontend: **5174** (conflictul de port este evitat)
 
@@ -40,6 +40,6 @@ Apoi deschide în browser:
 - `DB_HOST=localhost`
 - `DB_USER=root`
 - `DB_PASSWORD=` (gol pentru XAMPP implicit)
-- `DB_NAME=time2go`
+- `DB_NAME=work2now`
 
 Dacă ai alt user/parolă, modifică acolo.

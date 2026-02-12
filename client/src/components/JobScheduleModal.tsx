@@ -32,7 +32,7 @@ function ShareJobButton({ job, t }: { job: JobRow; t: (key: string) => string })
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState(false);
   const shareUrl = typeof window !== "undefined" ? `${window.location.origin}${window.location.pathname}?job=${job.id ?? ""}` : "";
-  const title = `${job.job} – Time2Go`;
+  const title = `${job.job} – Work2Now`;
   const shareText = [job.job, job.location, job.estimatedSalary].filter(Boolean).join(" · ");
 
   const copyToClipboard = (text: string): boolean => {

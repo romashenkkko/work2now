@@ -6,6 +6,12 @@ import { jobsApi } from "../api/client";
 import { DashboardContext } from "./DashboardLayout";
 import StarRating from "../components/StarRating";
 
+const RATING_ICON = (
+  <svg className="w-6 h-6 sm:w-7 sm:h-7 text-primary" fill="currentColor" viewBox="0 0 24 24" aria-hidden>
+    <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
+  </svg>
+);
+
 const STATS_KEYS = [
   { labelKey: "statsMyApplications", metaKey: "statsMyApplicationsMeta", value: "5" },
   { labelKey: "statsSavedJobs", metaKey: "statsSavedJobsMeta", value: "12" },
@@ -18,7 +24,7 @@ type JobItem = { id: string; job: string; location: string; jobType?: string };
 export default function DashboardHomeStaff() {
   const { t } = useTranslation();
   const { user } = useAuth();
-  const { userRating } = useContext(DashboardContext);
+  const { userRating, availableToWork } = useContext(DashboardContext);
   const [toast, setToast] = useState<string | null>(null);
   const [recommendedJobs, setRecommendedJobs] = useState<JobItem[]>([]);
   const [applicationsByJob, setApplicationsByJob] = useState<Record<string, { status: string; applicationId: string; checkedInAt?: string; checkedOutAt?: string }>>({});
@@ -87,28 +93,40 @@ export default function DashboardHomeStaff() {
         <section className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-6 mb-6 md:mb-8">
           {STATS_KEYS.map((s) => {
             const isRating = "isRating" in s && s.isRating;
+            const isAvailability = "highlight" in s && s.highlight;
             const value = isRating
               ? (userRating && userRating.count > 0 ? Number(userRating.average).toFixed(1) : "—")
-              : s.value;
-            const meta = isRating && userRating && userRating.count > 0
-              ? t("dashboard.statsRatingMetaReviews", { count: userRating.count })
-              : t(`dashboard.${s.metaKey}`);
+              : isAvailability
+                ? (availableToWork ? t("dashboard.statsAvailabilityActive") : t("dashboard.statsAvailabilityInactive"))
+                : s.value;
+            const meta = isRating
+              ? ""
+              : isAvailability
+                ? ""
+                : t(`dashboard.${s.metaKey}`);
             return (
               <article
                 key={s.labelKey}
-                className={`p-4 sm:p-6 rounded-xl sm:rounded-2xl bg-white border border-gray-200 shadow-sm ${s.highlight ? "border-primary/30 bg-primary/5" : ""}`}
+                className={`p-4 sm:p-6 rounded-xl sm:rounded-2xl bg-white border border-gray-200 shadow-sm flex items-start gap-3 sm:gap-4 ${s.highlight ? "border-primary/30 bg-primary/5" : ""}`}
               >
-                <h3 className="text-xs sm:text-sm font-medium text-gray-500 mb-1 truncate">{t(`dashboard.${s.labelKey}`)}</h3>
-                <p className="text-xl sm:text-2xl font-bold text-gray-900">{value}</p>
-                <span className="text-xs sm:text-sm text-gray-500 truncate block">{meta}</span>
                 {isRating && (
-                  <div className="flex items-center gap-1.5 mt-2">
-                    <StarRating value={userRating?.average ?? 0} size={18} />
-                    {userRating && userRating.count > 0 && (
-                      <span className="text-xs text-gray-500">({userRating.count})</span>
-                    )}
+                  <div className="flex-shrink-0 w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-primary/10 flex items-center justify-center">
+                    {RATING_ICON}
                   </div>
                 )}
+                <div className="min-w-0 flex-1">
+                  <h3 className="text-xs sm:text-sm font-medium text-gray-500 mb-1 truncate">{t(`dashboard.${s.labelKey}`)}</h3>
+                  {value !== "—" && <p className="text-xl sm:text-2xl font-bold text-gray-900">{value}</p>}
+                  <span className="text-xs sm:text-sm text-gray-500 truncate block">{meta}</span>
+                  {isRating && (
+                    <div className="flex items-center gap-1.5 mt-2">
+                      <StarRating value={userRating?.average ?? 0} size={18} />
+                      {userRating && userRating.count > 0 && (
+                        <span className="text-xs text-gray-500">({userRating.count})</span>
+                      )}
+                    </div>
+                  )}
+                </div>
               </article>
             );
           })}

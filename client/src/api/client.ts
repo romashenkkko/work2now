@@ -24,9 +24,12 @@ export async function api<T>(path: string, options: RequestInit = {}): Promise<T
     ...(token && { Authorization: `Bearer ${token}` }),
     ...options.headers,
   };
+  const isGet = (options.method ?? "GET").toUpperCase() === "GET";
+  const fetchOpts: RequestInit = { ...options, headers };
+  if (isGet && !("cache" in (options ?? {}))) fetchOpts.cache = "no-store";
   let res: Response;
   try {
-    res = await fetch(`${getApiBase()}${path}`, { ...options, headers });
+    res = await fetch(`${getApiBase()}${path}`, fetchOpts);
   } catch (e) {
     const err = e as Error;
     throw new Error(err.message || "Serverul nu raspunde. Verifica ca backend-ul ruleaza (npm run dev).");
@@ -148,9 +151,9 @@ export const jobsApi = {
   completeApplication: (applicationId: string) =>
     api<{ ok: boolean }>(`/jobs/applications/${applicationId}/complete`, { method: "PATCH" }),
   checkIn: (applicationId: string, workDate?: string) =>
-    api<{ ok: boolean }>(`/jobs/applications/${applicationId}/check-in`, { method: "PATCH", body: workDate ? JSON.stringify({ workDate }) : "{}" }),
+    api<{ ok: boolean; alreadyDone?: boolean }>(`/jobs/applications/${applicationId}/check-in`, { method: "PATCH", body: workDate ? JSON.stringify({ workDate }) : "{}" }),
   checkOut: (applicationId: string, workDate?: string) =>
-    api<{ ok: boolean }>(`/jobs/applications/${applicationId}/check-out`, { method: "PATCH", body: workDate ? JSON.stringify({ workDate }) : "{}" }),
+    api<{ ok: boolean; alreadyDone?: boolean }>(`/jobs/applications/${applicationId}/check-out`, { method: "PATCH", body: workDate ? JSON.stringify({ workDate }) : "{}" }),
 };
 
 export const ratingsApi = {

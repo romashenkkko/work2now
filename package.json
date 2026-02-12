@@ -1,5 +1,5 @@
 {
-  "name": "time2go",
+  "name": "work2now",
   "private": true,
   "scripts": {
     "dev": "node scripts/dev.js",

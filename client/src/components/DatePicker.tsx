@@ -9,6 +9,8 @@ type Props = {
   className?: string;
   openUpward?: boolean;
   disableFutureDates?: boolean;
+  /** Dezactivează zilele din trecut (înainte de azi) – implicit true */
+  disablePastDates?: boolean;
 };
 
 const MONTHS_EN = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
@@ -37,6 +39,7 @@ export default function DatePicker({
   className,
   openUpward = false,
   disableFutureDates = false,
+  disablePastDates = true,
 }: Props) {
   const { t, i18n } = useTranslation();
   const [open, setOpen] = useState(false);
@@ -95,6 +98,9 @@ export default function DatePicker({
 
   const isSelected = (d: Date) => selected && selected.getTime() === new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
   const isToday = (d: Date) => d.getFullYear() === today.getFullYear() && d.getMonth() === today.getMonth() && d.getDate() === today.getDate();
+  const isPast = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime() < today.getTime();
+  const isFuture = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime() > today.getTime();
+  const isDayDisabled = (d: Date) => (disablePastDates && isPast(d)) || (disableFutureDates && isFuture(d));
   const years = Array.from({ length: currentYear - 1900 + 1 }, (_, i) => currentYear - i);
 
   const displayValue = value ? (() => {
@@ -196,8 +202,9 @@ export default function DatePicker({
                   <button
                     key={i}
                     type="button"
+                    disabled={isDayDisabled(cell.date)}
                     onClick={() => {
-                      if (disableFutureDates && cell.date.getTime() > today.getTime()) return;
+                      if (isDayDisabled(cell.date)) return;
                       onChange(formatYMD(cell.date));
                       setOpen(false);
                     }}
@@ -206,8 +213,8 @@ export default function DatePicker({
                         ? "bg-primary text-white shadow-sm"
                         : isToday(cell.date)
                           ? "bg-primary/10 text-primary font-semibold"
-                          : disableFutureDates && cell.date.getTime() > today.getTime()
-                            ? "text-gray-300 cursor-not-allowed"
+                          : isDayDisabled(cell.date)
+                            ? "text-gray-300 cursor-not-allowed opacity-60"
                             : "text-gray-900 hover:bg-gray-100"
                     }`}
                   >

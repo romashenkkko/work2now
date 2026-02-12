@@ -12,13 +12,13 @@
   },
   "hero": {
     "eyebrow": "Platforma digitala de matching",
-    "title": "Time2Go",
-    "lead": "Time2Go este o platforma moderna de recrutare si angajare flexibila, dedicata sectorului ospitalitatii si serviciilor din Moldova.",
+    "title": "Work2Now",
+    "lead": "Work2Now este o platforma moderna de recrutare si angajare flexibila, dedicata sectorului ospitalitatii si serviciilor din Moldova.",
     "details": "Vezi detalii",
     "howItWorks": "Cum functioneaza"
   },
   "features": {
-    "title": "De ce Time2Go?",
+    "title": "De ce Work2Now?",
     "subtitle": "Platforma care transforma recrutarea si angajarea in procese rapide, digitale si eficiente.",
     "pay48": "Plata in 48h",
     "pay48Desc": "Primesti salariul rapid, fara asteptari lungi sau birocratie.",
@@ -30,7 +30,7 @@
     "flexDesc": "Lucrezi cand vrei, unde vrei, cat vrei."
   },
   "howItWorks": {
-    "title": "Cum functioneaza Time2Go",
+    "title": "Cum functioneaza Work2Now",
     "lead": "Procesul este simplu si rapid. In cateva minute poti crea un profil, aplica la joburi si incepe sa lucrezi.",
     "step1": "Creeaza profilul",
     "step1Desc": "Adauga abilitatile, experienta si preferintele tale.",
@@ -41,9 +41,9 @@
   },
   "testimonials": {
     "title": "Ce spun utilizatorii nostri",
-    "subtitle": "Mii de persoane folosesc deja Time2Go pentru joburi flexibile",
-    "t1": "Time2Go mi-a schimbat viata! Acum pot lucra cand vreau si primesc plata rapid. Perfect pentru studenti!",
-    "t2": "Ca angajator, Time2Go m-a ajutat sa gasesc personal calificat rapid si fara costuri ascunse. Recomand!",
+    "subtitle": "Mii de persoane folosesc deja Work2Now pentru joburi flexibile",
+    "t1": "Work2Now mi-a schimbat viata! Acum pot lucra cand vreau si primesc plata rapid. Perfect pentru studenti!",
+    "t2": "Ca angajator, Work2Now m-a ajutat sa gasesc personal calificat rapid si fara costuri ascunse. Recomand!",
     "t3": "Platforma este intuitiva si usor de folosit. Am gasit joburi part-time perfecte pentru programul meu.",
     "author1": "Maria P.",
     "author2": "Ion D.",
@@ -53,13 +53,13 @@
     "role3": "Freelancer"
   },
   "stats": {
-    "title": "Time2Go în cifre",
+    "title": "Work2Now în cifre",
     "jobs": "Joburi postate",
     "workers": "Angajați activi",
     "companies": "Companii partenere"
   },
   "forWho": {
-    "title": "Pentru cine este Time2Go?",
+    "title": "Pentru cine este Work2Now?",
     "subtitle": "Fie că cauți joburi flexibile sau personal calificat, te ajutăm.",
     "staffTitle": "Caut un job",
     "staffDesc": "Studenți, freelanceri sau oricine vrea să lucreze flexibil. Creează profil, aplică la joburi și primește plata în 48h.",
@@ -70,7 +70,7 @@
   },
   "cta": {
     "title": "Gata sa incepi?",
-    "lead": "Alatura-te mii de persoane care folosesc deja Time2Go pentru joburi flexibile si recrutare rapida.",
+    "lead": "Alatura-te mii de persoane care folosesc deja Work2Now pentru joburi flexibile si recrutare rapida.",
     "signup": "Creeaza cont gratuit",
     "viewJobs": "Vezi joburi disponibile"
   },
@@ -87,20 +87,20 @@
     "login": "Login",
     "register": "Inregistrare",
     "locations": "Locatii",
-    "copyright": "© 2026 Time2Go. Toate drepturile rezervate.",
+    "copyright": "© 2026 Work2Now. Toate drepturile rezervate.",
     "privacy": "Politica de confidentialitate",
     "terms": "Termeni si conditii"
   },
   "auth": {
     "login": "Autentificare",
-    "loginDesc": "Acceseaza rapid contul tau Time2Go.",
+    "loginDesc": "Acceseaza rapid contul tau Work2Now.",
     "email": "Email",
     "password": "Parola",
     "submitLogin": "Autentifica-te",
     "noAccount": "Nu ai cont?",
     "createAccount": "Creeaza cont",
     "register": "Creaza cont",
-    "registerDesc": "Intra in platforma Time2Go rapid si sigur.",
+    "registerDesc": "Intra in platforma Work2Now rapid si sigur.",
     "registerDescStaff": "Creeaza-ti cont ca Staff pentru a gasi joburi flexibile.",
     "registerDescCustomer": "Creeaza-ti cont ca Customer pentru a gasi personal calificat.",
     "accountName": "Numele contului",
@@ -189,7 +189,7 @@
     "seeCandidatesDesc": "Browsui profiluri, vezi experienta si rating-urile. Selecteaza cei mai potriviti.",
     "fastRecruit": "Recrutare rapida",
     "fastRecruitDesc": "Contacteaza direct candidatii, programeaza interviuri si finalizeaza angajarea digital.",
-    "whyTitle": "De ce Time2Go pentru angajatori?",
+    "whyTitle": "De ce Work2Now pentru angajatori?",
     "noFees": "Comisioane ascunse",
     "access24": "Acces la platforma",
     "pay48": "Plata rapida pentru lucratori"
@@ -209,13 +209,13 @@
   },
   "blogPage": {
     "label": "Blog",
-    "title": "Blog Time2Go",
+    "title": "Blog Work2Now",
     "lead": "Articole, sfaturi si noutati despre recrutare flexibila si piata muncii.",
     "readMore": "Citeste mai mult →"
   },
   "about": {
-    "title": "Ce este Time2Go",
-    "lead": "Time2Go este o solutie moderna de potrivire intre cererea de personal si oferta de munca, folosind tehnologie digitala in locul agentiilor traditionale de recrutare. Platforma este complet digitalizata si gratuita pentru utilizatori, atat pentru cei care cauta un loc de munca, cat si pentru angajatori.",
+    "title": "Ce este Work2Now",
+    "lead": "Work2Now este o solutie moderna de potrivire intre cererea de personal si oferta de munca, folosind tehnologie digitala in locul agentiilor traditionale de recrutare. Platforma este complet digitalizata si gratuita pentru utilizatori, atat pentru cei care cauta un loc de munca, cat si pentru angajatori.",
     "smartProfile": "Profil inteligent",
     "smartProfileDesc": "Creezi un profil si iti evidentiezi abilitatile si experienta.",
     "flexJobs": "Joburi flexibile",
@@ -234,7 +234,7 @@
   },
   "employers": {
     "title": "Pentru angajatori",
-    "lead": "Time2Go permite firmelor sa posteze joburi si sa gaseasca personal calificat rapid si eficient. Poti testa lucratorii pentru cateva ore si ii poti pastra pe cei buni fara costuri suplimentare.",
+    "lead": "Work2Now permite firmelor sa posteze joburi si sa gaseasca personal calificat rapid si eficient. Poti testa lucratorii pentru cateva ore si ii poti pastra pe cei buni fara costuri suplimentare.",
     "bullet1": "Recrutare fara costuri ascunse",
     "bullet2": "Personal calificat disponibil rapid",
     "bullet3": "Joburi part-time, full-time sau pe proiect",
@@ -244,7 +244,7 @@
   },
   "appPage": {
     "title": "Aplicatie si utilizare",
-    "lead": "Exista si o aplicatie mobila Time2Go pentru iOS si Android, unde utilizatorii pot gestiona joburile, programarile si salariile printr-o interfata simpla.",
+    "lead": "Exista si o aplicatie mobila Work2Now pentru iOS si Android, unde utilizatorii pot gestiona joburile, programarile si salariile printr-o interfata simpla.",
     "ios": "iOS",
     "android": "Android",
     "notifications": "Notificari rapide",
@@ -450,12 +450,24 @@
     "statsMyRatingMeta": "Din recenzii",
     "statsAvailability": "Disponibilitate",
     "statsAvailabilityMeta": "Activă",
+    "statsAvailabilityActive": "Activă",
+    "statsAvailabilityInactive": "Inactivă",
     "recommendedJobs": "Joburi recomandate",
     "noRecommendedJobs": "Niciun job public disponibil.",
     "applySuccess": "Ai aplicat cu succes.",
     "applyError": "Nu s-a putut trimite aplicarea.",
     "checkIn": "Check-in",
     "checkOut": "Check-out",
+    "checkInConfirm": "Check-in efectuat",
+    "checkOutConfirm": "Check-out efectuat",
+    "checkInAtTime": "La ora {{time}}",
+    "checkOutAtTime": "La ora {{time}}",
+    "confirmCheckIn": "Sigur că vrei să faci check-in?",
+    "confirmCheckOut": "Sigur că vrei să faci check-out?",
+    "forDate": "Pentru {{date}}",
+    "currentTime": "Ora curentă",
+    "cancel": "Anulează",
+    "confirm": "Confirmă",
     "checkedInAt": "Început",
     "checkedOutAt": "Sfârșit",
     "searchJobs": "Caută joburi",

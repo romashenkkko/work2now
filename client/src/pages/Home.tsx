@@ -132,7 +132,7 @@ export default function Home() {
               <div className="relative flex justify-center items-center w-full">
                 <img
                   src="/Illustration/White human coffe.png"
-                  alt="Time2Go"
+                  alt="Work2Now"
                   className="relative z-[1] w-full max-w-[380px] object-contain drop-shadow-[0_20px_40px_rgba(122,99,241,0.15)] hover:-translate-y-1 hover:scale-[1.02] transition-transform duration-300"
                 />
               </div>
@@ -141,7 +141,7 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Stats – Time2Go în cifre cu ilustrații */}
+      {/* Stats – Work2Now în cifre cu ilustrații */}
       <section ref={statsInView.ref} className="stats-section py-20 md:py-24">
         <div className="container mx-auto px-4 max-w-[1100px]">
           <h2
@@ -350,7 +350,7 @@ export default function Home() {
           <div className="phone-stack-container">
             <img
               src="/Illustration/Screenshot-iPhone15 Pro Max.png"
-              alt="iPhone 15 Pro Max – Time2Go"
+              alt="iPhone 15 Pro Max – Work2Now"
               className="phone-main"
             />
             <img

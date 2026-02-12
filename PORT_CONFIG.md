@@ -1,6 +1,6 @@
 # Port Configuration Guide
 
-This guide explains how to change the ports on which the Time2Go application runs.
+This guide explains how to change the ports on which the Work2Now application runs.
 
 ## Current Default Ports
 

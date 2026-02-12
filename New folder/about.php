@@ -8,17 +8,17 @@ $userName = $_SESSION["user_name"] ?? null;
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Time2Go - Despre</title>
+    <title>Work2Now - Despre</title>
     <link rel="stylesheet" href="style.css" />
   </head>
   <body>
     <header class="site-header">
       <div class="container header-inner">
-        <div class="logo" aria-label="Time2Go logo">
+        <div class="logo" aria-label="Work2Now logo">
           <span class="logo-mark">
-            <img src="LogoTime2Go.png" alt="Time2Go" />
+            <img src="LogoWork2Now.png" alt="Work2Now" />
           </span>
-          <span class="logo-text">Time2Go</span>
+          <span class="logo-text">Work2Now</span>
         </div>
         <nav class="nav">
           <a href="index.php">Home</a>
@@ -51,15 +51,15 @@ $userName = $_SESSION["user_name"] ?? null;
     <main>
       <section class="section">
         <div class="container">
-          <h2>Despre Time2Go</h2>
+          <h2>Despre Work2Now</h2>
           <p>
-            Time2Go este o platforma digitala moderna care conecteaza angajatori si
+            Work2Now este o platforma digitala moderna care conecteaza angajatori si
             persoane care cauta joburi flexibile. Mai jos gasesti pagini separate
             pentru fiecare subiect important.
           </p>
           <div class="feature-grid">
             <div class="feature">
-              <h3>Ce este Time2Go</h3>
+              <h3>Ce este Work2Now</h3>
               <p>Descrierea platformei si beneficiile pentru utilizatori.</p>
               <a class="btn btn-secondary" href="ce-este.php">Deschide</a>
             </div>
@@ -85,7 +85,7 @@ $userName = $_SESSION["user_name"] ?? null;
             </div>
             <div class="feature">
               <h3>Pe scurt</h3>
-              <p>Rezumat rapid despre Time2Go.</p>
+              <p>Rezumat rapid despre Work2Now.</p>
               <a class="btn btn-secondary" href="pe-scurt.php">Deschide</a>
             </div>
           </div>

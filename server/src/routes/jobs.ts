@@ -273,7 +273,7 @@ router.get("/my-applications", authMiddleware, async (req: ReqWithUser, res: Res
   ) as [Record<string, unknown>[], unknown];
   const appList = Array.isArray(list) ? list : [];
   const byJob: Record<string, { status: string; applicationId: string; checkedInAt?: string; checkedOutAt?: string; workSessions: { workDate: string; checkedInAt?: string; checkedOutAt?: string }[] }> = {};
-  const appIds = appList.map((r) => r.id).filter(Boolean);
+  const appIds = appList.map((r) => (r.id != null ? Number(r.id) : NaN)).filter((id) => !Number.isNaN(id) && id > 0);
   const sessionsByApp: Record<string, { workDate: string; checkedInAt?: string; checkedOutAt?: string }[]> = {};
   if (appIds.length > 0) {
     const ph = appIds.map(() => "?").join(",");
@@ -284,7 +284,14 @@ router.get("/my-applications", authMiddleware, async (req: ReqWithUser, res: Res
     (Array.isArray(sessions) ? sessions : []).forEach((s) => {
       const aid = String(s.application_id);
       if (!sessionsByApp[aid]) sessionsByApp[aid] = [];
-      const workDate = s.work_date instanceof Date ? (s.work_date as Date).toISOString().slice(0, 10) : String(s.work_date ?? "").slice(0, 10);
+      const raw = s.work_date;
+      let workDate: string;
+      if (raw instanceof Date) {
+        const d = raw as Date;
+        workDate = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
+      } else {
+        workDate = String(raw ?? "").slice(0, 10);
+      }
       sessionsByApp[aid].push({
         workDate,
         checkedInAt: s.checked_in_at != null ? (s.checked_in_at instanceof Date ? (s.checked_in_at as Date).toISOString() : String(s.checked_in_at)) : undefined,
@@ -506,8 +513,9 @@ router.get("/applications", authMiddleware, async (req: ReqWithUser, res: Respon
 /** PATCH /api/jobs/applications/:id/check-in - staff: înregistrează începutul lucrului (per zi, workDate în body) */
 router.patch("/applications/:id/check-in", authMiddleware, async (req: ReqWithUser, res: Response): Promise<void> => {
   const userId = req.user?.userId;
-  const appId = req.params.id;
-  if (!userId || !appId) {
+  const appIdRaw = req.params.id;
+  const appId = appIdRaw ? Number(appIdRaw) : NaN;
+  if (!userId || !appIdRaw || Number.isNaN(appId) || appId < 1) {
     res.status(401).json({ error: "Unauthorized" });
     return;
   }
@@ -535,7 +543,7 @@ router.patch("/applications/:id/check-in", authMiddleware, async (req: ReqWithUs
   ) as [Record<string, unknown>[], unknown];
   const ex = Array.isArray(existing) ? existing[0] : null;
   if (ex && ex.checked_in_at != null) {
-    res.status(400).json({ error: "Check-in pentru această zi deja efectuat." });
+    res.json({ ok: true, alreadyDone: true });
     return;
   }
   if (ex) {
@@ -552,8 +560,9 @@ router.patch("/applications/:id/check-in", authMiddleware, async (req: ReqWithUs
 /** PATCH /api/jobs/applications/:id/check-out - staff: înregistrează sfârșitul lucrului (per zi, workDate în body) */
 router.patch("/applications/:id/check-out", authMiddleware, async (req: ReqWithUser, res: Response): Promise<void> => {
   const userId = req.user?.userId;
-  const appId = req.params.id;
-  if (!userId || !appId) {
+  const appIdRaw = req.params.id;
+  const appId = appIdRaw ? Number(appIdRaw) : NaN;
+  if (!userId || !appIdRaw || Number.isNaN(appId) || appId < 1) {
     res.status(401).json({ error: "Unauthorized" });
     return;
   }
@@ -589,7 +598,7 @@ router.patch("/applications/:id/check-out", authMiddleware, async (req: ReqWithU
     return;
   }
   if (ex.checked_out_at != null) {
-    res.status(400).json({ error: "Check-out pentru această zi deja efectuat." });
+    res.json({ ok: true, alreadyDone: true });
     return;
   }
   await db.query("UPDATE application_work_sessions SET checked_out_at = CURRENT_TIMESTAMP WHERE application_id = ? AND work_date = ?", [appId, workDate]);

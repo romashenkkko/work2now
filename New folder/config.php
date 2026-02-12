@@ -4,5 +4,5 @@ return [
   "db_host" => "localhost",
   "db_user" => "root",
   "db_pass" => "",
-  "db_name" => "time2go",
+  "db_name" => "work2now",
 ];

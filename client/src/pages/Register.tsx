@@ -259,6 +259,7 @@ export default function Register() {
                 className="auth-date-wrap"
                 openUpward
                 disableFutureDates
+                disablePastDates={false}
               />
               <label>
                 {t("auth.aboutMe")}
