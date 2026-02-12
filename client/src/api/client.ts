@@ -131,6 +131,26 @@ export type JobResponse = {
   duration?: string;
   estimatedSalary?: string;
 };
+export type StaffApplicationItem = {
+  id: string;
+  jobId: string;
+  status: "pending" | "accepted" | "refused";
+  createdAt?: string;
+
+  jobTitle?: string;
+  jobLocation?: string;
+  jobDate?: string;
+  jobEndDate?: string;
+
+  customerName?: string;
+
+  completedAt?: string;
+  checkedInAt?: string;
+  checkedOutAt?: string;
+  workSessions?: { workDate: string; checkedInAt?: string; checkedOutAt?: string }[];
+
+  ratingScore?: number;
+};
 
 export const jobsApi = {
   list: () => api<{ jobs: JobResponse[] }>("/jobs"),
@@ -154,6 +174,8 @@ export const jobsApi = {
     api<{ ok: boolean; alreadyDone?: boolean }>(`/jobs/applications/${applicationId}/check-in`, { method: "PATCH", body: workDate ? JSON.stringify({ workDate }) : "{}" }),
   checkOut: (applicationId: string, workDate?: string) =>
     api<{ ok: boolean; alreadyDone?: boolean }>(`/jobs/applications/${applicationId}/check-out`, { method: "PATCH", body: workDate ? JSON.stringify({ workDate }) : "{}" }),
+  myApplicationsList: () =>
+    api<{ applications: StaffApplicationItem[] }>("/jobs/my-applications/list"),
 };
 
 export const ratingsApi = {

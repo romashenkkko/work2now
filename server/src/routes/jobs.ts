@@ -314,6 +314,124 @@ router.get("/my-applications", authMiddleware, async (req: ReqWithUser, res: Res
   });
   res.json({ byJob });
 });
+/** GET /api/jobs/my-applications/list - staff: full applications history (list) with job details + sessions + rating */
+router.get("/my-applications/list", authMiddleware, async (req: ReqWithUser, res: Response): Promise<void> => {
+  const userId = req.user?.userId;
+  if (!userId) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+
+  // Ensure role = staff
+  const [roleRows] = await db.query("SELECT role FROM users WHERE id = ?", [userId]) as [unknown[], unknown];
+  const roleRaw = getRoleFromRow((roleRows as unknown[] | undefined)?.[0]);
+  const role = normalizeRole(roleRaw);
+  if (role !== "staff") {
+    res.json({ applications: [] });
+    return;
+  }
+
+  // Get applications + job details + business/customer name
+  const [appRows] = await db.query(
+    `SELECT 
+        a.id,
+        a.job_id,
+        a.status,
+        a.created_at,
+        a.completed_at,
+        a.checked_in_at,
+        a.checked_out_at,
+        j.job AS job_title,
+        j.location AS job_location,
+        j.date AS job_date,
+        j.end_date AS job_end_date,
+        COALESCE(
+          bp.CompanyName,
+          TRIM(CONCAT(ep.Name, ' ', ep.Surname)),
+          u.Email
+        ) AS customer_name,
+        r.score AS rating_score
+     FROM applications a
+     JOIN jobs j ON j.id = a.job_id
+     LEFT JOIN users u ON u.Id = j.user_id
+     LEFT JOIN business_profiles bp ON bp.UserId = u.Id
+     LEFT JOIN employee_profiles ep ON ep.UserId = u.Id
+     LEFT JOIN ratings r ON r.application_id = a.id
+     WHERE a.staff_id = ?
+     ORDER BY a.created_at DESC`,
+    [userId]
+  ) as [Record<string, unknown>[], unknown];
+
+  const list = Array.isArray(appRows) ? appRows : [];
+
+  const toIso = (v: unknown): string | undefined => {
+    if (v == null) return undefined;
+    if (v instanceof Date) return v.toISOString();
+    const s = String(v);
+    return s.trim() || undefined;
+  };
+
+  // Work sessions (if table exists)
+  const appIds = list
+    .map((r) => (r.id != null ? Number(r.id) : NaN))
+    .filter((id) => !Number.isNaN(id) && id > 0);
+
+  const sessionsByAppId: Record<string, { workDate: string; checkedInAt?: string; checkedOutAt?: string }[]> = {};
+
+  if (appIds.length > 0) {
+    const ph = appIds.map(() => "?").join(",");
+    const [sessions] = await db.query(
+      `SELECT application_id, work_date, checked_in_at, checked_out_at
+       FROM application_work_sessions
+       WHERE application_id IN (${ph})
+       ORDER BY work_date`,
+      appIds
+    ) as [Record<string, unknown>[], unknown];
+
+    (Array.isArray(sessions) ? sessions : []).forEach((s) => {
+      const aid = String(s.application_id);
+      if (!sessionsByAppId[aid]) sessionsByAppId[aid] = [];
+      const workDate =
+        s.work_date instanceof Date
+          ? (s.work_date as Date).toISOString().slice(0, 10)
+          : String(s.work_date ?? "").slice(0, 10);
+
+      sessionsByAppId[aid].push({
+        workDate,
+        checkedInAt: toIso(s.checked_in_at),
+        checkedOutAt: toIso(s.checked_out_at),
+      });
+    });
+  }
+
+  // Build response
+  const out = list.map((a) => {
+    const aid = String(a.id);
+    return {
+      id: aid,
+      jobId: String(a.job_id),
+      status: String(a.status) as "pending" | "accepted" | "refused",
+      createdAt: toIso(a.created_at),
+
+      jobTitle: a.job_title != null ? String(a.job_title) : undefined,
+      jobLocation: a.job_location != null ? String(a.job_location) : undefined,
+      jobDate: a.job_date != null ? String(a.job_date) : undefined,
+      jobEndDate: a.job_end_date != null ? String(a.job_end_date) : undefined,
+
+      customerName: a.customer_name != null ? String(a.customer_name) : undefined,
+
+      completedAt: toIso(a.completed_at),
+      checkedInAt: toIso(a.checked_in_at),
+      checkedOutAt: toIso(a.checked_out_at),
+      workSessions: sessionsByAppId[aid] ?? [],
+
+      ratingScore: a.rating_score != null ? Number(a.rating_score) : undefined,
+    };
+  });
+
+  res.json({ applications: out });
+});
+
 
 /** POST /api/jobs/:id/apply - staff applies to job */
 router.post("/:id/apply", authMiddleware, async (req: ReqWithUser, res: Response): Promise<void> => {
