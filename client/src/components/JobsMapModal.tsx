@@ -16,6 +16,15 @@ const defaultIcon = L.icon({
   iconAnchor: [12, 41],
 });
 
+// Marker pentru locația curentă a angajatului (verde, doar pentru staff)
+const myLocationIcon = L.icon({
+  iconUrl: "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-green.png",
+  shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
+  iconSize: [25, 41],
+  iconAnchor: [12, 41],
+  popupAnchor: [1, -34],
+});
+
 type JobWithLocation = { job: string; location: string };
 type GeocodedJob = { lat: number; lon: number; job: string; location: string };
 
@@ -60,15 +69,31 @@ type Props = {
   open: boolean;
   onClose: () => void;
   jobs: JobWithLocation[];
+  /** Afișează locația curentă a angajatului pe hartă (doar pentru staff, nu pentru customer). */
+  showMyLocation?: boolean;
 };
 
 type MapLayer = "street" | "satellite";
 
-export default function JobsMapModal({ open, onClose, jobs }: Props) {
+export default function JobsMapModal({ open, onClose, jobs, showMyLocation = false }: Props) {
   const { t } = useTranslation();
   const [markers, setMarkers] = useState<GeocodedJob[]>([]);
+  const [myLocation, setMyLocation] = useState<[number, number] | null>(null);
   const [loading, setLoading] = useState(false);
   const [mapLayer, setMapLayer] = useState<MapLayer>("street");
+
+  useEffect(() => {
+    if (!open || !showMyLocation || typeof navigator === "undefined" || !navigator.geolocation) {
+      setMyLocation(null);
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      (pos) => setMyLocation([pos.coords.latitude, pos.coords.longitude]),
+      () => setMyLocation(null),
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
+    );
+    return () => setMyLocation(null);
+  }, [open, showMyLocation]);
 
   useEffect(() => {
     if (!open || jobs.length === 0) {
@@ -102,6 +127,7 @@ export default function JobsMapModal({ open, onClose, jobs }: Props) {
   if (!open) return null;
 
   const positions = markers.map((m) => [m.lat, m.lon] as [number, number]);
+  const allPositions = myLocation ? [...positions, myLocation] : positions;
 
   return (
     <div
@@ -184,7 +210,14 @@ export default function JobsMapModal({ open, onClose, jobs }: Props) {
                 />
               </>
             )}
-            <FitBounds positions={positions} />
+            <FitBounds positions={allPositions} />
+            {myLocation && (
+              <Marker position={myLocation} icon={myLocationIcon}>
+                <Popup>
+                  <div className="text-sm font-medium text-gray-900">{t("dashboard.myLocationOnMap")}</div>
+                </Popup>
+              </Marker>
+            )}
             {markers.map((m, i) => (
               <Marker key={`${m.lat}-${m.lon}-${i}`} position={[m.lat, m.lon]} icon={defaultIcon}>
                 <Popup>

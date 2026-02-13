@@ -47,6 +47,10 @@ export type JobRow = {
   estimatedSalary?: string;
   imageUrl?: string;
   postedBy?: string;
+  /** Locație pentru check-in (geo-fencing): lat, lng, raza în m */
+  checkInLat?: number;
+  checkInLng?: number;
+  checkInRadiusM?: number;
 };
 
 export type Application = {
@@ -240,6 +244,7 @@ export default function DashboardLayout() {
   const [formStartTime, setFormStartTime] = useState("00:00");
   const [formEndTime, setFormEndTime] = useState("00:00");
   const [jobAddress, setJobAddress] = useState("");
+  const [jobCheckInGeo, setJobCheckInGeo] = useState<{ lat: number; lng: number; radiusM: number } | null>(null);
   const [jobDate, setJobDate] = useState("");
   const [jobEndDate, setJobEndDate] = useState("");
   const [jobImage, setJobImage] = useState<string | null>(null);
@@ -364,6 +369,9 @@ export default function DashboardLayout() {
       duration: job.duration,
       estimatedSalary: job.estimatedSalary,
       imageUrl: job.imageUrl ?? undefined,
+      ...(job.checkInLat != null && job.checkInLng != null && job.checkInRadiusM != null
+        ? { checkInLat: job.checkInLat, checkInLng: job.checkInLng, checkInRadiusM: job.checkInRadiusM }
+        : {}),
     };
     try {
       const created = await jobsApi.create(payload);
@@ -384,6 +392,9 @@ export default function DashboardLayout() {
           estimatedSalary: created.estimatedSalary,
           imageUrl: created.imageUrl,
           postedBy: created.postedBy,
+          ...(created.checkInLat != null && created.checkInLng != null && created.checkInRadiusM != null
+            ? { checkInLat: created.checkInLat, checkInLng: created.checkInLng, checkInRadiusM: created.checkInRadiusM }
+            : {}),
         };
         setJobsAdded((prev) => [...prev, newJob]);
       setJobsLoadError(false);
@@ -800,6 +811,9 @@ export default function DashboardLayout() {
                         peopleNeeded: peopleVal || undefined,
                         estimatedSalary: salaryVal || undefined,
                         imageUrl: jobImage || undefined,
+                        ...(jobCheckInGeo
+                          ? { checkInLat: jobCheckInGeo.lat, checkInLng: jobCheckInGeo.lng, checkInRadiusM: jobCheckInGeo.radiusM }
+                          : {}),
                       });
                       if (!ok) {
                         setPostJobError(t("dashboard.postJobFailed", "Nu am putut salva jobul. Verifică backend-ul și încearcă din nou."));
@@ -816,6 +830,7 @@ export default function DashboardLayout() {
                     setFormStartTime("00:00");
                     setFormEndTime("00:00");
                     setJobAddress("");
+                    setJobCheckInGeo(null);
                     setJobDate("");
                     setJobEndDate("");
                     setJobImage(null);
@@ -1133,8 +1148,13 @@ export default function DashboardLayout() {
         <AddressPickerModal
           open={showAddressModal}
           onClose={() => setShowAddressModal(false)}
-          onConfirm={(address) => { setJobAddress(address); setShowAddressModal(false); }}
+          onConfirm={(address, geo) => {
+            setJobAddress(address);
+            setJobCheckInGeo(geo ? { lat: geo.lat, lng: geo.lng, radiusM: geo.radiusM ?? 200 } : null);
+            setShowAddressModal(false);
+          }}
           initialAddress={jobAddress}
+          defaultRadiusM={200}
         />
       )}
 

@@ -113,6 +113,9 @@ export type JobPayload = {
   peopleNeeded?: string;
   duration?: string;
   estimatedSalary?: string;
+  checkInLat?: number;
+  checkInLng?: number;
+  checkInRadiusM?: number;
 };
 
 export type JobResponse = {
@@ -130,6 +133,9 @@ export type JobResponse = {
   peopleNeeded?: string;
   duration?: string;
   estimatedSalary?: string;
+  checkInLat?: number;
+  checkInLng?: number;
+  checkInRadiusM?: number;
 };
 
 export const jobsApi = {
@@ -150,10 +156,22 @@ export const jobsApi = {
     }),
   completeApplication: (applicationId: string) =>
     api<{ ok: boolean }>(`/jobs/applications/${applicationId}/complete`, { method: "PATCH" }),
-  checkIn: (applicationId: string, workDate?: string) =>
-    api<{ ok: boolean; alreadyDone?: boolean }>(`/jobs/applications/${applicationId}/check-in`, { method: "PATCH", body: workDate ? JSON.stringify({ workDate }) : "{}" }),
-  checkOut: (applicationId: string, workDate?: string) =>
-    api<{ ok: boolean; alreadyDone?: boolean }>(`/jobs/applications/${applicationId}/check-out`, { method: "PATCH", body: workDate ? JSON.stringify({ workDate }) : "{}" }),
+  checkIn: (applicationId: string, workDate?: string, geo?: { lat: number; lng: number }) =>
+    api<{ ok: boolean; alreadyDone?: boolean }>(`/jobs/applications/${applicationId}/check-in`, {
+      method: "PATCH",
+      body: JSON.stringify({
+        ...(workDate ? { workDate } : {}),
+        ...(geo ? { lat: geo.lat, lng: geo.lng } : {}),
+      }),
+    }),
+  checkOut: (applicationId: string, workDate?: string, geo?: { lat: number; lng: number }) =>
+    api<{ ok: boolean; alreadyDone?: boolean }>(`/jobs/applications/${applicationId}/check-out`, {
+      method: "PATCH",
+      body: JSON.stringify({
+        ...(workDate ? { workDate } : {}),
+        ...(geo ? { lat: geo.lat, lng: geo.lng } : {}),
+      }),
+    }),
 };
 
 export const ratingsApi = {

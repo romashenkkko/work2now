@@ -47,9 +47,66 @@ async function optionalQuery(conn: { query: (sql: string, params?: unknown[]) =>
   }
 }
 
+/** Distanță în metri între două puncte (Haversine formula). */
+function haversineMeters(
+  lat1: number,
+  lon1: number,
+  lat2: number,
+  lon2: number
+): number {
+  const R = 6371000; // Earth radius in meters
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
+/** Standard error when user is outside allowed radius (prevents frontend manipulation). */
+const LOCATION_RADIUS_ERROR = "You are not within the allowed location radius.";
+
+/** Default workplace radius in meters (check-in/check-out allowed only within this distance). */
+const DEFAULT_GEO_RADIUS_M = 200;
+
+/**
+ * Validates user coordinates against job workplace (backend authority – prevents faked coordinates).
+ * Returns { valid: true } or { valid: false, statusCode, error }.
+ */
+async function validateGeoForJob(
+  jobId: number,
+  body: { lat?: unknown; lng?: unknown }
+): Promise<{ valid: true } | { valid: false; statusCode: number; error: string }> {
+  const [jobRows] = await db.query(
+    "SELECT check_in_lat, check_in_lng, check_in_radius_m FROM jobs WHERE id = ?",
+    [jobId]
+  ) as [Record<string, unknown>[], unknown];
+  const jobRow = Array.isArray(jobRows) ? jobRows[0] : null;
+  const jLat = jobRow?.check_in_lat != null ? Number(jobRow.check_in_lat) : NaN;
+  const jLng = jobRow?.check_in_lng != null ? Number(jobRow.check_in_lng) : NaN;
+  const jRadius = jobRow?.check_in_radius_m != null ? Number(jobRow.check_in_radius_m) : DEFAULT_GEO_RADIUS_M;
+  if (!Number.isFinite(jLat) || !Number.isFinite(jLng) || jRadius <= 0) {
+    return { valid: true }; // No geo-fence for this job
+  }
+  const lat = body.lat != null ? Number(body.lat) : NaN;
+  const lng = body.lng != null ? Number(body.lng) : NaN;
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+    return { valid: false, statusCode: 400, error: "Location permission is required for check-in/check-out at this workplace." };
+  }
+  const distM = haversineMeters(jLat, jLng, lat, lng);
+  if (distM > jRadius) {
+    return { valid: false, statusCode: 400, error: LOCATION_RADIUS_ERROR };
+  }
+  return { valid: true };
+}
+
 function rowToJob(r: Record<string, unknown>): Record<string, unknown> {
   const postedByName = r.posted_by_name ?? (r as Record<string, unknown>).postedByName;
   const name = typeof postedByName === "string" && postedByName.trim() ? postedByName.trim() : undefined;
+  const checkInLat = r.check_in_lat != null ? Number(r.check_in_lat) : undefined;
+  const checkInLng = r.check_in_lng != null ? Number(r.check_in_lng) : undefined;
+  const checkInRadiusM = r.check_in_radius_m != null ? Number(r.check_in_radius_m) : undefined;
   return {
     id: String(r.id),
     job: r.job,
@@ -67,6 +124,9 @@ function rowToJob(r: Record<string, unknown>): Record<string, unknown> {
     estimatedSalary: r.estimated_salary ?? undefined,
     imageUrl: r.image_url ?? undefined,
     postedBy: name,
+    ...(Number.isFinite(checkInLat) && Number.isFinite(checkInLng) && Number.isFinite(checkInRadiusM) && checkInRadiusM! > 0
+      ? { checkInLat, checkInLng, checkInRadiusM }
+      : {}),
   };
 }
 
@@ -78,7 +138,7 @@ router.get("/", authMiddleware, async (req: ReqWithUser, res: Response): Promise
     return;
   }
   const [rows] = await db.query(
-    "SELECT role FROM users WHERE id = ?",
+    "SELECT Role FROM users WHERE Id = ?",
     [userId]
   ) as [unknown[], unknown];
   const roleRaw = getRoleFromRow((rows as unknown[] | undefined)?.[0]);
@@ -129,7 +189,7 @@ router.post("/", authMiddleware, async (req: ReqWithUser, res: Response): Promis
     return;
   }
   const [rows] = await db.query(
-    "SELECT role FROM users WHERE id = ?",
+    "SELECT Role FROM users WHERE Id = ?",
     [userId]
   ) as [unknown[], unknown];
   const roleRaw = getRoleFromRow((rows as unknown[] | undefined)?.[0]);
@@ -146,6 +206,12 @@ router.post("/", authMiddleware, async (req: ReqWithUser, res: Response): Promis
   const statusClass = String(b.statusClass ?? "bg-gray-100 text-gray-700");
   const date = String(b.date ?? "");
   const imageUrl = typeof b.imageUrl === "string" && b.imageUrl.trim() ? b.imageUrl.trim() : null;
+  const checkInLat = b.checkInLat != null ? Number(b.checkInLat) : null;
+  const checkInLng = b.checkInLng != null ? Number(b.checkInLng) : null;
+  const checkInRadiusM =
+    b.checkInRadiusM != null
+      ? Math.max(1, Math.min(500, Number(b.checkInRadiusM)))
+      : (checkInLat != null && checkInLng != null ? DEFAULT_GEO_RADIUS_M : null);
   if (!job || !location) {
     res.status(400).json({ error: "job și location sunt obligatorii." });
     return;
@@ -165,10 +231,10 @@ router.post("/", authMiddleware, async (req: ReqWithUser, res: Response): Promis
     // MIGRATION FIX: Map status string to enum code
     const vacancyStatusCode = stringToVacancyStatus(status);
     
-    // Insert job
+    // Insert job (check_in_* columns added by migration)
     const [result] = await conn.query(
-      `INSERT INTO jobs (user_id, job, location, status, status_class, date, end_date, job_type, applications_count, start_time, end_time, people_needed, duration, estimated_salary, image_url)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO jobs (user_id, job, location, status, status_class, date, end_date, job_type, applications_count, start_time, end_time, people_needed, duration, estimated_salary, image_url, check_in_lat, check_in_lng, check_in_radius_m)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         userId,
         job,
@@ -184,6 +250,9 @@ router.post("/", authMiddleware, async (req: ReqWithUser, res: Response): Promis
         b.duration ?? null,
         b.estimatedSalary ?? null,
         imageUrl,
+        Number.isFinite(checkInLat) ? checkInLat : null,
+        Number.isFinite(checkInLng) ? checkInLng : null,
+        checkInRadiusM,
       ]
     ) as [{ insertId: number }, unknown];
     const id = result.insertId;
@@ -258,7 +327,7 @@ router.get("/my-applications", authMiddleware, async (req: ReqWithUser, res: Res
     return;
   }
   const [rows] = await db.query(
-    "SELECT role FROM users WHERE id = ?",
+    "SELECT Role FROM users WHERE Id = ?",
     [userId]
   ) as [unknown[], unknown];
   const roleRaw = getRoleFromRow((rows as unknown[] | undefined)?.[0]);
@@ -418,7 +487,7 @@ router.get("/applications", authMiddleware, async (req: ReqWithUser, res: Respon
     return;
   }
   const [rows] = await db.query(
-    "SELECT role FROM users WHERE id = ?",
+    "SELECT Role FROM users WHERE Id = ?",
     [userId]
   ) as [unknown[], unknown];
   const roleRaw = getRoleFromRow((rows as unknown[] | undefined)?.[0]);
@@ -449,7 +518,7 @@ router.get("/applications", authMiddleware, async (req: ReqWithUser, res: Respon
   if (staffIds.length > 0) {
     const ph = staffIds.map(() => "?").join(",");
     const [userRows] = await db.query(
-      `SELECT id, avatar FROM users WHERE id IN (${ph})`,
+      `SELECT Id AS id, NULL AS avatar FROM users WHERE Id IN (${ph})`,
       staffIds
     ) as [Record<string, unknown>[], unknown];
     (Array.isArray(userRows) ? userRows : []).forEach((u) => {
@@ -510,7 +579,7 @@ router.get("/applications", authMiddleware, async (req: ReqWithUser, res: Respon
   res.json({ applications: byJob });
 });
 
-/** PATCH /api/jobs/applications/:id/check-in - staff: înregistrează începutul lucrului (per zi, workDate în body) */
+/** PATCH /api/jobs/applications/:id/check-in - staff: înregistrează începutul lucrului (per zi, workDate în body; opțional lat, lng pentru geo-fencing) */
 router.patch("/applications/:id/check-in", authMiddleware, async (req: ReqWithUser, res: Response): Promise<void> => {
   const userId = req.user?.userId;
   const appIdRaw = req.params.id;
@@ -519,13 +588,14 @@ router.patch("/applications/:id/check-in", authMiddleware, async (req: ReqWithUs
     res.status(401).json({ error: "Unauthorized" });
     return;
   }
-  let workDate = typeof (req.body ?? {}).workDate === "string" ? (req.body as { workDate: string }).workDate.trim().slice(0, 10) : "";
+  const body = req.body ?? {};
+  let workDate = typeof body.workDate === "string" ? body.workDate.trim().slice(0, 10) : "";
   if (!workDate || !/^\d{4}-\d{2}-\d{2}$/.test(workDate)) {
     const now = new Date();
     workDate = now.getFullYear() + "-" + String(now.getMonth() + 1).padStart(2, "0") + "-" + String(now.getDate()).padStart(2, "0");
   }
   const [rows] = await db.query(
-    "SELECT id, staff_id, status FROM applications WHERE id = ? AND staff_id = ?",
+    "SELECT a.id, a.staff_id, a.status, a.job_id FROM applications a WHERE a.id = ? AND a.staff_id = ?",
     [appId, userId]
   ) as [Record<string, unknown>[], unknown];
   const row = Array.isArray(rows) ? rows[0] : null;
@@ -536,6 +606,14 @@ router.patch("/applications/:id/check-in", authMiddleware, async (req: ReqWithUs
   if (String(row.status) !== "accepted") {
     res.status(400).json({ error: "Doar aplicațiile acceptate pot fi check-in." });
     return;
+  }
+  const jobId = row.job_id != null ? Number(row.job_id) : NaN;
+  if (Number.isFinite(jobId) && jobId > 0) {
+    const geoResult = await validateGeoForJob(jobId, body);
+    if (!geoResult.valid) {
+      res.status(geoResult.statusCode).json({ error: geoResult.error });
+      return;
+    }
   }
   const [existing] = await db.query(
     "SELECT id, checked_in_at FROM application_work_sessions WHERE application_id = ? AND work_date = ?",
@@ -557,7 +635,7 @@ router.patch("/applications/:id/check-in", authMiddleware, async (req: ReqWithUs
   res.json({ ok: true });
 });
 
-/** PATCH /api/jobs/applications/:id/check-out - staff: înregistrează sfârșitul lucrului (per zi, workDate în body) */
+/** PATCH /api/jobs/applications/:id/check-out - staff: înregistrează sfârșitul lucrului (per zi, workDate în body; opțional lat, lng pentru geo) */
 router.patch("/applications/:id/check-out", authMiddleware, async (req: ReqWithUser, res: Response): Promise<void> => {
   const userId = req.user?.userId;
   const appIdRaw = req.params.id;
@@ -566,13 +644,14 @@ router.patch("/applications/:id/check-out", authMiddleware, async (req: ReqWithU
     res.status(401).json({ error: "Unauthorized" });
     return;
   }
-  let workDate = typeof (req.body ?? {}).workDate === "string" ? (req.body as { workDate: string }).workDate.trim().slice(0, 10) : "";
+  const body = req.body ?? {};
+  let workDate = typeof body.workDate === "string" ? body.workDate.trim().slice(0, 10) : "";
   if (!workDate || !/^\d{4}-\d{2}-\d{2}$/.test(workDate)) {
     const now = new Date();
     workDate = now.getFullYear() + "-" + String(now.getMonth() + 1).padStart(2, "0") + "-" + String(now.getDate()).padStart(2, "0");
   }
   const [rows] = await db.query(
-    "SELECT id, staff_id, status FROM applications WHERE id = ? AND staff_id = ?",
+    "SELECT id, staff_id, status, job_id FROM applications WHERE id = ? AND staff_id = ?",
     [appId, userId]
   ) as [Record<string, unknown>[], unknown];
   const row = Array.isArray(rows) ? rows[0] : null;
@@ -583,6 +662,14 @@ router.patch("/applications/:id/check-out", authMiddleware, async (req: ReqWithU
   if (String(row.status) !== "accepted") {
     res.status(400).json({ error: "Doar aplicațiile acceptate pot fi check-out." });
     return;
+  }
+  const jobId = row.job_id != null ? Number(row.job_id) : NaN;
+  if (Number.isFinite(jobId) && jobId > 0) {
+    const geoResult = await validateGeoForJob(jobId, body);
+    if (!geoResult.valid) {
+      res.status(geoResult.statusCode).json({ error: geoResult.error });
+      return;
+    }
   }
   const [existing] = await db.query(
     "SELECT id, checked_in_at, checked_out_at FROM application_work_sessions WHERE application_id = ? AND work_date = ?",
@@ -654,8 +741,8 @@ router.patch("/applications/:id", authMiddleware, async (req: ReqWithUser, res: 
   await db.query("UPDATE applications SET status = ?, status_code = ? WHERE id = ?", [status, statusCode, appId]);
   let staffEmail = row.staff_email != null ? String(row.staff_email).trim() : "";
   if (!staffEmail && row.staff_id) {
-    const [u] = await db.query("SELECT email FROM users WHERE id = ?", [row.staff_id]) as [Record<string, unknown>[], unknown];
-    staffEmail = (Array.isArray(u) && u[0] && u[0].email != null) ? String(u[0].email).trim() : "";
+    const [u] = await db.query("SELECT Email FROM users WHERE Id = ?", [row.staff_id]) as [Record<string, unknown>[], unknown];
+    staffEmail = (Array.isArray(u) && u[0] && (u[0].Email ?? u[0].email) != null) ? String((u[0].Email ?? u[0].email)).trim() : "";
   }
   const staffName = String(row.staff_name ?? "").trim() || "Angajat";
   const jobTitle = String(row.job_title ?? "").trim() || "Job";

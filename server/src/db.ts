@@ -367,6 +367,15 @@ export async function initDatabase(): Promise<void> {
         ON DELETE SET NULL
       `);
     }
+    if (!(await columnExists(conn, "jobs", "check_in_lat"))) {
+      await conn.query("ALTER TABLE `jobs` ADD COLUMN `check_in_lat` DOUBLE NULL");
+    }
+    if (!(await columnExists(conn, "jobs", "check_in_lng"))) {
+      await conn.query("ALTER TABLE `jobs` ADD COLUMN `check_in_lng` DOUBLE NULL");
+    }
+    if (!(await columnExists(conn, "jobs", "check_in_radius_m"))) {
+      await conn.query("ALTER TABLE `jobs` ADD COLUMN `check_in_radius_m` INT NULL");
+    }
 
     await conn.query(`
       CREATE TABLE IF NOT EXISTS \`applications\` (

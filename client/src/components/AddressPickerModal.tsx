@@ -4,11 +4,16 @@ import { MapContainer, TileLayer, Marker, useMapEvents, useMap } from "react-lea
 import L from "leaflet";
 import { useJsApiLoader, GoogleMap, Marker as GoogleMarker } from "@react-google-maps/api";
 
+export type AddressGeo = { lat: number; lng: number; radiusM?: number };
+
 type Props = {
   open: boolean;
   onClose: () => void;
-  onConfirm: (address: string) => void;
+  onConfirm: (address: string, geo?: AddressGeo) => void;
   initialAddress?: string;
+  /** Raza implicită (m) pentru check-in la locație (ex. 50) */
+  /** Default 200 m – check-in/check-out allowed only within this radius. */
+  defaultRadiusM?: number;
 };
 
 type Suggestion = { display_name: string; lat: string; lon: string };
@@ -53,7 +58,7 @@ function MapResizeFix() {
 
 const googleMapContainerStyle = { width: "100%", height: "100%", borderRadius: "0 0 12px 12px" };
 
-export default function AddressPickerModal({ open, onClose, onConfirm, initialAddress = "" }: Props) {
+export default function AddressPickerModal({ open, onClose, onConfirm, initialAddress = "", defaultRadiusM = 200 }: Props) {
   const { t } = useTranslation();
   const [search, setSearch] = useState(initialAddress);
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
@@ -147,7 +152,12 @@ export default function AddressPickerModal({ open, onClose, onConfirm, initialAd
   if (!open) return null;
 
   const handleConfirm = () => {
-    onConfirm(search.trim() || initialAddress);
+    const addr = search.trim() || initialAddress;
+    if (position) {
+      onConfirm(addr, { lat: position[0], lng: position[1], radiusM: defaultRadiusM });
+    } else {
+      onConfirm(addr);
+    }
     onClose();
   };
 
@@ -273,6 +283,9 @@ export default function AddressPickerModal({ open, onClose, onConfirm, initialAd
             </div>
             <p className="text-xs text-gray-500 px-2 py-1 bg-gray-50">
               {t("dashboard.mapClickHint", "Apasă pe hartă pentru a selecta locația.")}
+            </p>
+            <p className="text-xs text-gray-500 px-2 py-1 bg-gray-50 border-t border-gray-100">
+              {t("dashboard.checkInGeoHint", "Locația selectată va fi folosită pentru check-in/check-out (angajații trebuie să fie în raza de 200 m).")}
             </p>
             {!useGoogleMap && (
               <p className="text-xs text-gray-400 px-2 py-1 bg-gray-50 border-t border-gray-100">

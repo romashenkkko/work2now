@@ -94,6 +94,9 @@ export default function DashboardJoburi() {
           estimatedSalary: j.estimatedSalary,
           imageUrl: j.imageUrl,
           postedBy: j.postedBy ?? (j.posted_by_name as string),
+          checkInLat: j.checkInLat != null ? Number(j.checkInLat) : undefined,
+          checkInLng: j.checkInLng != null ? Number(j.checkInLng) : undefined,
+          checkInRadiusM: j.checkInRadiusM != null ? Number(j.checkInRadiusM) : undefined,
         }));
         setPublicJobs(list);
         const byJob = appRes.byJob ?? {};
@@ -241,41 +244,83 @@ export default function DashboardJoburi() {
     setCheckInOutError(null);
     const now = new Date().toISOString();
     const sessionKey = jid ? `${jid}-${wd}` : (Object.entries(applicationsByJob).find(([, a]) => String(a.applicationId) === String(applicationId))?.[0] ?? "") + "-" + wd;
-    if (sessionKey.length > wd.length + 1) {
+    const job = jobId ? publicJobs.find((j) => String(j.id) === String(jobId)) : null;
+    const jobRow = job as { checkInLat?: number; checkInLng?: number; checkInRadiusM?: number } | undefined;
+    const needsGeo = jobRow?.checkInLat != null && jobRow?.checkInLng != null && jobRow?.checkInRadiusM != null;
+
+    // Do not show "Început" / Check-out until server confirms; for geo jobs, verify location first, then check-in
+    const applyOptimisticCheckIn = () => {
+      if (sessionKey.length > wd.length + 1) {
+        setOptimisticSessions((prev) => {
+          const base = { ...getOptimisticBase(), ...prev };
+          const next = { ...base, [sessionKey]: { ...base[sessionKey], checkedInAt: now } };
+          persistOptimistic(next);
+          return next;
+        });
+      }
+      applyCheckInOptimistic(applicationId, wd, jobId);
+    };
+
+    const clearOptimisticForSession = () => {
+      if (sessionKey.length <= wd.length + 1) return;
       setOptimisticSessions((prev) => {
-        const base = { ...getOptimisticBase(), ...prev };
-        const next = { ...base, [sessionKey]: { ...base[sessionKey], checkedInAt: now } };
+        const next = { ...prev };
+        delete next[sessionKey];
         persistOptimistic(next);
         return next;
       });
-    }
-    applyCheckInOptimistic(applicationId, wd, jobId);
-    jobsApi
-      .checkIn(applicationId, wd)
-      .then(async (data) => {
-        showCheckInOutConfirm("checkin");
-        try {
-          await new Promise((r) => setTimeout(r, 350));
-          await refreshStaffData({ silent: true });
-        } catch (_) {
-          // refresh failed; UI already updated optimistically
-        }
-      })
-      .catch(async (err) => {
-        setConfirmCheckIn(null);
-        setConfirmCheckOut(null);
-        const msg = err instanceof Error ? err.message : (typeof err === "object" && err !== null && "error" in (err as { error?: string }) ? (err as { error: string }).error : String(err)) || "Eroare la check-in";
-        const msgLower = String(msg).toLowerCase();
-        if (msgLower.includes("deja efectuat") || msgLower.includes("already")) {
-          try { await refreshStaffData({ silent: true }); } catch (_) {}
+    };
+
+    const doCheckIn = (geo?: { lat: number; lng: number }) => {
+      jobsApi
+        .checkIn(applicationId, wd, geo)
+        .then(async () => {
+          applyOptimisticCheckIn();
           showCheckInOutConfirm("checkin");
-        } else {
-          try { await refreshStaffData({ silent: true }); } catch (_) {}
-          setCheckInOutError(msg);
+          try {
+            await new Promise((r) => setTimeout(r, 350));
+            await refreshStaffData({ silent: true });
+          } catch (_) {}
+        })
+        .catch(async (err) => {
+          setConfirmCheckIn(null);
+          setConfirmCheckOut(null);
+          clearOptimisticForSession();
+          const msg = err instanceof Error ? err.message : (typeof err === "object" && err !== null && "error" in (err as { error?: string }) ? (err as { error: string }).error : String(err)) || "Eroare la check-in";
+          const msgLower = String(msg).toLowerCase();
+          if (msgLower.includes("deja efectuat") || msgLower.includes("already")) {
+            try { await refreshStaffData({ silent: true }); } catch (_) {}
+            showCheckInOutConfirm("checkin");
+          } else {
+            try { await refreshStaffData({ silent: true }); } catch (_) {}
+            setCheckInOutError(
+              /not within the allowed location radius/i.test(msg) ? t("dashboard.locationRadiusError") : msg
+            );
+            setTimeout(() => setCheckInOutError(null), 5000);
+          }
+        })
+        .finally(() => setCheckInOutLoading(null));
+    };
+
+    if (needsGeo && typeof navigator !== "undefined" && navigator.geolocation) {
+      // 1. Request location permission and get coordinates
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          // 2. Send check-in with lat/lng; server validates distance ≤ 200 m
+          doCheckIn({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+        },
+        () => {
+          setCheckInOutError(t("dashboard.checkInShareLocation"));
           setTimeout(() => setCheckInOutError(null), 5000);
-        }
-      })
-      .finally(() => setCheckInOutLoading(null));
+          setCheckInOutLoading(null);
+        },
+        { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+      );
+    } else {
+      // Job without geo: apply optimistic then call API
+      applyOptimisticCheckIn();
+      doCheckIn();
+    }
   };
   const handleCheckOut = (e: React.MouseEvent, applicationId: string, workDate?: string, jobId?: string) => {
     e?.stopPropagation?.();
@@ -288,41 +333,77 @@ export default function DashboardJoburi() {
     setCheckInOutError(null);
     const now = new Date().toISOString();
     const sessionKeyOut = jid ? `${jid}-${wdOut}` : (Object.entries(applicationsByJob).find(([, a]) => String(a.applicationId) === String(applicationId))?.[0] ?? "") + "-" + wdOut;
-    if (sessionKeyOut.length > wdOut.length + 1) {
+    const jobOut = jobId ? publicJobs.find((j) => String(j.id) === String(jobId)) : null;
+    const jobOutRow = jobOut as { checkInLat?: number; checkInLng?: number; checkInRadiusM?: number } | undefined;
+    const needsGeoOut = jobOutRow?.checkInLat != null && jobOutRow?.checkInLng != null && jobOutRow?.checkInRadiusM != null;
+
+    const applyOptimisticCheckOut = () => {
+      if (sessionKeyOut.length > wdOut.length + 1) {
+        setOptimisticSessions((prev) => {
+          const base = { ...getOptimisticBase(), ...prev };
+          const next = { ...base, [sessionKeyOut]: { ...base[sessionKeyOut], checkedOutAt: now } };
+          persistOptimistic(next);
+          return next;
+        });
+      }
+      applyCheckOutOptimistic(applicationId, wdOut, jobId);
+    };
+
+    const clearOptimisticForSessionOut = () => {
+      if (sessionKeyOut.length <= wdOut.length + 1) return;
       setOptimisticSessions((prev) => {
-        const base = { ...getOptimisticBase(), ...prev };
-        const next = { ...base, [sessionKeyOut]: { ...base[sessionKeyOut], checkedOutAt: now } };
+        const next = { ...prev };
+        delete next[sessionKeyOut];
         persistOptimistic(next);
         return next;
       });
-    }
-    applyCheckOutOptimistic(applicationId, wdOut, jobId);
-    jobsApi
-      .checkOut(applicationId, wdOut)
-      .then(async (data) => {
-        showCheckInOutConfirm("checkout");
-        try {
-          await new Promise((r) => setTimeout(r, 350));
-          await refreshStaffData({ silent: true });
-        } catch (_) {
-          // refresh failed; UI already updated optimistically
-        }
-      })
-      .catch(async (err) => {
-        setConfirmCheckIn(null);
-        setConfirmCheckOut(null);
-        const msg = err instanceof Error ? err.message : (typeof err === "object" && err !== null && "error" in (err as { error?: string }) ? (err as { error: string }).error : String(err)) || "Eroare la check-out";
-        const msgLower = String(msg).toLowerCase();
-        if (msgLower.includes("deja efectuat") || msgLower.includes("already")) {
-          try { await refreshStaffData({ silent: true }); } catch (_) {}
+    };
+
+    const doCheckOut = (geo?: { lat: number; lng: number }) => {
+      jobsApi
+        .checkOut(applicationId, wdOut, geo)
+        .then(async () => {
+          applyOptimisticCheckOut();
           showCheckInOutConfirm("checkout");
-        } else {
-          try { await refreshStaffData({ silent: true }); } catch (_) {}
-          setCheckInOutError(msg);
+          try {
+            await new Promise((r) => setTimeout(r, 350));
+            await refreshStaffData({ silent: true });
+          } catch (_) {}
+        })
+        .catch(async (err) => {
+          setConfirmCheckIn(null);
+          setConfirmCheckOut(null);
+          clearOptimisticForSessionOut();
+          const msg = err instanceof Error ? err.message : (typeof err === "object" && err !== null && "error" in (err as { error?: string }) ? (err as { error: string }).error : String(err)) || "Eroare la check-out";
+          const msgLower = String(msg).toLowerCase();
+          if (msgLower.includes("deja efectuat") || msgLower.includes("already")) {
+            try { await refreshStaffData({ silent: true }); } catch (_) {}
+            showCheckInOutConfirm("checkout");
+          } else {
+            try { await refreshStaffData({ silent: true }); } catch (_) {}
+            setCheckInOutError(
+              /not within the allowed location radius/i.test(msg) ? t("dashboard.locationRadiusError") : msg
+            );
+            setTimeout(() => setCheckInOutError(null), 5000);
+          }
+        })
+        .finally(() => setCheckInOutLoading(null));
+    };
+
+    if (needsGeoOut && typeof navigator !== "undefined" && navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => doCheckOut({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+        () => {
+          setCheckInOutError(t("dashboard.checkInShareLocation"));
           setTimeout(() => setCheckInOutError(null), 5000);
-        }
-      })
-      .finally(() => setCheckInOutLoading(null));
+          setCheckInOutLoading(null);
+        },
+        { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+      );
+    } else {
+      applyOptimisticCheckOut();
+      doCheckOut();
+    }
   };
   const formatTime = (iso: string) => {
     try {
@@ -456,6 +537,13 @@ export default function DashboardJoburi() {
                     {(() => {
                       const forDateLabel = formatWorkDateLabel(confirmCheckIn?.workDate ?? confirmCheckOut?.workDate);
                       return forDateLabel ? <p className="mt-2 text-sm text-gray-600">{t("dashboard.forDate", { date: forDateLabel })}</p> : null;
+                    })()}
+                    {confirmCheckIn?.jobId && (() => {
+                      const j = publicJobs.find((job) => String(job.id) === String(confirmCheckIn!.jobId)) as { checkInLat?: number; checkInLng?: number; checkInRadiusM?: number } | undefined;
+                      if (j?.checkInLat != null && j?.checkInLng != null && j?.checkInRadiusM != null) {
+                        return <p className="mt-2 text-sm text-gray-600">{t("dashboard.checkInLocationHint")}</p>;
+                      }
+                      return null;
                     })()}
                     <div className="mt-3 flex items-center gap-2 text-sm text-gray-600">
                       <Clock className="w-4 h-4 text-gray-400 shrink-0" />
@@ -749,6 +837,7 @@ export default function DashboardJoburi() {
           open={showMapModal}
           onClose={() => setShowMapModal(false)}
           jobs={staffJobsWithLocation.map((j) => ({ job: j.job, location: j.location ?? "" }))}
+          showMyLocation={isStaff}
         />
         <JobScheduleModal
           open={scheduleJob !== null}
@@ -959,6 +1048,7 @@ export default function DashboardJoburi() {
         open={showMapModal}
         onClose={() => setShowMapModal(false)}
         jobs={jobs.map((j) => ({ job: j.job, location: j.location ?? "" }))}
+        showMyLocation={isStaff}
       />
       <JobScheduleModal
         open={scheduleJob !== null}
