@@ -41,13 +41,13 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Time2Go - Autentificare</title>
+    <title>Work2Now - Autentificare</title>
     <link rel="stylesheet" href="style.css" />
   </head>
   <body class="auth-page">
     <div class="auth-card">
       <h1>Autentificare</h1>
-      <p class="muted">Acceseaza rapid contul tau Time2Go.</p>
+      <p class="muted">Acceseaza rapid contul tau Work2Now.</p>
 
       <?php if ($errors): ?>
         <div class="alert error">

@@ -1,8 +1,8 @@
 {
-  "name": "time2go",
+  "name": "work2now",
   "private": true,
   "scripts": {
-    "dev": "concurrently -n back,front -c blue,green \"npm run dev:server\" \"npm run dev:client\"",
+    "dev": "node scripts/dev.js",
     "dev:server": "cd server && npm run dev",
     "dev:client": "cd client && npm run dev"
   },

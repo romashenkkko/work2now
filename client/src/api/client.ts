@@ -1,4 +1,4 @@
-/** URL-ul API: setează VITE_API_URL în .env când accesezi de pe alt PC (ex. http://192.168.1.5:5175/api). */
+/** URL-ul API: setează VITE_API_URL în .env când accesezi de pe alt PC (ex. http://192.168.1.5:5600/api). */
 function getApiBase(): string {
   if (typeof window === "undefined") return "/api";
   const envUrl = import.meta.env.VITE_API_URL;
@@ -8,8 +8,8 @@ function getApiBase(): string {
   }
   const host = window.location.hostname;
   if (host === "localhost" || host === "127.0.0.1") return "/api";
-  // Use VITE_API_PORT from environment or default to 5175
-  const apiPort = import.meta.env.VITE_API_PORT || "5175";
+  // Use VITE_API_PORT from environment or default to 5600
+  const apiPort = import.meta.env.VITE_API_PORT || "5600";
   return `http://${host}:${apiPort}/api`;
 }
 
@@ -24,9 +24,12 @@ export async function api<T>(path: string, options: RequestInit = {}): Promise<T
     ...(token && { Authorization: `Bearer ${token}` }),
     ...options.headers,
   };
+  const isGet = (options.method ?? "GET").toUpperCase() === "GET";
+  const fetchOpts: RequestInit = { ...options, headers };
+  if (isGet && !("cache" in (options ?? {}))) fetchOpts.cache = "no-store";
   let res: Response;
   try {
-    res = await fetch(`${getApiBase()}${path}`, { ...options, headers });
+    res = await fetch(`${getApiBase()}${path}`, fetchOpts);
   } catch (e) {
     const err = e as Error;
     throw new Error(err.message || "Serverul nu raspunde. Verifica ca backend-ul ruleaza (npm run dev).");
@@ -128,6 +131,26 @@ export type JobResponse = {
   duration?: string;
   estimatedSalary?: string;
 };
+export type StaffApplicationItem = {
+  id: string;
+  jobId: string;
+  status: "pending" | "accepted" | "refused";
+  createdAt?: string;
+
+  jobTitle?: string;
+  jobLocation?: string;
+  jobDate?: string;
+  jobEndDate?: string;
+
+  customerName?: string;
+
+  completedAt?: string;
+  checkedInAt?: string;
+  checkedOutAt?: string;
+  workSessions?: { workDate: string; checkedInAt?: string; checkedOutAt?: string }[];
+
+  ratingScore?: number;
+};
 
 export const jobsApi = {
   list: () => api<{ jobs: JobResponse[] }>("/jobs"),
@@ -148,9 +171,11 @@ export const jobsApi = {
   completeApplication: (applicationId: string) =>
     api<{ ok: boolean }>(`/jobs/applications/${applicationId}/complete`, { method: "PATCH" }),
   checkIn: (applicationId: string, workDate?: string) =>
-    api<{ ok: boolean }>(`/jobs/applications/${applicationId}/check-in`, { method: "PATCH", body: workDate ? JSON.stringify({ workDate }) : "{}" }),
+    api<{ ok: boolean; alreadyDone?: boolean }>(`/jobs/applications/${applicationId}/check-in`, { method: "PATCH", body: workDate ? JSON.stringify({ workDate }) : "{}" }),
   checkOut: (applicationId: string, workDate?: string) =>
-    api<{ ok: boolean }>(`/jobs/applications/${applicationId}/check-out`, { method: "PATCH", body: workDate ? JSON.stringify({ workDate }) : "{}" }),
+    api<{ ok: boolean; alreadyDone?: boolean }>(`/jobs/applications/${applicationId}/check-out`, { method: "PATCH", body: workDate ? JSON.stringify({ workDate }) : "{}" }),
+  myApplicationsList: () =>
+    api<{ applications: StaffApplicationItem[] }>("/jobs/my-applications/list"),
 };
 
 export const ratingsApi = {

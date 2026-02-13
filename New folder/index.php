@@ -8,17 +8,17 @@ $userName = $_SESSION["user_name"] ?? null;
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Time2Go - Platforma flexibila de recrutare</title>
+    <title>Work2Now - Platforma flexibila de recrutare</title>
     <link rel="stylesheet" href="style.css" />
   </head>
   <body>
     <header class="site-header">
       <div class="container header-inner">
-        <div class="logo" aria-label="Time2Go logo">
+        <div class="logo" aria-label="Work2Now logo">
           <span class="logo-mark">
-            <img src="LogoTime2Go.png" alt="Time2Go" />
+            <img src="LogoWork2Now.png" alt="Work2Now" />
           </span>
-          <span class="logo-text">Time2Go</span>
+          <span class="logo-text">Work2Now</span>
         </div>
         <button class="mobile-menu-toggle" aria-label="Toggle menu" type="button">
           <span></span>
@@ -108,9 +108,9 @@ $userName = $_SESSION["user_name"] ?? null;
           <div class="container hero-grid">
             <div class="hero-content">
               <p class="eyebrow">Platforma digitala de matching</p>
-              <h1>Time2Go</h1>
+              <h1>Work2Now</h1>
               <p class="lead">
-                Time2Go este o platforma moderna de recrutare si angajare flexibila,
+                Work2Now este o platforma moderna de recrutare si angajare flexibila,
                 dedicata sectorului ospitalitatii si serviciilor din Moldova.
               </p>
               <div class="hero-actions">
@@ -120,7 +120,7 @@ $userName = $_SESSION["user_name"] ?? null;
             </div>
             <div class="hero-right">
               <div class="hero-illustration">
-                <img src="Illustration/White human coffe.png" alt="Ilustratie Time2Go" />
+                <img src="Illustration/White human coffe.png" alt="Ilustratie Work2Now" />
                 <div class="hero-hand-item">
                   <div class="hand-card">
                     <div class="hand-card-icon">💼</div>
@@ -138,7 +138,7 @@ $userName = $_SESSION["user_name"] ?? null;
 
       <section class="section alt">
         <div class="container">
-          <h2>De ce Time2Go?</h2>
+          <h2>De ce Work2Now?</h2>
           <p class="lead" style="text-align: center; margin-bottom: 48px;">
             Platforma care transforma recrutarea si angajarea in procese rapide, digitale si eficiente.
           </p>
@@ -175,7 +175,7 @@ $userName = $_SESSION["user_name"] ?? null;
         <div class="container">
           <div class="split" style="align-items: center; gap: 48px;">
             <div>
-              <h2>Cum functioneaza Time2Go</h2>
+              <h2>Cum functioneaza Work2Now</h2>
               <p style="color: #4d5874; margin: 20px 0; line-height: 1.8;">
                 Procesul este simplu si rapid. In cateva minute poti crea un profil, aplica la joburi
                 si incepe sa lucrezi. Fara hartii, fara interviuri lungi, fara asteptari.
@@ -209,7 +209,7 @@ $userName = $_SESSION["user_name"] ?? null;
         <div class="container">
           <h2 style="text-align: center; margin-bottom: 16px; font-size: 2.5rem; font-weight: 700; color: #1e1c2f;">Ce spun utilizatorii nostri</h2>
           <p style="text-align: center; color: #6b748a; margin-bottom: 56px; font-size: 1.1rem;">
-            Mii de persoane folosesc deja Time2Go pentru joburi flexibile
+            Mii de persoane folosesc deja Work2Now pentru joburi flexibile
           </p>
           <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 32px;">
             <div class="testimonial-card" style="background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); padding: 40px; border-radius: 32px; border: 2px solid rgba(224, 216, 247, 0.6); box-shadow: 0 20px 50px rgba(66, 50, 120, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.8); text-align: center; transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1); position: relative; overflow: visible;">
@@ -219,7 +219,7 @@ $userName = $_SESSION["user_name"] ?? null;
               <div style="margin-top: 50px;">
                 <div style="font-size: 3rem; color: rgba(122, 99, 241, 0.15); line-height: 1; margin-bottom: 20px; font-family: Georgia, serif;">"</div>
                 <p style="color: #1e1c2f; font-style: italic; margin: 0 0 24px 0; line-height: 1.9; font-size: 1.08rem; font-weight: 400;">
-                  Time2Go mi-a schimbat viata! Acum pot lucra cand vreau si primesc plata rapid. Perfect pentru studenti!
+                  Work2Now mi-a schimbat viata! Acum pot lucra cand vreau si primesc plata rapid. Perfect pentru studenti!
                 </p>
                 <div style="padding-top: 20px; border-top: 2px solid rgba(224, 216, 247, 0.5); position: relative;">
                   <div style="position: absolute; top: -2px; left: 50%; transform: translateX(-50%); width: 60px; height: 2px; background: linear-gradient(90deg, transparent, #7a63f1, transparent);"></div>
@@ -235,7 +235,7 @@ $userName = $_SESSION["user_name"] ?? null;
               <div style="margin-top: 50px;">
                 <div style="font-size: 3rem; color: rgba(122, 99, 241, 0.15); line-height: 1; margin-bottom: 20px; font-family: Georgia, serif;">"</div>
                 <p style="color: #1e1c2f; font-style: italic; margin: 0 0 24px 0; line-height: 1.9; font-size: 1.08rem; font-weight: 400;">
-                  Ca angajator, Time2Go m-a ajutat sa gasesc personal calificat rapid si fara costuri ascunse. Recomand!
+                  Ca angajator, Work2Now m-a ajutat sa gasesc personal calificat rapid si fara costuri ascunse. Recomand!
                 </p>
                 <div style="padding-top: 20px; border-top: 2px solid rgba(224, 216, 247, 0.5); position: relative;">
                   <div style="position: absolute; top: -2px; left: 50%; transform: translateX(-50%); width: 60px; height: 2px; background: linear-gradient(90deg, transparent, #7a63f1, transparent);"></div>
@@ -278,7 +278,7 @@ $userName = $_SESSION["user_name"] ?? null;
         <div class="container">
           <h2>Gata sa incepi?</h2>
           <p style="margin: 20px 0 32px; color: #4d5874;">
-            Alatura-te mii de persoane care folosesc deja Time2Go pentru joburi flexibile si recrutare rapida.
+            Alatura-te mii de persoane care folosesc deja Work2Now pentru joburi flexibile si recrutare rapida.
           </p>
           <div class="cta-actions">
             <a class="btn btn-primary" href="#" id="signup-trigger-cta">Creeaza cont gratuit</a>
@@ -291,11 +291,11 @@ $userName = $_SESSION["user_name"] ?? null;
     <footer class="site-footer">
       <div class="container footer-inner">
         <div class="footer-brand">
-          <div class="logo small" aria-label="Time2Go logo">
+          <div class="logo small" aria-label="Work2Now logo">
             <span class="logo-mark">
-              <img src="LogoTime2Go.png" alt="Time2Go" />
+              <img src="LogoWork2Now.png" alt="Work2Now" />
             </span>
-            <span class="logo-text">Time2Go</span>
+            <span class="logo-text">Work2Now</span>
           </div>
           <p>Platforma digitala pentru recrutare flexibila in Moldova si Romania.</p>
         </div>
@@ -317,7 +317,7 @@ $userName = $_SESSION["user_name"] ?? null;
           <a href="locatii.php">Locatii</a>
         </div>
         <div class="footer-note">
-          <p>© 2026 Time2Go. Toate drepturile rezervate.</p>
+          <p>© 2026 Work2Now. Toate drepturile rezervate.</p>
           <div>
             <a href="#">Politica de confidentialitate</a>
             <span style="margin: 0 12px;">•</span>

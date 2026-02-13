@@ -25,17 +25,17 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Time2Go - Contact</title>
+    <title>Work2Now - Contact</title>
     <link rel="stylesheet" href="style.css" />
   </head>
   <body>
     <header class="site-header">
       <div class="container header-inner">
-        <div class="logo" aria-label="Time2Go logo">
+        <div class="logo" aria-label="Work2Now logo">
           <span class="logo-mark">
-            <img src="LogoTime2Go.png" alt="Time2Go" />
+            <img src="LogoWork2Now.png" alt="Work2Now" />
           </span>
-          <span class="logo-text">Time2Go</span>
+          <span class="logo-text">Work2Now</span>
         </div>
         <button class="mobile-menu-toggle" aria-label="Toggle menu" type="button">
           <span></span>
@@ -91,7 +91,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             <div class="feature" style="text-align: center; padding: 32px 24px;">
               <div style="font-size: 2.5rem; margin-bottom: 16px;">📧</div>
               <h3 style="margin-bottom: 8px;">Email</h3>
-              <p style="color: #6b748a; margin: 0;"><a href="mailto:contact@time2go.local" style="color: #7a63f1;">contact@time2go.local</a></p>
+              <p style="color: #6b748a; margin: 0;"><a href="mailto:contact@work2now.local" style="color: #7a63f1;">contact@work2now.local</a></p>
             </div>
 
             <div class="feature" style="text-align: center; padding: 32px 24px;">
@@ -137,11 +137,11 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     <footer class="site-footer">
       <div class="container footer-inner">
         <div class="footer-brand">
-          <div class="logo small" aria-label="Time2Go logo">
+          <div class="logo small" aria-label="Work2Now logo">
             <span class="logo-mark">
-              <img src="LogoTime2Go.png" alt="Time2Go" />
+              <img src="LogoWork2Now.png" alt="Work2Now" />
             </span>
-            <span class="logo-text">Time2Go</span>
+            <span class="logo-text">Work2Now</span>
           </div>
           <p>Platforma digitala pentru recrutare flexibila in Moldova si Romania.</p>
         </div>
@@ -163,7 +163,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
           <a href="locatii.php">Locatii</a>
         </div>
         <div class="footer-note">
-          <p>© 2026 Time2Go. Toate drepturile rezervate.</p>
+          <p>© 2026 Work2Now. Toate drepturile rezervate.</p>
           <div>
             <a href="#">Politica de confidentialitate</a>
             <span style="margin: 0 12px;">•</span>

@@ -455,7 +455,7 @@ export default function DashboardSettings() {
                 {/* Carduri contact – aliniate uniform */}
                 <div className="space-y-3">
                   <a
-                    href="mailto:contact@time2go.local"
+                    href="mailto:contact@work2now.local"
                     className="flex items-center gap-4 p-4 rounded-xl bg-gray-50/80 border border-gray-200/80 hover:border-primary/30 hover:bg-primary/5 transition-all"
                   >
                     <span className="flex-shrink-0 w-11 h-11 rounded-xl bg-primary flex items-center justify-center text-white shadow-sm">
@@ -463,7 +463,7 @@ export default function DashboardSettings() {
                     </span>
                     <div className="min-w-0 flex-1">
                       <span className="block text-xs font-semibold uppercase tracking-wider text-primary mb-1">{t("contactPage.email")}</span>
-                      <span className="block text-gray-900 font-medium text-sm truncate">contact@time2go.local</span>
+                      <span className="block text-gray-900 font-medium text-sm truncate">contact@work2now.local</span>
                     </div>
                   </a>
                   <a

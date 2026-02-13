@@ -85,11 +85,11 @@ export default function Header() {
       }`}
     >
       <div className="container mx-auto px-4 py-[18px] flex items-center justify-between max-w-[1100px] gap-6">
-        <Link to="/" className="flex items-center gap-2.5 group" aria-label="Time2Go logo">
+        <Link to="/" className="flex items-center gap-2.5 group" aria-label="Work2Now logo">
           <span className="grid place-items-center w-10 h-10 rounded-xl bg-[#7a63f1] text-white flex-shrink-0">
-            <img src="/LogoTime2Go.png" alt="" className="w-[80%] h-[80%] object-cover rounded-xl mt-0.5" />
+            <img src="/LogoWork2Now.png" alt="" className="w-[80%] h-[80%] object-cover rounded-xl mt-0.5" />
           </span>
-          <span className="font-bold text-[1.1rem] text-[#1e1c2f] group-hover:text-[#6c58d6] transition-colors">Time2Go</span>
+          <span className="font-bold text-[1.1rem] text-[#1e1c2f] group-hover:text-[#6c58d6] transition-colors">Work2Now</span>
         </Link>
 
         <nav className="hidden md:flex items-center gap-7 justify-center font-semibold text-[#1e1c2f] [&_a]:text-[#1e1c2f] [&_a:hover]:text-[#6c58d6] [&_a:hover]:-translate-y-0.5 [&_a]:transition-all">

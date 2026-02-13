@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { useAuth } from "../hooks/useAuth";
 import { DashboardContext, getApplications, setApplications, type Application } from "./DashboardLayout";
 import { jobsApi, ratingsApi } from "../api/client";
-import { Briefcase, MapPin, Calendar, User, Mail } from "lucide-react";
+import { Briefcase, MapPin, Calendar, User, Mail, Clock, CheckCircle2, XCircle, Hourglass } from "lucide-react";
 import StarRating from "../components/StarRating";
 
 function ApplicantAvatar({ staffAvatar }: { staffAvatar?: string }) {
@@ -45,13 +45,73 @@ function formatAppDate(ymd: string): string {
   }
 }
 
+type StaffApplication = {
+  id: string;
+  jobId: string;
+  status: "pending" | "accepted" | "refused";
+  createdAt?: string;
+
+  // Job info (best case if backend returns it)
+  jobTitle?: string;
+  jobLocation?: string;
+  jobDate?: string;
+  jobEndDate?: string;
+
+  // Employer/business info (optional)
+  customerName?: string;
+
+  // Work sessions / check-in/out info (optional)
+  completedAt?: string;
+  checkedInAt?: string;
+  checkedOutAt?: string;
+  workSessions?: { workDate: string; checkedInAt?: string; checkedOutAt?: string }[];
+
+  // Rating (optional)
+  ratingScore?: number;
+};
+
+function statusBadge(t: (k: string) => string, status: "pending" | "accepted" | "refused") {
+  const cls =
+    status === "accepted"
+      ? "bg-green-100 text-green-800"
+      : status === "refused"
+        ? "bg-red-100 text-red-800"
+        : "bg-amber-100 text-amber-800";
+
+  const label =
+    status === "accepted"
+      ? t("dashboard.accepted")
+      : status === "refused"
+        ? t("dashboard.refused")
+        : t("dashboard.pending");
+
+  const Icon =
+    status === "accepted" ? CheckCircle2 : status === "refused" ? XCircle : Hourglass;
+
+  return (
+    <span className={`inline-flex items-center gap-1 mt-1 px-2 py-0.5 rounded text-xs font-medium ${cls}`}>
+      <Icon className="w-3.5 h-3.5" />
+      {label}
+    </span>
+  );
+}
+
+
+
 export default function DashboardAplicatii() {
   const { t } = useTranslation();
   const { user } = useAuth();
   const { jobsAdded } = useContext(DashboardContext);
+
+  // Customer view: map jobId -> applications[]
   const [applications, setApplicationsState] = useState<Record<string, Application[]>>({});
 
-  const refreshApplications = () => {
+  // Staff view: flat list of my applications
+  const [myApps, setMyApps] = useState<StaffApplication[]>([]);
+  const [myAppsLoading, setMyAppsLoading] = useState(false);
+  const [myAppsError, setMyAppsError] = useState<string | null>(null);
+
+  const refreshCustomerApplications = () => {
     if (user?.role !== "customer") return;
     jobsApi
       .applications()
@@ -73,7 +133,9 @@ export default function DashboardAplicatii() {
               completedAt: a.completedAt as string | undefined,
               checkedInAt: a.checkedInAt as string | undefined,
               checkedOutAt: a.checkedOutAt as string | undefined,
-              workSessions: Array.isArray(a.workSessions) ? a.workSessions as { workDate: string; checkedInAt?: string; checkedOutAt?: string }[] : undefined,
+              workSessions: Array.isArray(a.workSessions)
+                ? (a.workSessions as { workDate: string; checkedInAt?: string; checkedOutAt?: string }[])
+                : undefined,
               ratingScore: a.ratingScore != null ? Number(a.ratingScore) : undefined,
             };
           });
@@ -83,9 +145,51 @@ export default function DashboardAplicatii() {
       .catch(() => setApplicationsState(getApplications()));
   };
 
+  const refreshStaffApplications = async () => {
+    if (user?.role !== "staff") return;
+    setMyAppsLoading(true);
+    setMyAppsError(null);
+    try {
+      const r = await (jobsApi as any).myApplicationsList(); // now exists in client.ts
+      const list = Array.isArray(r?.applications) ? r.applications : [];
+  
+      const normalized: StaffApplication[] = list.map((a: any) => ({
+        id: String(a.id ?? ""),
+        jobId: String(a.jobId ?? ""),
+        status: (a.status ?? "pending") as "pending" | "accepted" | "refused",
+        createdAt: a.createdAt,
+  
+        jobTitle: a.jobTitle,
+        jobLocation: a.jobLocation,
+        jobDate: a.jobDate,
+        jobEndDate: a.jobEndDate,
+  
+        customerName: a.customerName,
+  
+        completedAt: a.completedAt,
+        checkedInAt: a.checkedInAt,
+        checkedOutAt: a.checkedOutAt,
+        workSessions: Array.isArray(a.workSessions) ? a.workSessions : undefined,
+  
+        ratingScore: a.ratingScore != null ? Number(a.ratingScore) : undefined,
+      }));
+  
+      setMyApps(normalized);
+    } catch (e) {
+      setMyAppsError((e as Error)?.message || "Failed to load applications");
+      setMyApps([]);
+    } finally {
+      setMyAppsLoading(false);
+    }
+  };
+  
+
   useEffect(() => {
-    if (user?.role === "customer") refreshApplications();
-    else setApplicationsState(getApplications());
+    if (!user?.role) return;
+    if (user.role === "customer") refreshCustomerApplications();
+    if (user.role === "staff") refreshStaffApplications();
+    // if admin or other role -> do nothing
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.role, user?.id]);
 
   const [completingId, setCompletingId] = useState<string | null>(null);
@@ -95,7 +199,7 @@ export default function DashboardAplicatii() {
     setCompletingId(applicationId);
     jobsApi
       .completeApplication(applicationId)
-      .then(() => refreshApplications())
+      .then(() => refreshCustomerApplications())
       .finally(() => setCompletingId(null));
   };
 
@@ -103,14 +207,14 @@ export default function DashboardAplicatii() {
     setRatingSubmitting(applicationId);
     ratingsApi
       .submit(applicationId, score)
-      .then(() => refreshApplications())
+      .then(() => refreshCustomerApplications())
       .finally(() => setRatingSubmitting(null));
   };
 
   const setStatus = (jobId: string, applicationId: string, status: "accepted" | "refused") => {
     jobsApi
       .setApplicationStatus(applicationId, status)
-      .then(() => refreshApplications())
+      .then(() => refreshCustomerApplications())
       .catch(() => {
         const app = getApplications();
         const list = app[jobId] || [];
@@ -122,8 +226,136 @@ export default function DashboardAplicatii() {
   };
 
   const isCustomer = user?.role === "customer";
+  const isStaff = user?.role === "staff";
   const myJobs = isCustomer ? jobsAdded : [];
 
+  // -----------------------------
+  // STAFF VIEW (MY APPLICATIONS)
+  // -----------------------------
+  if (isStaff) {
+    const sorted = [...myApps].sort((a, b) => {
+      const ta = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+      const tb = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+      return tb - ta;
+    });
+
+    return (
+      <>
+        <header className="mb-8">
+          <h1 className="text-2xl font-bold text-gray-900">{t("dashboard.aplicatii")}</h1>
+          <p className="text-gray-600">{t("dashboard.myApplications")}</p>
+        </header>
+
+        {myAppsLoading ? (
+          <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-8 text-center">
+            <p className="text-gray-500">{t("profile.branches.loading") || "Loading..."}</p>
+          </div>
+        ) : myAppsError ? (
+          <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-8 text-center">
+            <p className="text-red-600">{myAppsError}</p>
+            <p className="text-gray-500 mt-2">
+              If this keeps happening, ensure backend has an endpoint for staff applications (ex: <code>/api/jobs/my-applications</code>).
+            </p>
+          </div>
+        ) : sorted.length === 0 ? (
+          <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-8 text-center">
+            <p className="text-gray-500">Aici vor apărea aplicațiile tale la joburi.</p>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {sorted.map((a) => (
+              <div key={a.id} className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                      <Briefcase className="w-5 h-5 text-primary" />
+                      <span className="truncate">{a.jobTitle || `Job #${a.jobId}`}</span>
+                    </h3>
+
+                    {(a.jobLocation || a.customerName) && (
+                      <p className="text-sm text-gray-600 mt-1 flex flex-wrap gap-x-4 gap-y-1">
+                        {a.jobLocation && (
+                          <span className="inline-flex items-center gap-1.5 min-w-0">
+                            <MapPin className="w-4 h-4 shrink-0" />
+                            <span className="truncate">{a.jobLocation}</span>
+                          </span>
+                        )}
+                        {a.customerName && (
+                          <span className="inline-flex items-center gap-1.5 min-w-0">
+                            <User className="w-4 h-4 shrink-0" />
+                            <span className="truncate">{a.customerName}</span>
+                          </span>
+                        )}
+                      </p>
+                    )}
+
+                    {(a.jobDate || a.createdAt) && (
+                      <p className="text-sm text-gray-500 mt-1 flex flex-wrap gap-x-4 gap-y-1">
+                        {a.jobDate && (
+                          <span className="inline-flex items-center gap-1.5">
+                            <Calendar className="w-4 h-4 shrink-0" />
+                            {a.jobDate}
+                            {a.jobEndDate && a.jobEndDate !== a.jobDate ? ` – ${a.jobEndDate}` : ""}
+                          </span>
+                        )}
+                        {a.createdAt && (
+                          <span className="inline-flex items-center gap-1.5">
+                            <Clock className="w-4 h-4 shrink-0" />
+                            {new Date(a.createdAt).toLocaleString("ro-RO")}
+                          </span>
+                        )}
+                      </p>
+                    )}
+
+                    {statusBadge(t, a.status)}
+
+                    {a.status === "accepted" && (() => {
+                      const sessions =
+                        a.workSessions && a.workSessions.length > 0
+                          ? a.workSessions
+                          : (a.checkedInAt ? [{ workDate: "", checkedInAt: a.checkedInAt, checkedOutAt: a.checkedOutAt }] : []);
+                      if (sessions.length === 0) return null;
+                      return (
+                        <div className="text-xs text-gray-500 mt-2 space-y-0.5">
+                          {sessions.map((s) => (
+                            <p key={s.workDate || "single"}>
+                              {s.workDate && <span className="font-medium">{formatAppDate(s.workDate)}: </span>}
+                              {s.checkedInAt && <span>{t("dashboard.checkedInAt")} {formatAppTime(s.checkedInAt)}</span>}
+                              {s.checkedInAt && s.checkedOutAt && " · "}
+                              {s.checkedOutAt && <span>{t("dashboard.checkedOutAt")} {formatAppTime(s.checkedOutAt)}</span>}
+                            </p>
+                          ))}
+                        </div>
+                      );
+                    })()}
+
+                    {a.status === "accepted" && a.completedAt && (
+                      <div className="mt-2 flex items-center gap-2 flex-wrap">
+                        {a.ratingScore != null ? (
+                          <span className="text-sm text-gray-600 flex items-center gap-1">
+                            {t("dashboard.rated")}:
+                            <StarRating value={a.ratingScore} size={16} />
+                          </span>
+                        ) : (
+                          <span className="text-sm text-gray-500">
+                            {t("dashboard.rated") || "Rated"}: —
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </>
+    );
+  }
+
+  // -----------------------------
+  // CUSTOMER VIEW (APPLICANTS)
+  // -----------------------------
   if (!isCustomer) {
     return (
       <>
@@ -183,7 +415,9 @@ export default function DashboardAplicatii() {
                 )}
               </div>
               <div className="p-4 sm:p-5">
-                <h3 className="text-sm font-semibold text-gray-900 mb-3">{t("dashboard.applicants")} ({applicants.length})</h3>
+                <h3 className="text-sm font-semibold text-gray-900 mb-3">
+                  {t("dashboard.applicants")} ({applicants.length})
+                </h3>
                 <ul className="space-y-3">
                   {applicants.map((a) => (
                     <li
@@ -200,28 +434,53 @@ export default function DashboardAplicatii() {
                               <span className="truncate">{a.staffEmail}</span>
                             </p>
                           )}
-                          <span className={`inline-block mt-1 px-2 py-0.5 rounded text-xs font-medium ${
-                            a.status === "accepted" ? "bg-green-100 text-green-800" :
-                            a.status === "refused" ? "bg-red-100 text-red-800" : "bg-amber-100 text-amber-800"
-                          }`}>
-                            {a.status === "accepted" ? t("dashboard.accepted") : a.status === "refused" ? t("dashboard.refused") : t("dashboard.pending")}
+                          <span
+                            className={`inline-block mt-1 px-2 py-0.5 rounded text-xs font-medium ${
+                              a.status === "accepted"
+                                ? "bg-green-100 text-green-800"
+                                : a.status === "refused"
+                                  ? "bg-red-100 text-red-800"
+                                  : "bg-amber-100 text-amber-800"
+                            }`}
+                          >
+                            {a.status === "accepted"
+                              ? t("dashboard.accepted")
+                              : a.status === "refused"
+                                ? t("dashboard.refused")
+                                : t("dashboard.pending")}
                           </span>
-                          {a.status === "accepted" && (() => {
-                            const sessions = a.workSessions && a.workSessions.length > 0 ? a.workSessions : (a.checkedInAt ? [{ workDate: "", checkedInAt: a.checkedInAt, checkedOutAt: a.checkedOutAt }] : []);
-                            if (sessions.length === 0) return null;
-                            return (
-                              <div className="text-xs text-gray-500 mt-1 space-y-0.5">
-                                {sessions.map((s) => (
-                                  <p key={s.workDate || "single"}>
-                                    {s.workDate && <span className="font-medium">{formatAppDate(s.workDate)}: </span>}
-                                    {s.checkedInAt && <span>{t("dashboard.checkedInAt")} {formatAppTime(s.checkedInAt)}</span>}
-                                    {s.checkedInAt && s.checkedOutAt && " · "}
-                                    {s.checkedOutAt && <span>{t("dashboard.checkedOutAt")} {formatAppTime(s.checkedOutAt)}</span>}
-                                  </p>
-                                ))}
-                              </div>
-                            );
-                          })()}
+
+                          {a.status === "accepted" &&
+                            (() => {
+                              const sessions =
+                                a.workSessions && a.workSessions.length > 0
+                                  ? a.workSessions
+                                  : a.checkedInAt
+                                    ? [{ workDate: "", checkedInAt: a.checkedInAt, checkedOutAt: a.checkedOutAt }]
+                                    : [];
+                              if (sessions.length === 0) return null;
+                              return (
+                                <div className="text-xs text-gray-500 mt-1 space-y-0.5">
+                                  {sessions.map((s) => (
+                                    <p key={s.workDate || "single"}>
+                                      {s.workDate && <span className="font-medium">{formatAppDate(s.workDate)}: </span>}
+                                      {s.checkedInAt && (
+                                        <span>
+                                          {t("dashboard.checkedInAt")} {formatAppTime(s.checkedInAt)}
+                                        </span>
+                                      )}
+                                      {s.checkedInAt && s.checkedOutAt && " · "}
+                                      {s.checkedOutAt && (
+                                        <span>
+                                          {t("dashboard.checkedOutAt")} {formatAppTime(s.checkedOutAt)}
+                                        </span>
+                                      )}
+                                    </p>
+                                  ))}
+                                </div>
+                              );
+                            })()}
+
                           {a.status === "accepted" && !a.completedAt && (
                             <div className="mt-2">
                               <button
@@ -234,6 +493,7 @@ export default function DashboardAplicatii() {
                               </button>
                             </div>
                           )}
+
                           {a.status === "accepted" && a.completedAt && (
                             <div className="mt-2 flex items-center gap-2 flex-wrap">
                               {a.ratingScore != null ? (
@@ -244,11 +504,7 @@ export default function DashboardAplicatii() {
                               ) : (
                                 <>
                                   <span className="text-sm text-gray-600">{t("dashboard.rateWork")}:</span>
-                                  <StarRating
-                                    value={0}
-                                    editable
-                                    onSelect={(score) => submitRating(a.id, score)}
-                                  />
+                                  <StarRating value={0} editable onSelect={(score) => submitRating(a.id, score)} />
                                   {ratingSubmitting === a.id && <span className="text-xs text-gray-500">...</span>}
                                 </>
                               )}
@@ -256,6 +512,7 @@ export default function DashboardAplicatii() {
                           )}
                         </div>
                       </div>
+
                       {a.status === "pending" && (
                         <div className="flex gap-2 flex-shrink-0">
                           <button

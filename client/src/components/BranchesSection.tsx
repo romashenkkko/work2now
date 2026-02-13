@@ -7,14 +7,22 @@ interface BranchesSectionProps {
   t: (key: string) => string;
 }
 
+// We extend Branch locally so this file compiles even if api/client.ts type isn't updated yet.
+type BranchExt = Branch & {
+  contactPersonName?: string;
+  contactPersonSurname?: string;
+};
+
 export default function BranchesSection({ onBack, t }: BranchesSectionProps) {
-  const [branches, setBranches] = useState<Branch[]>([]);
+  const [branches, setBranches] = useState<BranchExt[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [formData, setFormData] = useState({
-    name: "",
+    name: "", // branch name
+    contactPersonName: "",
+    contactPersonSurname: "",
     address: "",
     city: "",
     country: "Moldova",
@@ -32,7 +40,8 @@ export default function BranchesSection({ onBack, t }: BranchesSectionProps) {
     setError(null);
     try {
       const data = await branchesApi.list();
-      setBranches(data.branches);
+      // cast to BranchExt to allow the new optional fields
+      setBranches((data.branches as BranchExt[]) || []);
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -42,15 +51,25 @@ export default function BranchesSection({ onBack, t }: BranchesSectionProps) {
 
   const handleCreate = () => {
     setEditingId(null);
-    setFormData({ name: "", address: "", city: "", country: "Moldova", phoneNumber: "" });
+    setFormData({
+      name: "",
+      contactPersonName: "",
+      contactPersonSurname: "",
+      address: "",
+      city: "",
+      country: "Moldova",
+      phoneNumber: "",
+    });
     setShowForm(true);
     setMessage(null);
   };
 
-  const handleEdit = (branch: Branch) => {
+  const handleEdit = (branch: BranchExt) => {
     setEditingId(branch.id);
     setFormData({
       name: branch.name,
+      contactPersonName: branch.contactPersonName || "",
+      contactPersonSurname: branch.contactPersonSurname || "",
       address: branch.address,
       city: branch.city,
       country: branch.country,
@@ -74,18 +93,30 @@ export default function BranchesSection({ onBack, t }: BranchesSectionProps) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.name.trim() || !formData.address.trim() || !formData.city.trim() || !formData.phoneNumber.trim()) {
-      setMessage({ type: "error", text: t("profile.branches.allFieldsRequired") || "All fields are required" });
+
+    if (
+      !formData.name.trim() ||
+      !formData.contactPersonName.trim() ||
+      !formData.contactPersonSurname.trim() ||
+      !formData.address.trim() ||
+      !formData.city.trim() ||
+      !formData.phoneNumber.trim()
+    ) {
+      setMessage({
+        type: "error",
+        text: t("profile.branches.allFieldsRequired") || "All fields are required",
+      });
       return;
     }
+
     setSaving(true);
     setMessage(null);
     try {
       if (editingId) {
-        await branchesApi.update(editingId, formData);
+        await branchesApi.update(editingId, formData as any);
         setMessage({ type: "success", text: t("profile.branches.updated") || "Branch updated successfully" });
       } else {
-        await branchesApi.create(formData);
+        await branchesApi.create(formData as any);
         setMessage({ type: "success", text: t("profile.branches.created") || "Branch created successfully" });
       }
       setShowForm(false);
@@ -109,11 +140,18 @@ export default function BranchesSection({ onBack, t }: BranchesSectionProps) {
         </svg>
         {t("profile.back")}
       </button>
+
       <h2 className="text-lg font-semibold text-gray-900 mb-2">{t("profile.branches.title") || "Manage Branches"}</h2>
-      <p className="text-gray-600 text-sm mb-4">{t("profile.branches.description") || "Add and manage your business branches"}</p>
+      <p className="text-gray-600 text-sm mb-4">
+        {t("profile.branches.description") || "Add and manage your business branches"}
+      </p>
 
       {message && (
-        <div className={`mb-4 px-4 py-2 rounded-xl text-sm ${message.type === "success" ? "bg-green-50 text-green-800" : "bg-red-50 text-red-800"}`}>
+        <div
+          className={`mb-4 px-4 py-2 rounded-xl text-sm ${
+            message.type === "success" ? "bg-green-50 text-green-800" : "bg-red-50 text-red-800"
+          }`}
+        >
           {message.text}
         </div>
       )}
@@ -134,9 +172,13 @@ export default function BranchesSection({ onBack, t }: BranchesSectionProps) {
           <h3 className="text-md font-semibold text-gray-900 mb-4">
             {editingId ? t("profile.branches.editBranch") || "Edit Branch" : t("profile.branches.newBranch") || "New Branch"}
           </h3>
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Branch name */}
             <label className="block">
-              <span className="text-sm font-medium text-gray-700">{t("profile.branches.name") || "Name"} *</span>
+              <span className="text-sm font-medium text-gray-700">
+                {t("profile.branches.branchName") || "Denumirea Filialei"} *
+              </span>
               <input
                 type="text"
                 value={formData.name}
@@ -145,6 +187,8 @@ export default function BranchesSection({ onBack, t }: BranchesSectionProps) {
                 required
               />
             </label>
+
+            {/* Phone */}
             <label className="block">
               <span className="text-sm font-medium text-gray-700">{t("profile.branches.phoneNumber") || "Phone Number"} *</span>
               <input
@@ -155,6 +199,36 @@ export default function BranchesSection({ onBack, t }: BranchesSectionProps) {
                 required
               />
             </label>
+
+            {/* Contact person name */}
+            <label className="block">
+              <span className="text-sm font-medium text-gray-700">
+                {t("profile.branches.contactName") || "Nume persoană de contact"} *
+              </span>
+              <input
+                type="text"
+                value={formData.contactPersonName}
+                onChange={(e) => setFormData({ ...formData, contactPersonName: e.target.value })}
+                className="mt-1 block w-full px-4 py-2 rounded-xl border border-gray-200 focus:ring-2 focus:ring-primary focus:border-primary"
+                required
+              />
+            </label>
+
+            {/* Contact person surname */}
+            <label className="block">
+              <span className="text-sm font-medium text-gray-700">
+                {t("profile.branches.contactSurname") || "Prenume persoană de contact"} *
+              </span>
+              <input
+                type="text"
+                value={formData.contactPersonSurname}
+                onChange={(e) => setFormData({ ...formData, contactPersonSurname: e.target.value })}
+                className="mt-1 block w-full px-4 py-2 rounded-xl border border-gray-200 focus:ring-2 focus:ring-primary focus:border-primary"
+                required
+              />
+            </label>
+
+            {/* Address */}
             <label className="block md:col-span-2">
               <span className="text-sm font-medium text-gray-700">{t("profile.branches.address") || "Address"} *</span>
               <input
@@ -165,6 +239,8 @@ export default function BranchesSection({ onBack, t }: BranchesSectionProps) {
                 required
               />
             </label>
+
+            {/* City */}
             <label className="block">
               <span className="text-sm font-medium text-gray-700">{t("profile.branches.city") || "City"} *</span>
               <input
@@ -175,6 +251,8 @@ export default function BranchesSection({ onBack, t }: BranchesSectionProps) {
                 required
               />
             </label>
+
+            {/* Country */}
             <label className="block">
               <span className="text-sm font-medium text-gray-700">{t("profile.branches.country") || "Country"}</span>
               <input
@@ -185,6 +263,7 @@ export default function BranchesSection({ onBack, t }: BranchesSectionProps) {
               />
             </label>
           </div>
+
           <div className="flex gap-2 mt-4">
             <button
               type="submit"
@@ -212,28 +291,37 @@ export default function BranchesSection({ onBack, t }: BranchesSectionProps) {
       ) : error ? (
         <div className="text-center py-8 text-red-600">{error}</div>
       ) : branches.length === 0 ? (
-        <div className="text-center py-8 text-gray-500">{t("profile.branches.noBranches") || "No branches yet. Add your first branch!"}</div>
+        <div className="text-center py-8 text-gray-500">
+          {t("profile.branches.noBranches") || "No branches yet. Add your first branch!"}
+        </div>
       ) : (
         <div className="space-y-3">
           {branches.map((branch) => (
-            <div
-              key={branch.id}
-              className="p-4 border border-gray-200 rounded-xl hover:border-gray-300 transition-colors"
-            >
+            <div key={branch.id} className="p-4 border border-gray-200 rounded-xl hover:border-gray-300 transition-colors">
               <div className="flex items-start justify-between gap-4">
                 <div className="flex-1">
                   <h4 className="font-semibold text-gray-900 mb-1">{branch.name}</h4>
+
+                  {(branch.contactPersonName || branch.contactPersonSurname) && (
+                    <p className="text-sm text-gray-600 mb-1">
+                      {t("profile.branches.contact") || "Contact"}:{" "}
+                      {[branch.contactPersonName, branch.contactPersonSurname].filter(Boolean).join(" ")}
+                    </p>
+                  )}
+
                   <p className="text-sm text-gray-600 mb-1">
                     <MapPin className="w-4 h-4 inline mr-1" />
                     {branch.address}, {branch.city}, {branch.country}
                   </p>
                   <p className="text-sm text-gray-600">{branch.phoneNumber}</p>
+
                   {!branch.isActive && (
                     <span className="inline-block mt-2 px-2 py-1 text-xs font-medium text-gray-600 bg-gray-100 rounded">
                       {t("profile.branches.inactive") || "Inactive"}
                     </span>
                   )}
                 </div>
+
                 <div className="flex gap-2">
                   <button
                     type="button"
@@ -260,4 +348,3 @@ export default function BranchesSection({ onBack, t }: BranchesSectionProps) {
     </section>
   );
 }
-

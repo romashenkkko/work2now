@@ -64,8 +64,8 @@ export type Application = {
   ratingScore?: number;
 };
 
-const APPLICATIONS_KEY = "time2go_applications";
-const PUBLIC_JOBS_KEY = "time2go_public_jobs";
+const APPLICATIONS_KEY = "work2now_applications";
+const PUBLIC_JOBS_KEY = "work2now_public_jobs";
 
 export function getApplications(): Record<string, Application[]> {
   try {
@@ -96,7 +96,7 @@ export function getPublicJobs(): JobRow[] {
 export const DashboardContext = createContext<{
   openPostJobModal: () => void;
   jobsAdded: JobRow[];
-  addJob: (job: Omit<JobRow, "id">) => void;
+  addJob: (job: Omit<JobRow, "id">) => Promise<boolean>;
   removeJob: (id: string) => void;
   availableToWork: boolean;
   setAvailableToWork: (v: boolean) => void;
@@ -120,7 +120,6 @@ const NAV_CUSTOMER = [
   { to: "/dashboard/aplicatii", labelKey: "dashboard.aplicatii", end: false, icon: "fileText" },
   { to: "/dashboard/rapoarte", labelKey: "dashboard.rapoarte", end: false, icon: "barChart" },
   { to: "/dashboard/calendar", labelKey: "dashboard.calendar", end: false, icon: "calendar" },
-  { to: "/dashboard/mesaje", labelKey: "dashboard.mesaje", end: false, icon: "messageCircle" },
 ];
 
 const NAV_STAFF = [
@@ -128,14 +127,12 @@ const NAV_STAFF = [
   { to: "/dashboard/joburi", labelKey: "dashboard.joburi", end: false, icon: "briefcase" },
   { to: "/dashboard/aplicatii", labelKey: "dashboard.myApplications", end: false, icon: "fileText" },
   { to: "/dashboard/calendar", labelKey: "dashboard.calendar", end: false, icon: "calendar" },
-  { to: "/dashboard/mesaje", labelKey: "dashboard.mesaje", end: false, icon: "messageCircle" },
 ];
 
 const NAV_ADMIN = [
   { to: "/dashboard", labelKey: "dashboard.home", end: true, icon: "home" },
   { to: "/dashboard/joburi", labelKey: "dashboard.adminUsers", end: false, icon: "briefcase" },
   { to: "/dashboard/rapoarte", labelKey: "dashboard.rapoarte", end: false, icon: "barChart" },
-  { to: "/dashboard/mesaje", labelKey: "dashboard.mesaje", end: false, icon: "messageCircle" },
   { to: "/dashboard/settings", labelKey: "dashboard.adminSettings", end: false, icon: "settings" },
 ];
 
@@ -233,6 +230,7 @@ export default function DashboardLayout() {
   const navigate = useNavigate();
   const [showPostJob, setShowPostJob] = useState(false);
   const [jobSubmitted, setJobSubmitted] = useState(false);
+  const [postJobError, setPostJobError] = useState("");
   const [postJobStep, setPostJobStep] = useState<"choose-type" | "how-to-post" | "form">("choose-type");
   const [selectedJobType, setSelectedJobType] = useState<"one-day" | "multi-day" | "full-time" | null>(null);
   const [postMethod, setPostMethod] = useState<"scratch" | "template" | null>(null);
@@ -250,12 +248,15 @@ export default function DashboardLayout() {
   const [phoneCountryCode, setPhoneCountryCode] = useState("+373");
   const [phoneCountryOpen, setPhoneCountryOpen] = useState(false);
   const phoneCountryRef = useRef<HTMLDivElement>(null);
+  const [unpaidBreak, setUnpaidBreak] = useState<"no" | "yes">("no");
+  const [unpaidBreakOpen, setUnpaidBreakOpen] = useState(false);
+  const unpaidBreakRef = useRef<HTMLDivElement>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [userRating, setUserRating] = useState<{ average: number; count: number } | null>(null);
   const [jobsAdded, setJobsAdded] = useState<JobRow[]>(() => {
     if (typeof window === "undefined") return [];
     try {
-      const raw = localStorage.getItem("time2go_jobs_added");
+      const raw = localStorage.getItem("work2now_jobs_added");
       if (!raw) return [];
       const parsed = JSON.parse(raw) as JobRow[];
       return Array.isArray(parsed) ? parsed : [];
@@ -265,13 +266,14 @@ export default function DashboardLayout() {
   });
   useEffect(() => {
     try {
-      localStorage.setItem("time2go_jobs_added", JSON.stringify(jobsAdded));
+      localStorage.setItem("work2now_jobs_added", JSON.stringify(jobsAdded));
     } catch {}
   }, [jobsAdded]);
   const [jobsLoadError, setJobsLoadError] = useState(false);
   // Încarcă joburile de pe server (persistate în MySQL – rămân după repornire)
   useEffect(() => {
-    if (loading || !user || user.role !== "customer") return;
+    const role = user?.role?.toLowerCase?.().trim?.() ?? "";
+    if (loading || !user || role !== "customer") return;
     setJobsLoadError(false);
     jobsApi
       .list()
@@ -296,7 +298,7 @@ export default function DashboardLayout() {
         }));
         setJobsAdded(list);
         try {
-          localStorage.setItem("time2go_jobs_added", JSON.stringify(list));
+          localStorage.setItem("work2now_jobs_added", JSON.stringify(list));
         } catch {
           // cache local pentru când serverul e indisponibil
         }
@@ -344,7 +346,7 @@ export default function DashboardLayout() {
     } catch {}
   };
 
-  const addJob = (job: Omit<JobRow, "id">) => {
+  const addJob = async (job: Omit<JobRow, "id">): Promise<boolean> => {
     const payload = {
       job: job.job,
       location: job.location,
@@ -360,9 +362,8 @@ export default function DashboardLayout() {
       estimatedSalary: job.estimatedSalary,
       imageUrl: job.imageUrl ?? undefined,
     };
-    jobsApi
-      .create(payload)
-      .then((created) => {
+    try {
+      const created = await jobsApi.create(payload);
         const newJob: JobRow = {
           id: created.id,
           job: created.job,
@@ -382,19 +383,13 @@ export default function DashboardLayout() {
           postedBy: created.postedBy,
         };
         setJobsAdded((prev) => [...prev, newJob]);
-      })
-      .catch(() => {
-        const newJob: JobRow = { ...job, id: `job-${Date.now()}`, applicationsCount: 0 };
-        setJobsAdded((prev) => [...prev, newJob]);
-        try {
-          const raw = localStorage.getItem(PUBLIC_JOBS_KEY);
-          const list: JobRow[] = raw ? (JSON.parse(raw) as JobRow[]) : [];
-          if (Array.isArray(list)) {
-            list.push(newJob);
-            localStorage.setItem(PUBLIC_JOBS_KEY, JSON.stringify(list));
-          }
-        } catch {}
-      });
+      setJobsLoadError(false);
+      return true;
+    } catch (err) {
+      console.error("Failed to persist job on server:", err);
+      setJobsLoadError(true);
+      return false;
+    }
   };
   const removeJob = (id: string) => {
     jobsApi
@@ -428,8 +423,24 @@ export default function DashboardLayout() {
     return () => document.removeEventListener("mousedown", close);
   }, [phoneCountryOpen]);
 
+  useEffect(() => {
+    if (!unpaidBreakOpen) return;
+    const close = (e: MouseEvent) => {
+      if (unpaidBreakRef.current && !unpaidBreakRef.current.contains(e.target as Node)) setUnpaidBreakOpen(false);
+    };
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, [unpaidBreakOpen]);
+
+  // Keep page start consistent between dashboard sections. Must be before any conditional return (Rules of Hooks).
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  }, [location.pathname]);
+
   if (loading) return <div className="container mx-auto px-4 py-16 text-center">{t("dashboard.loading")}</div>;
   if (!user) return <Navigate to="/login" replace />;
+  const userRole = user.role?.toLowerCase?.().trim?.() ?? "";
+  const isCustomer = userRole === "customer";
 
   const closeSidebar = () => setSidebarOpen(false);
 
@@ -448,13 +459,13 @@ export default function DashboardLayout() {
           </svg>
         </button>
         <div className="flex items-center gap-2 min-w-0">
-          <img src="/LogoTime2Go.png" alt="Time2Go" className="h-7 w-auto" />
-          <span className="font-bold text-gray-900 truncate">Time2Go</span>
+          <img src="/LogoWork2Now.png" alt="Work2Now" className="h-7 w-auto" />
+          <span className="font-bold text-gray-900 truncate">Work2Now</span>
         </div>
-        {user.role === "customer" && (
+        {isCustomer && (
           <button
             type="button"
-            onClick={() => { setShowPostJob(true); closeSidebar(); }}
+            onClick={() => { setShowPostJob(true); setPostJobError(""); closeSidebar(); }}
             className="p-2 rounded-xl bg-primary text-white font-semibold"
             aria-label={t("dashboard.postJob")}
           >
@@ -475,25 +486,25 @@ export default function DashboardLayout() {
       {/* Sidebar – pe desktop fix, pe mobil drawer peste overlay */}
       <aside
         className={`
-          w-64 min-h-screen bg-white border-r border-secondary/10 flex flex-col shadow-soft
-          fixed md:relative z-50 md:z-auto
+          w-64 min-w-64 max-w-64 h-screen md:h-screen md:self-start bg-white border-r border-secondary/10 flex flex-col shadow-soft
+          fixed top-0 left-0 z-50 md:sticky md:top-0 md:left-auto md:z-auto
           transform transition-transform duration-200 ease-out
-          ${sidebarOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"}
+          ${sidebarOpen ? "translate-x-0" : "-translate-x-full"} md:translate-x-0
         `}
       >
         <div className="p-4 border-b border-secondary/10 flex items-center justify-between gap-2 flex-shrink-0">
           <div className="flex items-center gap-2">
-            <img src="/LogoTime2Go.png" alt="Time2Go" className="h-8 w-auto" />
-            <span className="font-bold text-gray-900">Time2Go</span>
+            <img src="/LogoWork2Now.png" alt="Work2Now" className="h-8 w-auto" />
+            <span className="font-bold text-gray-900">Work2Now</span>
           </div>
           <button type="button" onClick={closeSidebar} className="md:hidden p-2 rounded-lg text-gray-500 hover:bg-gray-100" aria-label="Închide">
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
           </button>
         </div>
-        {user.role === "customer" && (
+        {isCustomer && (
           <button
             type="button"
-            onClick={() => { setShowPostJob(true); closeSidebar(); }}
+            onClick={() => { setShowPostJob(true); setPostJobError(""); closeSidebar(); }}
             className="m-4 py-3 rounded-2xl bg-primary text-white font-semibold hover:bg-primary-dark shadow-soft transition-all flex items-center justify-center gap-2 flex-shrink-0"
           >
             <span>+</span>
@@ -575,14 +586,14 @@ export default function DashboardLayout() {
         </div>
       </aside>
 
-      <main key={location.pathname} className="flex-1 pt-14 md:pt-0 p-4 md:p-8 overflow-auto page-enter min-w-0">
+      <main key={location.pathname} className="flex-1 pt-14 md:pt-0 p-4 md:p-8 page-enter min-w-0">
         <DashboardContext.Provider value={{ openPostJobModal: () => setShowPostJob(true), jobsAdded, addJob, removeJob, availableToWork, setAvailableToWork, jobsLoadError, userRating: userRating ?? null }}>
           <Outlet />
         </DashboardContext.Provider>
       </main>
 
       {/* Modal Posteaza un job – doar pentru Customer */}
-      {user.role === "customer" && showPostJob && (
+      {isCustomer && showPostJob && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 modal-overlay-enter"
           onClick={() => {
@@ -590,6 +601,7 @@ export default function DashboardLayout() {
             setPostJobStep("choose-type");
             setSelectedJobType(null);
             setPostMethod(null);
+            setPostJobError("");
           }}
         >
           <div
@@ -614,7 +626,7 @@ export default function DashboardLayout() {
                   <h3 className="text-lg font-bold text-gray-900">{t("dashboard.addJobTitle")}</h3>
                 <button
                   type="button"
-                  onClick={() => { setShowPostJob(false); setPostJobStep("choose-type"); setSelectedJobType(null); setPostMethod(null); }}
+                  onClick={() => { setShowPostJob(false); setPostJobStep("choose-type"); setSelectedJobType(null); setPostMethod(null); setPostJobError(""); }}
                   className="p-2 rounded-lg text-gray-500 hover:bg-gray-100 hover:text-gray-700 transition-colors"
                   aria-label={t("dashboard.close")}
                 >
@@ -746,7 +758,7 @@ export default function DashboardLayout() {
                   <h3 className="text-lg font-bold text-gray-900">{t("dashboard.postJobTitle")}</h3>
                   <button
                     type="button"
-                    onClick={() => { setShowPostJob(false); setPostJobStep("choose-type"); setSelectedJobType(null); setPostMethod(null); }}
+                    onClick={() => { setShowPostJob(false); setPostJobStep("choose-type"); setSelectedJobType(null); setPostMethod(null); setPostJobError(""); }}
                     className="p-2 rounded-lg text-gray-500 hover:bg-gray-100 hover:text-gray-700"
                     aria-label={t("dashboard.close")}
                   >
@@ -754,8 +766,9 @@ export default function DashboardLayout() {
                   </button>
                 </div>
                 <form
-                  onSubmit={(e) => {
+                  onSubmit={async (e) => {
                     e.preventDefault();
+                    setPostJobError("");
                     const form = e.currentTarget;
                     const jobTitle = jobTitleSelected ? t(JOB_TITLE_OPTIONS.find((o) => o.id === jobTitleSelected)?.labelKey ?? "") : (form.elements.namedItem("jobTitle") as HTMLInputElement)?.value?.trim();
                     const address = jobAddress.trim() || (form.elements.namedItem("address") as HTMLInputElement)?.value?.trim();
@@ -763,14 +776,21 @@ export default function DashboardLayout() {
                     const endDateVal = jobEndDate || (form.elements.namedItem("jobEndDate") as HTMLInputElement)?.value?.trim();
                     const peopleVal = (form.elements.namedItem("numberOfStaff") as HTMLInputElement)?.value?.trim();
                     const salaryVal = (form.elements.namedItem("estimatedSalary") as HTMLInputElement)?.value?.trim();
+                    const toYmdToday = () => {
+                      const d = new Date();
+                      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+                    };
+                    const isYmd = (v?: string) => !!v && /^\d{4}-\d{2}-\d{2}$/.test(v);
+                    const normalizedDate = isYmd(dateVal) ? dateVal : toYmdToday();
+                    const normalizedEndDate = isYmd(endDateVal) ? endDateVal : undefined;
                     if (jobTitle && address && selectedJobType) {
-                      addJob({
+                      const ok = await addJob({
                         job: jobTitle,
                         location: address,
                         status: "Draft",
                         statusClass: "bg-gray-100 text-gray-700",
-                        date: dateVal || "Astazi",
-                        endDate: endDateVal || undefined,
+                        date: normalizedDate,
+                        endDate: normalizedEndDate,
                         jobType: selectedJobType,
                         startTime: formStartTime,
                         endTime: formEndTime,
@@ -778,6 +798,13 @@ export default function DashboardLayout() {
                         estimatedSalary: salaryVal || undefined,
                         imageUrl: jobImage || undefined,
                       });
+                      if (!ok) {
+                        setPostJobError(t("dashboard.postJobFailed", "Nu am putut salva jobul. Verifică backend-ul și încearcă din nou."));
+                        return;
+                      }
+                    } else {
+                      setPostJobError(t("dashboard.postJobInvalid", "Completează câmpurile obligatorii."));
+                      return;
                     }
                     setJobSubmitted(true);
                     setSelectedJobType(null);
@@ -792,10 +819,18 @@ export default function DashboardLayout() {
                     setJobDocuments([]);
                     setPhoneCountryCode("+373");
                     setJobTitleSelected("");
+                    setUnpaidBreak("no");
+                    setUnpaidBreakOpen(false);
+                    setPostJobError("");
                   }}
                   className="p-4 sm:p-6 overflow-y-auto max-h-[calc(100vh-12rem)]"
                 >
                   <div className="modal-step-enter space-y-6">
+                  {postJobError && (
+                    <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                      {postJobError}
+                    </div>
+                  )}
                   <button
                     type="button"
                     onClick={() => setPostJobStep("how-to-post")}
@@ -1001,13 +1036,47 @@ export default function DashboardLayout() {
                       </div>
                       <label className="block">
                         <span className="text-sm font-medium text-gray-700 mb-1 block">{t("dashboard.unpaidBreak")}</span>
-                        <select
-                          name="unpaidBreak"
-                          className="block w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:ring-2 focus:ring-primary bg-white"
-                        >
-                          <option value="no">{t("dashboard.unpaidBreakNo")}</option>
-                          <option value="yes">{t("dashboard.unpaidBreakYes")}</option>
-                        </select>
+                        <input type="hidden" name="unpaidBreak" value={unpaidBreak} />
+                        <div ref={unpaidBreakRef} className="relative">
+                          <button
+                            type="button"
+                            onClick={() => setUnpaidBreakOpen((v) => !v)}
+                            className="w-full px-4 py-2.5 rounded-xl border border-gray-200 bg-white text-left text-sm font-medium text-gray-800 shadow-sm hover:border-primary/40 focus:outline-none focus:ring-2 focus:ring-primary/30 transition-colors inline-flex items-center justify-between"
+                            aria-haspopup="listbox"
+                            aria-expanded={unpaidBreakOpen}
+                          >
+                            <span>{unpaidBreak === "yes" ? t("dashboard.unpaidBreakYes") : t("dashboard.unpaidBreakNo")}</span>
+                            <svg className={`w-4 h-4 text-gray-500 transition-transform ${unpaidBreakOpen ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                            </svg>
+                          </button>
+                          {unpaidBreakOpen && (
+                            <div className="absolute left-0 right-0 top-full mt-1 z-50 rounded-xl border border-gray-200 bg-white shadow-lg p-1">
+                              {[
+                                { value: "no" as const, label: t("dashboard.unpaidBreakNo") },
+                                { value: "yes" as const, label: t("dashboard.unpaidBreakYes") },
+                              ].map((opt) => (
+                                <button
+                                  key={opt.value}
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    setUnpaidBreak(opt.value);
+                                    setUnpaidBreakOpen(false);
+                                  }}
+                                  className={`w-full px-3 py-2 rounded-lg text-left text-sm transition-colors ${
+                                    unpaidBreak === opt.value ? "bg-primary text-white" : "text-gray-700 hover:bg-primary/10"
+                                  }`}
+                                  role="option"
+                                  aria-selected={unpaidBreak === opt.value}
+                                >
+                                  {opt.label}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
                       </label>
                       <div>
                         <span className="text-sm font-medium text-gray-700 mb-1 block">{t("dashboard.address")}</span>
@@ -1057,7 +1126,7 @@ export default function DashboardLayout() {
         </div>
       )}
 
-      {user.role === "customer" && (
+      {isCustomer && (
         <AddressPickerModal
           open={showAddressModal}
           onClose={() => setShowAddressModal(false)}
@@ -1066,7 +1135,7 @@ export default function DashboardLayout() {
         />
       )}
 
-      {user.role === "customer" && (
+      {isCustomer && (
         <DocumentsModal
           open={showDocumentsModal}
           onClose={() => setShowDocumentsModal(false)}
@@ -1082,7 +1151,7 @@ export default function DashboardLayout() {
         />
       )}
 
-      {user.role === "customer" && showJobTitleModal && (
+      {isCustomer && showJobTitleModal && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50 modal-overlay-enter" onClick={() => setShowJobTitleModal(false)}>
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] flex flex-col overflow-hidden modal-content-enter" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between p-4 border-b border-gray-100 flex-shrink-0">

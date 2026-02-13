@@ -1,7 +1,7 @@
 {
-  "name": "time2go-server",
+  "name": "work2now-server",
   "version": "1.0.0",
-  "description": "Time2Go API - Node.js + Express + TypeScript",
+  "description": "Work2Now API - Node.js + Express + TypeScript",
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc",

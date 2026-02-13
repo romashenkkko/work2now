@@ -10,7 +10,7 @@ Harta din „Adaugă adresă” poate folosi Google Maps dacă adaugi o cheie AP
 
 ### 2. Creează un proiect (dacă nu ai)
 - Sus în bara albastră: click pe **Select a project** → **New Project**.
-- Nume: de ex. „Time2Go”.
+- Nume: de ex. „Work2Now”.
 - Click **Create**.
 
 ### 3. Activează Maps JavaScript API

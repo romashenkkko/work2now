@@ -26,11 +26,11 @@ export default function Footer() {
       <div className="container mx-auto px-4 max-w-[1100px]">
         <div className="flex flex-wrap justify-between items-start gap-10">
           <div className="footer-appear__block footer-appear__block--0 flex-1 min-w-[250px]">
-            <Link to="/" className="flex items-center gap-2.5 mb-3" aria-label="Time2Go logo">
+            <Link to="/" className="flex items-center gap-2.5 mb-3" aria-label="Work2Now logo">
               <span className="grid place-items-center w-[34px] h-[34px] rounded-xl bg-[#7a63f1] flex-shrink-0">
-                <img src="/LogoTime2Go.png" alt="" className="w-[80%] h-[80%] object-cover rounded-xl mt-0.5" />
+                <img src="/LogoWork2Now.png" alt="" className="w-[80%] h-[80%] object-cover rounded-xl mt-0.5" />
               </span>
-              <span className="font-bold text-[1.1rem] text-[#1e1c2f] hover:text-[#7a63f1] transition-colors">Time2Go</span>
+              <span className="font-bold text-[1.1rem] text-[#1e1c2f] hover:text-[#7a63f1] transition-colors">Work2Now</span>
             </Link>
             <p className="text-[#6b748a] text-[0.95rem] leading-relaxed mt-3">{t("footer.tagline")}</p>
           </div>

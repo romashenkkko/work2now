@@ -1,4 +1,4 @@
-# Time2Go API (Node.js + Express + MySQL)
+# Work2Now API (Node.js + Express + MySQL)
 
 ## Pornire rapidă
 
@@ -10,7 +10,7 @@ Copiază `.env.example` în `.env` și ajustează dacă e cazul:
 cp .env.example .env
 ```
 
-Implicit: `DB_HOST=localhost`, `DB_USER=root`, `DB_PASSWORD=` (gol), `DB_NAME=time2go`.
+Implicit: `DB_HOST=localhost`, `DB_USER=root`, `DB_PASSWORD=` (gol), `DB_NAME=work2now`.
 
 ### 2. Baza de date MySQL
 

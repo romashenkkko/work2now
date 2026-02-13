@@ -46,8 +46,8 @@ export async function notifyCustomerNewApplication(
   jobTitle: string
 ): Promise<void> {
   if (!customerEmail?.trim()) return;
-  const subject = `[Time2Go] Nouă cerere pentru jobul „${jobTitle}”`;
-  const text = `Bună ziua,\n\n${staffName} a trimis o cerere pentru jobul „${jobTitle}” pe Time2Go.\n\nConectează-te la platformă pentru a vedea aplicația și a accepta sau refuza.\n\nEchipa Time2Go`;
+  const subject = `[Work2Now] Nouă cerere pentru jobul „${jobTitle}”`;
+  const text = `Bună ziua,\n\n${staffName} a trimis o cerere pentru jobul „${jobTitle}” pe Work2Now.\n\nConectează-te la platformă pentru a vedea aplicația și a accepta sau refuza.\n\nEchipa Work2Now`;
   await sendMail(customerEmail, subject, text);
 }
 
@@ -58,8 +58,8 @@ export async function notifyStaffAccepted(
   jobTitle: string
 ): Promise<void> {
   if (!staffEmail?.trim()) return;
-  const subject = `[Time2Go] Ai fost acceptat pentru jobul „${jobTitle}”`;
-  const text = `Bună ziua, ${staffName},\n\nAi fost acceptat pentru jobul „${jobTitle}” pe Time2Go.\n\nConectează-te la platformă pentru detalii și pentru check-in la începutul programului.\n\nEchipa Time2Go`;
+  const subject = `[Work2Now] Ai fost acceptat pentru jobul „${jobTitle}”`;
+  const text = `Bună ziua, ${staffName},\n\nAi fost acceptat pentru jobul „${jobTitle}” pe Work2Now.\n\nConectează-te la platformă pentru detalii și pentru check-in la începutul programului.\n\nEchipa Work2Now`;
   await sendMail(staffEmail, subject, text);
 }
 
@@ -70,8 +70,8 @@ export async function notifyStaffRefused(
   jobTitle: string
 ): Promise<void> {
   if (!staffEmail?.trim()) return;
-  const subject = `[Time2Go] Aplicația pentru jobul „${jobTitle}” nu a fost acceptată`;
-  const text = `Bună ziua, ${staffName},\n\nDin păcate, aplicația ta pentru jobul „${jobTitle}” pe Time2Go nu a fost acceptată de angajator.\n\nPoți căuta alte joburi disponibile pe platformă.\n\nEchipa Time2Go`;
+  const subject = `[Work2Now] Aplicația pentru jobul „${jobTitle}” nu a fost acceptată`;
+  const text = `Bună ziua, ${staffName},\n\nDin păcate, aplicația ta pentru jobul „${jobTitle}” pe Work2Now nu a fost acceptată de angajator.\n\nPoți căuta alte joburi disponibile pe platformă.\n\nEchipa Work2Now`;
   await sendMail(staffEmail, subject, text);
 }
 
@@ -85,9 +85,9 @@ export async function sendTestEmail(to: string): Promise<{ ok: boolean; error?: 
     await trans.sendMail({
       from: SMTP_USER,
       to: t,
-      subject: "[Time2Go] Email de test",
-      text: "Acesta este un email de test de la Time2Go. Notificările pe Gmail sunt configurate corect.",
-      html: "<p>Acesta este un email de test de la <strong>Time2Go</strong>.</p><p>Notificările pe Gmail sunt configurate corect.</p>",
+      subject: "[Work2Now] Email de test",
+      text: "Acesta este un email de test de la Work2Now. Notificările pe Gmail sunt configurate corect.",
+      html: "<p>Acesta este un email de test de la <strong>Work2Now</strong>.</p><p>Notificările pe Gmail sunt configurate corect.</p>",
     });
     console.log("[Email] Test trimis către", t);
     return { ok: true };

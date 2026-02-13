@@ -8,6 +8,45 @@ const router = Router();
 
 type ReqWithUser = Request & { user?: JwtPayload };
 
+function normalizeRole(raw: unknown): "staff" | "customer" | "admin" | "" {
+  if (typeof raw === "number") {
+    if (raw === 1) return "staff";
+    if (raw === 2) return "customer";
+    if (raw === 3) return "admin";
+    return "";
+  }
+  const s = String(raw ?? "").toLowerCase().trim();
+  if (!s) return "";
+  if (s === "1" || s === "staff" || s === "employee" || s === "user") return "staff";
+  if (s === "2" || s === "customer" || s === "business") return "customer";
+  if (s === "3" || s === "admin") return "admin";
+  return "";
+}
+
+function getRoleFromRow(row: unknown): unknown {
+  if (!row || typeof row !== "object") return undefined;
+  const r = row as Record<string, unknown>;
+  return r.role ?? r.Role;
+}
+
+async function isBusinessUser(userId: string): Promise<boolean> {
+  const [rows] = await db.query(
+    "SELECT Id FROM business_profiles WHERE UserId = ? LIMIT 1",
+    [userId]
+  ) as [Record<string, unknown>[], unknown];
+  return Array.isArray(rows) && rows.length > 0;
+}
+
+async function optionalQuery(conn: { query: (sql: string, params?: unknown[]) => Promise<unknown> }, sql: string, params: unknown[]): Promise<void> {
+  try {
+    await conn.query(sql, params);
+  } catch (e) {
+    const err = e as { code?: string };
+    if (err.code === "ER_BAD_FIELD_ERROR") return;
+    throw e;
+  }
+}
+
 function rowToJob(r: Record<string, unknown>): Record<string, unknown> {
   const postedByName = r.posted_by_name ?? (r as Record<string, unknown>).postedByName;
   const name = typeof postedByName === "string" && postedByName.trim() ? postedByName.trim() : undefined;
@@ -31,7 +70,7 @@ function rowToJob(r: Record<string, unknown>): Record<string, unknown> {
   };
 }
 
-/** GET /api/jobs - customer cu joburi: doar joburile proprii; staff/admin/customer fără joburi: toate joburile */
+/** GET /api/jobs - customer/business: doar joburile proprii; staff/admin: toate joburile */
 router.get("/", authMiddleware, async (req: ReqWithUser, res: Response): Promise<void> => {
   const userId = req.user?.userId;
   if (!userId) {
@@ -42,27 +81,40 @@ router.get("/", authMiddleware, async (req: ReqWithUser, res: Response): Promise
     "SELECT role FROM users WHERE id = ?",
     [userId]
   ) as [unknown[], unknown];
-  const roleRaw = (rows as { role: string }[])?.[0]?.role;
-  const role = typeof roleRaw === "string" ? roleRaw.toLowerCase().trim() : "";
+  const roleRaw = getRoleFromRow((rows as unknown[] | undefined)?.[0]);
+  const role = normalizeRole(roleRaw);
+  const customerLike = role === "customer" || await isBusinessUser(String(userId));
   let list: Record<string, unknown>[];
-  if (role === "customer") {
+  if (customerLike) {
     const [r] = await db.query(
-      "SELECT j.*, u.name AS posted_by_name FROM jobs j LEFT JOIN users u ON u.id = j.user_id WHERE j.user_id = ? ORDER BY j.created_at DESC",
+      `SELECT j.*,
+              COALESCE(
+                bp.CompanyName,
+                TRIM(CONCAT(ep.Name, ' ', ep.Surname)),
+                u.Email
+              ) AS posted_by_name
+         FROM jobs j
+         LEFT JOIN users u ON u.Id = j.user_id
+         LEFT JOIN business_profiles bp ON bp.UserId = u.Id
+         LEFT JOIN employee_profiles ep ON ep.UserId = u.Id
+         WHERE j.user_id = ?
+         ORDER BY j.created_at DESC`,
       [userId]
     ) as [Record<string, unknown>[], unknown];
     list = Array.isArray(r) ? r : [];
-    if (list.length === 0) {
-      const [allRows] = await db.query(
-        "SELECT j.*, u.name AS posted_by_name FROM jobs j LEFT JOIN users u ON u.id = j.user_id ORDER BY j.created_at DESC"
-      ) as [Record<string, unknown>[], unknown];
-      list = Array.isArray(allRows) ? allRows : [];
-      if (list.length > 0) {
-        await db.query("UPDATE users SET role = 'staff' WHERE id = ?", [userId]).catch(() => {});
-      }
-    }
   } else {
     const [r] = await db.query(
-      "SELECT j.*, u.name AS posted_by_name FROM jobs j LEFT JOIN users u ON u.id = j.user_id ORDER BY j.created_at DESC"
+      `SELECT j.*,
+              COALESCE(
+                bp.CompanyName,
+                TRIM(CONCAT(ep.Name, ' ', ep.Surname)),
+                u.Email
+              ) AS posted_by_name
+         FROM jobs j
+         LEFT JOIN users u ON u.Id = j.user_id
+         LEFT JOIN business_profiles bp ON bp.UserId = u.Id
+         LEFT JOIN employee_profiles ep ON ep.UserId = u.Id
+         ORDER BY j.created_at DESC`
     ) as [Record<string, unknown>[], unknown];
     list = Array.isArray(r) ? r : [];
   }
@@ -80,8 +132,10 @@ router.post("/", authMiddleware, async (req: ReqWithUser, res: Response): Promis
     "SELECT role FROM users WHERE id = ?",
     [userId]
   ) as [unknown[], unknown];
-  const role = (rows as { role: string }[])?.[0]?.role;
-  if (role !== "customer") {
+  const roleRaw = getRoleFromRow((rows as unknown[] | undefined)?.[0]);
+  const role = normalizeRole(roleRaw);
+  const customerLike = role === "customer" || await isBusinessUser(String(userId));
+  if (!customerLike) {
     res.status(403).json({ error: "Doar customer poate crea joburi." });
     return;
   }
@@ -136,15 +190,25 @@ router.post("/", authMiddleware, async (req: ReqWithUser, res: Response): Promis
     
     // MIGRATION FIX: Update UUID and enum columns
     if (userUuid) {
-      await conn.query("UPDATE jobs SET user_id_uuid = ? WHERE id = ?", [userUuid, id]);
+      await optionalQuery(conn, "UPDATE jobs SET user_id_uuid = ? WHERE id = ?", [userUuid, id]);
     }
-    await conn.query("UPDATE jobs SET vacancy_status_code = ? WHERE id = ?", [vacancyStatusCode, id]);
+    await optionalQuery(conn, "UPDATE jobs SET vacancy_status_code = ? WHERE id = ?", [vacancyStatusCode, id]);
     
     await conn.commit();
     
     // Fetch created job for response
     const [r] = await conn.query(
-      "SELECT j.*, u.name AS posted_by_name FROM jobs j LEFT JOIN users u ON u.id = j.user_id WHERE j.id = ?",
+      `SELECT j.*,
+              COALESCE(
+                bp.CompanyName,
+                TRIM(CONCAT(ep.Name, ' ', ep.Surname)),
+                u.Email
+              ) AS posted_by_name
+         FROM jobs j
+         LEFT JOIN users u ON u.Id = j.user_id
+         LEFT JOIN business_profiles bp ON bp.UserId = u.Id
+         LEFT JOIN employee_profiles ep ON ep.UserId = u.Id
+         WHERE j.id = ?`,
       [id]
     ) as [Record<string, unknown>[], unknown];
     const created = Array.isArray(r) && r[0] ? rowToJob(r[0]) : { id: String(id), job, location, status, statusClass, date };
@@ -177,7 +241,7 @@ router.delete("/:id", authMiddleware, async (req: ReqWithUser, res: Response): P
     res.status(404).json({ error: "Job negăsit." });
     return;
   }
-  if (Number(row.user_id) !== userId) {
+  if (String(row.user_id ?? "") !== String(userId)) {
     res.status(403).json({ error: "Nu poți șterge acest job." });
     return;
   }
@@ -197,8 +261,8 @@ router.get("/my-applications", authMiddleware, async (req: ReqWithUser, res: Res
     "SELECT role FROM users WHERE id = ?",
     [userId]
   ) as [unknown[], unknown];
-  const roleRaw = (rows as { role: string }[])?.[0]?.role;
-  const role = typeof roleRaw === "string" ? roleRaw.toLowerCase().trim() : "";
+  const roleRaw = getRoleFromRow((rows as unknown[] | undefined)?.[0]);
+  const role = normalizeRole(roleRaw);
   if (role !== "staff") {
     res.json({ byJob: {} });
     return;
@@ -209,7 +273,7 @@ router.get("/my-applications", authMiddleware, async (req: ReqWithUser, res: Res
   ) as [Record<string, unknown>[], unknown];
   const appList = Array.isArray(list) ? list : [];
   const byJob: Record<string, { status: string; applicationId: string; checkedInAt?: string; checkedOutAt?: string; workSessions: { workDate: string; checkedInAt?: string; checkedOutAt?: string }[] }> = {};
-  const appIds = appList.map((r) => r.id).filter(Boolean);
+  const appIds = appList.map((r) => (r.id != null ? Number(r.id) : NaN)).filter((id) => !Number.isNaN(id) && id > 0);
   const sessionsByApp: Record<string, { workDate: string; checkedInAt?: string; checkedOutAt?: string }[]> = {};
   if (appIds.length > 0) {
     const ph = appIds.map(() => "?").join(",");
@@ -220,7 +284,14 @@ router.get("/my-applications", authMiddleware, async (req: ReqWithUser, res: Res
     (Array.isArray(sessions) ? sessions : []).forEach((s) => {
       const aid = String(s.application_id);
       if (!sessionsByApp[aid]) sessionsByApp[aid] = [];
-      const workDate = s.work_date instanceof Date ? (s.work_date as Date).toISOString().slice(0, 10) : String(s.work_date ?? "").slice(0, 10);
+      const raw = s.work_date;
+      let workDate: string;
+      if (raw instanceof Date) {
+        const d = raw as Date;
+        workDate = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
+      } else {
+        workDate = String(raw ?? "").slice(0, 10);
+      }
       sessionsByApp[aid].push({
         workDate,
         checkedInAt: s.checked_in_at != null ? (s.checked_in_at instanceof Date ? (s.checked_in_at as Date).toISOString() : String(s.checked_in_at)) : undefined,
@@ -243,6 +314,124 @@ router.get("/my-applications", authMiddleware, async (req: ReqWithUser, res: Res
   });
   res.json({ byJob });
 });
+/** GET /api/jobs/my-applications/list - staff: full applications history (list) with job details + sessions + rating */
+router.get("/my-applications/list", authMiddleware, async (req: ReqWithUser, res: Response): Promise<void> => {
+  const userId = req.user?.userId;
+  if (!userId) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+
+  // Ensure role = staff
+  const [roleRows] = await db.query("SELECT role FROM users WHERE id = ?", [userId]) as [unknown[], unknown];
+  const roleRaw = getRoleFromRow((roleRows as unknown[] | undefined)?.[0]);
+  const role = normalizeRole(roleRaw);
+  if (role !== "staff") {
+    res.json({ applications: [] });
+    return;
+  }
+
+  // Get applications + job details + business/customer name
+  const [appRows] = await db.query(
+    `SELECT 
+        a.id,
+        a.job_id,
+        a.status,
+        a.created_at,
+        a.completed_at,
+        a.checked_in_at,
+        a.checked_out_at,
+        j.job AS job_title,
+        j.location AS job_location,
+        j.date AS job_date,
+        j.end_date AS job_end_date,
+        COALESCE(
+          bp.CompanyName,
+          TRIM(CONCAT(ep.Name, ' ', ep.Surname)),
+          u.Email
+        ) AS customer_name,
+        r.score AS rating_score
+     FROM applications a
+     JOIN jobs j ON j.id = a.job_id
+     LEFT JOIN users u ON u.Id = j.user_id
+     LEFT JOIN business_profiles bp ON bp.UserId = u.Id
+     LEFT JOIN employee_profiles ep ON ep.UserId = u.Id
+     LEFT JOIN ratings r ON r.application_id = a.id
+     WHERE a.staff_id = ?
+     ORDER BY a.created_at DESC`,
+    [userId]
+  ) as [Record<string, unknown>[], unknown];
+
+  const list = Array.isArray(appRows) ? appRows : [];
+
+  const toIso = (v: unknown): string | undefined => {
+    if (v == null) return undefined;
+    if (v instanceof Date) return v.toISOString();
+    const s = String(v);
+    return s.trim() || undefined;
+  };
+
+  // Work sessions (if table exists)
+  const appIds = list
+    .map((r) => (r.id != null ? Number(r.id) : NaN))
+    .filter((id) => !Number.isNaN(id) && id > 0);
+
+  const sessionsByAppId: Record<string, { workDate: string; checkedInAt?: string; checkedOutAt?: string }[]> = {};
+
+  if (appIds.length > 0) {
+    const ph = appIds.map(() => "?").join(",");
+    const [sessions] = await db.query(
+      `SELECT application_id, work_date, checked_in_at, checked_out_at
+       FROM application_work_sessions
+       WHERE application_id IN (${ph})
+       ORDER BY work_date`,
+      appIds
+    ) as [Record<string, unknown>[], unknown];
+
+    (Array.isArray(sessions) ? sessions : []).forEach((s) => {
+      const aid = String(s.application_id);
+      if (!sessionsByAppId[aid]) sessionsByAppId[aid] = [];
+      const workDate =
+        s.work_date instanceof Date
+          ? (s.work_date as Date).toISOString().slice(0, 10)
+          : String(s.work_date ?? "").slice(0, 10);
+
+      sessionsByAppId[aid].push({
+        workDate,
+        checkedInAt: toIso(s.checked_in_at),
+        checkedOutAt: toIso(s.checked_out_at),
+      });
+    });
+  }
+
+  // Build response
+  const out = list.map((a) => {
+    const aid = String(a.id);
+    return {
+      id: aid,
+      jobId: String(a.job_id),
+      status: String(a.status) as "pending" | "accepted" | "refused",
+      createdAt: toIso(a.created_at),
+
+      jobTitle: a.job_title != null ? String(a.job_title) : undefined,
+      jobLocation: a.job_location != null ? String(a.job_location) : undefined,
+      jobDate: a.job_date != null ? String(a.job_date) : undefined,
+      jobEndDate: a.job_end_date != null ? String(a.job_end_date) : undefined,
+
+      customerName: a.customer_name != null ? String(a.customer_name) : undefined,
+
+      completedAt: toIso(a.completed_at),
+      checkedInAt: toIso(a.checked_in_at),
+      checkedOutAt: toIso(a.checked_out_at),
+      workSessions: sessionsByAppId[aid] ?? [],
+
+      ratingScore: a.rating_score != null ? Number(a.rating_score) : undefined,
+    };
+  });
+
+  res.json({ applications: out });
+});
+
 
 /** POST /api/jobs/:id/apply - staff applies to job */
 router.post("/:id/apply", authMiddleware, async (req: ReqWithUser, res: Response): Promise<void> => {
@@ -253,11 +442,17 @@ router.post("/:id/apply", authMiddleware, async (req: ReqWithUser, res: Response
     return;
   }
   const [userRows] = await db.query(
-    "SELECT name, email, role FROM users WHERE id = ?",
+    `SELECT
+        COALESCE(NULLIF(TRIM(CONCAT(ep.Name, ' ', ep.Surname)), ''), u.Email) AS staff_name,
+        u.Email AS staff_email,
+        u.Role AS role_value
+      FROM users u
+      LEFT JOIN employee_profiles ep ON ep.UserId = u.Id
+      WHERE u.Id = ?`,
     [userId]
   ) as [Record<string, unknown>[], unknown];
   const userRow = Array.isArray(userRows) ? userRows[0] : null;
-  if (!userRow || (userRow.role as string) !== "staff") {
+  if (!userRow || normalizeRole(userRow.role_value) !== "staff") {
     res.status(403).json({ error: "Doar staff poate aplica la joburi." });
     return;
   }
@@ -293,15 +488,15 @@ router.post("/:id/apply", authMiddleware, async (req: ReqWithUser, res: Response
     // Insert application
     const [insertResult] = await conn.query(
       "INSERT INTO applications (job_id, staff_id, staff_name, staff_email, status) VALUES (?, ?, ?, ?, 'pending')",
-      [jobId, userId, userRow.name, userRow.email ?? null]
+      [jobId, userId, String(userRow.staff_name ?? "").trim(), (userRow.staff_email as string | undefined) ?? null]
     ) as [{ insertId: number }, unknown];
     const appId = insertResult.insertId;
     
     // MIGRATION FIX: Update UUID and enum columns
     if (staffUuid) {
-      await conn.query("UPDATE applications SET staff_id_uuid = ? WHERE id = ?", [staffUuid, appId]);
+      await optionalQuery(conn, "UPDATE applications SET staff_id_uuid = ? WHERE id = ?", [staffUuid, appId]);
     }
-    await conn.query("UPDATE applications SET status_code = ? WHERE id = ?", [statusCode, appId]);
+    await optionalQuery(conn, "UPDATE applications SET status_code = ? WHERE id = ?", [statusCode, appId]);
     
     // Update applications count
     await conn.query(
@@ -314,10 +509,11 @@ router.post("/:id/apply", authMiddleware, async (req: ReqWithUser, res: Response
     // Send notification (outside transaction)
     const customerUserId = jobRow.user_id;
     if (customerUserId) {
-      const [ownerRows] = await conn.query("SELECT email FROM users WHERE id = ?", [customerUserId]) as [Record<string, unknown>[], unknown];
+      const [ownerRows] = await conn.query("SELECT Email AS email FROM users WHERE Id = ?", [customerUserId]) as [Record<string, unknown>[], unknown];
       const ownerEmail = Array.isArray(ownerRows) && ownerRows[0] ? String((ownerRows[0] as { email: string }).email ?? "").trim() : "";
       const jobTitle = String(jobRow.job ?? "").trim() || "Job";
-      if (ownerEmail) notifyCustomerNewApplication(ownerEmail, String(userRow.name ?? ""), jobTitle).catch(() => {});
+      const staffName = String(userRow.staff_name ?? "").trim() || "Angajat";
+      if (ownerEmail) notifyCustomerNewApplication(ownerEmail, staffName, jobTitle).catch(() => {});
     }
     
     res.status(201).json({ ok: true });
@@ -332,7 +528,7 @@ router.post("/:id/apply", authMiddleware, async (req: ReqWithUser, res: Response
   }
 });
 
-/** GET /api/jobs/applications - customer: applications for their jobs */
+/** GET /api/jobs/applications - customer/business: applications for their jobs */
 router.get("/applications", authMiddleware, async (req: ReqWithUser, res: Response): Promise<void> => {
   const userId = req.user?.userId;
   if (!userId) {
@@ -343,8 +539,10 @@ router.get("/applications", authMiddleware, async (req: ReqWithUser, res: Respon
     "SELECT role FROM users WHERE id = ?",
     [userId]
   ) as [unknown[], unknown];
-  const role = (rows as { role: string }[])?.[0]?.role;
-  if (role !== "customer") {
+  const roleRaw = getRoleFromRow((rows as unknown[] | undefined)?.[0]);
+  const role = normalizeRole(roleRaw);
+  const customerLike = role === "customer" || await isBusinessUser(String(userId));
+  if (!customerLike) {
     res.status(403).json({ error: "Doar customer poate vedea aplicațiile." });
     return;
   }
@@ -433,8 +631,9 @@ router.get("/applications", authMiddleware, async (req: ReqWithUser, res: Respon
 /** PATCH /api/jobs/applications/:id/check-in - staff: înregistrează începutul lucrului (per zi, workDate în body) */
 router.patch("/applications/:id/check-in", authMiddleware, async (req: ReqWithUser, res: Response): Promise<void> => {
   const userId = req.user?.userId;
-  const appId = req.params.id;
-  if (!userId || !appId) {
+  const appIdRaw = req.params.id;
+  const appId = appIdRaw ? Number(appIdRaw) : NaN;
+  if (!userId || !appIdRaw || Number.isNaN(appId) || appId < 1) {
     res.status(401).json({ error: "Unauthorized" });
     return;
   }
@@ -444,11 +643,11 @@ router.patch("/applications/:id/check-in", authMiddleware, async (req: ReqWithUs
     workDate = now.getFullYear() + "-" + String(now.getMonth() + 1).padStart(2, "0") + "-" + String(now.getDate()).padStart(2, "0");
   }
   const [rows] = await db.query(
-    "SELECT id, staff_id, status FROM applications WHERE id = ?",
-    [appId]
+    "SELECT id, staff_id, status FROM applications WHERE id = ? AND staff_id = ?",
+    [appId, userId]
   ) as [Record<string, unknown>[], unknown];
   const row = Array.isArray(rows) ? rows[0] : null;
-  if (!row || Number(row.staff_id) !== userId) {
+  if (!row) {
     res.status(404).json({ error: "Aplicație negăsită." });
     return;
   }
@@ -462,7 +661,7 @@ router.patch("/applications/:id/check-in", authMiddleware, async (req: ReqWithUs
   ) as [Record<string, unknown>[], unknown];
   const ex = Array.isArray(existing) ? existing[0] : null;
   if (ex && ex.checked_in_at != null) {
-    res.status(400).json({ error: "Check-in pentru această zi deja efectuat." });
+    res.json({ ok: true, alreadyDone: true });
     return;
   }
   if (ex) {
@@ -479,8 +678,9 @@ router.patch("/applications/:id/check-in", authMiddleware, async (req: ReqWithUs
 /** PATCH /api/jobs/applications/:id/check-out - staff: înregistrează sfârșitul lucrului (per zi, workDate în body) */
 router.patch("/applications/:id/check-out", authMiddleware, async (req: ReqWithUser, res: Response): Promise<void> => {
   const userId = req.user?.userId;
-  const appId = req.params.id;
-  if (!userId || !appId) {
+  const appIdRaw = req.params.id;
+  const appId = appIdRaw ? Number(appIdRaw) : NaN;
+  if (!userId || !appIdRaw || Number.isNaN(appId) || appId < 1) {
     res.status(401).json({ error: "Unauthorized" });
     return;
   }
@@ -490,11 +690,11 @@ router.patch("/applications/:id/check-out", authMiddleware, async (req: ReqWithU
     workDate = now.getFullYear() + "-" + String(now.getMonth() + 1).padStart(2, "0") + "-" + String(now.getDate()).padStart(2, "0");
   }
   const [rows] = await db.query(
-    "SELECT id, staff_id, status FROM applications WHERE id = ?",
-    [appId]
+    "SELECT id, staff_id, status FROM applications WHERE id = ? AND staff_id = ?",
+    [appId, userId]
   ) as [Record<string, unknown>[], unknown];
   const row = Array.isArray(rows) ? rows[0] : null;
-  if (!row || Number(row.staff_id) !== userId) {
+  if (!row) {
     res.status(404).json({ error: "Aplicație negăsită." });
     return;
   }
@@ -516,7 +716,7 @@ router.patch("/applications/:id/check-out", authMiddleware, async (req: ReqWithU
     return;
   }
   if (ex.checked_out_at != null) {
-    res.status(400).json({ error: "Check-out pentru această zi deja efectuat." });
+    res.json({ ok: true, alreadyDone: true });
     return;
   }
   await db.query("UPDATE application_work_sessions SET checked_out_at = CURRENT_TIMESTAMP WHERE application_id = ? AND work_date = ?", [appId, workDate]);
@@ -532,11 +732,11 @@ router.patch("/applications/:id/complete", authMiddleware, async (req: ReqWithUs
     return;
   }
   const [rows] = await db.query(
-    "SELECT a.id, a.job_id, j.user_id, a.status FROM applications a JOIN jobs j ON j.id = a.job_id WHERE a.id = ?",
-    [appId]
+    "SELECT a.id, a.job_id, j.user_id, a.status FROM applications a JOIN jobs j ON j.id = a.job_id WHERE a.id = ? AND j.user_id = ?",
+    [appId, userId]
   ) as [Record<string, unknown>[], unknown];
   const row = Array.isArray(rows) ? rows[0] : null;
-  if (!row || Number(row.user_id) !== userId) {
+  if (!row) {
     res.status(404).json({ error: "Aplicație negăsită." });
     return;
   }
@@ -558,11 +758,11 @@ router.patch("/applications/:id", authMiddleware, async (req: ReqWithUser, res: 
     return;
   }
   const [rows] = await db.query(
-    "SELECT a.id, a.job_id, a.staff_id, a.staff_email, a.staff_name, j.user_id, j.job AS job_title FROM applications a JOIN jobs j ON j.id = a.job_id WHERE a.id = ?",
-    [appId]
+    "SELECT a.id, a.job_id, a.staff_id, a.staff_email, a.staff_name, j.user_id, j.job AS job_title FROM applications a JOIN jobs j ON j.id = a.job_id WHERE a.id = ? AND j.user_id = ?",
+    [appId, userId]
   ) as [Record<string, unknown>[], unknown];
   const row = Array.isArray(rows) ? rows[0] : null;
-  if (!row || Number(row.user_id) !== userId) {
+  if (!row) {
     res.status(404).json({ error: "Aplicație negăsită." });
     return;
   }

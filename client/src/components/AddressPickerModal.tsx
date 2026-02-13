@@ -66,7 +66,7 @@ export default function AddressPickerModal({ open, onClose, onConfirm, initialAd
   const wrapRef = useRef<HTMLDivElement>(null);
 
   const { isLoaded: isGoogleLoaded } = useJsApiLoader({
-    id: "time2go-google-map",
+    id: "work2now-google-map",
     googleMapsApiKey: GOOGLE_MAPS_API_KEY || " ",
   });
   const useGoogleMap = Boolean(GOOGLE_MAPS_API_KEY && isGoogleLoaded);
@@ -96,7 +96,7 @@ export default function AddressPickerModal({ open, onClose, onConfirm, initialAd
       setLoading(true);
       fetch(
         `${NOMINATIM_SEARCH}?format=json&q=${encodeURIComponent(q)}&countrycodes=md&addressdetails=1&limit=6`,
-        { headers: { "Accept-Language": "ro,en", "User-Agent": "Time2GoApp/1.0 (contact@time2go.app)" } }
+        { headers: { "Accept-Language": "ro,en", "User-Agent": "Work2NowApp/1.0 (contact@work2now.app)" } }
       )
         .then((res) => res.json())
         .then((data: Suggestion[]) => {
@@ -123,7 +123,7 @@ export default function AddressPickerModal({ open, onClose, onConfirm, initialAd
   const reverseGeocode = (lat: number, lon: number) => {
     fetch(
       `${NOMINATIM_REVERSE}?lat=${lat}&lon=${lon}&format=json`,
-      { headers: { "Accept-Language": "ro,en", "User-Agent": "Time2GoApp/1.0 (contact@time2go.app)" } }
+      { headers: { "Accept-Language": "ro,en", "User-Agent": "Work2NowApp/1.0 (contact@work2now.app)" } }
     )
       .then((res) => res.json())
       .then((data: { display_name?: string }) => {
