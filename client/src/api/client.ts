@@ -130,6 +130,8 @@ export type JobResponse = {
   peopleNeeded?: string;
   duration?: string;
   estimatedSalary?: string;
+  imageUrl?: string;
+  postedBy?: string;
 };
 export type StaffApplicationItem = {
   id: string;
