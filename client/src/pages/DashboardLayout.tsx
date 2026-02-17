@@ -1,5 +1,6 @@
-import { useState, createContext, useRef, useEffect, type ComponentType } from "react";
-import { Navigate, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
+import { useState, createContext, useRef, useEffect, useCallback, type ComponentType } from "react";
+import { createPortal } from "react-dom";
+import { Link, Navigate, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
   Icon,
@@ -19,6 +20,7 @@ import {
   Calendar,
   MessageCircle,
   Settings,
+  UtensilsCrossed,
 } from "lucide-react";
 import { coffeemaker } from "@lucide/lab";
 import { useAuth } from "../hooks/useAuth";
@@ -40,6 +42,7 @@ export type JobRow = {
   endDate?: string;
   jobType?: JobType;
   applicationsCount?: number;
+  acceptedCount?: number;
   startTime?: string;
   endTime?: string;
   peopleNeeded?: string;
@@ -47,6 +50,9 @@ export type JobRow = {
   estimatedSalary?: string;
   imageUrl?: string;
   postedBy?: string;
+  postedById?: string;
+  postedByRole?: string;
+  postedByAvatar?: string;
   /** Locație pentru check-in (geo-fencing): lat, lng, raza în m */
   checkInLat?: number;
   checkInLng?: number;
@@ -102,6 +108,7 @@ export const DashboardContext = createContext<{
   jobsAdded: JobRow[];
   addJob: (job: Omit<JobRow, "id">) => Promise<boolean>;
   removeJob: (id: string) => void;
+  refreshJobs: () => void;
   availableToWork: boolean;
   setAvailableToWork: (v: boolean) => void;
   jobsLoadError: boolean;
@@ -178,25 +185,12 @@ const COUNTRY_CODES: { code: string; label: string }[] = [
   { code: "+374", label: "AM" },
 ];
 
-/** Icoană custom: farfurie + buretă/spumă + strălucire (spălare vase, stil referință) */
-function DishwasherIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      {/* Farfurie (văzută din unghi) */}
-      <ellipse cx="12" cy="14" rx="8" ry="3.2" />
-      <path d="M4 14v1.2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V14" />
-      {/* Buretă / spumă pe farfurie */}
-      <circle cx="14" cy="11.5" r="3" />
-      {/* Strălucire (curățenie) */}
-      <path d="M17.5 16.5v1M17.5 16.5v-1M17.5 16.5h1M17.5 16.5h-1" strokeWidth="1.2" />
-    </svg>
-  );
-}
-
+/** Iconițe joburi – ca în ecranul "Selectează titlul jobului": Barista (cafetieră), Barman (pahar), Bucătar (șef), Curățenie (spray), Spălător vase (ustensile), Echipă evenimente (echipă), Lucrător magazin (cart), Întreținere (cheie), Recepționer (telefon), Eveniment training (prezentare), Ospătar (cloche) */
 const JOB_ICONS: Record<string, ComponentType<{ className?: string; size?: number }>> = {
   bartender: Wine as ComponentType<{ className?: string; size?: number }>,
   chef: ChefHat as ComponentType<{ className?: string; size?: number }>,
   cleaner: SprayCan as ComponentType<{ className?: string; size?: number }>,
+  dishwasher: UtensilsCrossed as ComponentType<{ className?: string; size?: number }>,
   eventcrew: Users as ComponentType<{ className?: string; size?: number }>,
   grocery: ShoppingCart as ComponentType<{ className?: string; size?: number }>,
   maintenance: Wrench as ComponentType<{ className?: string; size?: number }>,
@@ -205,16 +199,16 @@ const JOB_ICONS: Record<string, ComponentType<{ className?: string; size?: numbe
   waiter: ConciergeBell as ComponentType<{ className?: string; size?: number }>,
 };
 
-function JobTitleIcon({ jobId }: { jobId: string }) {
+export function JobTitleIcon({ jobId, className = "w-8 h-8 text-primary shrink-0", size = 32 }: { jobId: string; className?: string; size?: number }) {
+  const iconProps = { className, size };
   if (jobId === "barista") {
-    return <Icon iconNode={coffeemaker} className="w-8 h-8 text-primary" size={32} />;
-  }
-  if (jobId === "dishwasher") {
-    return <DishwasherIcon className="w-8 h-8 text-primary" />;
+    return <Icon iconNode={coffeemaker} {...iconProps} />;
   }
   const JobIcon = JOB_ICONS[jobId] ?? Briefcase;
-  return <JobIcon className="w-8 h-8 text-primary" size={32} />;
+  return <JobIcon {...iconProps} />;
 }
+
+export { JOB_TITLE_OPTIONS };
 
 const JOB_TITLE_OPTIONS: { id: string; labelKey: string }[] = [
   { id: "barista", labelKey: "dashboard.jobTitleBarista" },
@@ -256,6 +250,12 @@ export default function DashboardLayout() {
   const [phoneCountryCode, setPhoneCountryCode] = useState("+373");
   const [phoneCountryOpen, setPhoneCountryOpen] = useState(false);
   const phoneCountryRef = useRef<HTMLDivElement>(null);
+  const [staffCountSelect, setStaffCountSelect] = useState("1");
+  const [staffDropdownOpen, setStaffDropdownOpen] = useState(false);
+  const staffDropdownRef = useRef<HTMLDivElement>(null);
+  const [salarySelect, setSalarySelect] = useState("");
+  const [salaryDropdownOpen, setSalaryDropdownOpen] = useState(false);
+  const salaryDropdownRef = useRef<HTMLDivElement>(null);
   const [unpaidBreak, setUnpaidBreak] = useState<"no" | "yes">("no");
   const [unpaidBreakOpen, setUnpaidBreakOpen] = useState(false);
   const unpaidBreakRef = useRef<HTMLDivElement>(null);
@@ -277,11 +277,13 @@ export default function DashboardLayout() {
       localStorage.setItem("work2now_jobs_added", JSON.stringify(jobsAdded));
     } catch {}
   }, [jobsAdded]);
-  const [jobsLoadError, setJobsLoadError] = useState(false);
-  // Încarcă joburile de pe server (persistate în MySQL – rămân după repornire)
   useEffect(() => {
+    if (selectedJobType === "one-day") setJobEndDate("");
+  }, [selectedJobType]);
+  const [jobsLoadError, setJobsLoadError] = useState(false);
+  const fetchJobsForCustomer = useCallback(() => {
     const role = user?.role?.toLowerCase?.().trim?.() ?? "";
-    if (loading || !user || role !== "customer") return;
+    if (!user || role !== "customer") return;
     setJobsLoadError(false);
     jobsApi
       .list()
@@ -296,6 +298,7 @@ export default function DashboardLayout() {
           endDate: j.endDate,
           jobType: j.jobType as JobType | undefined,
           applicationsCount: j.applicationsCount ?? 0,
+          acceptedCount: j.acceptedCount ?? 0,
           startTime: j.startTime,
           endTime: j.endTime,
           peopleNeeded: j.peopleNeeded,
@@ -312,7 +315,13 @@ export default function DashboardLayout() {
         }
       })
       .catch(() => setJobsLoadError(true));
-  }, [loading, user?.id, user?.role]);
+  }, [user?.id, user?.role]);
+  // Încarcă joburile de pe server (persistate în MySQL – rămân după repornire)
+  useEffect(() => {
+    const role = user?.role?.toLowerCase?.().trim?.() ?? "";
+    if (loading || !user || role !== "customer") return;
+    fetchJobsForCustomer();
+  }, [loading, user?.id, user?.role, fetchJobsForCustomer]);
   useEffect(() => {
     if (!user?.id) {
       setUserRating(null);
@@ -385,6 +394,7 @@ export default function DashboardLayout() {
           endDate: created.endDate,
           jobType: created.jobType as JobType | undefined,
           applicationsCount: created.applicationsCount ?? 0,
+          acceptedCount: created.acceptedCount ?? 0,
           startTime: created.startTime,
           endTime: created.endTime,
           peopleNeeded: created.peopleNeeded,
@@ -392,6 +402,9 @@ export default function DashboardLayout() {
           estimatedSalary: created.estimatedSalary,
           imageUrl: created.imageUrl,
           postedBy: created.postedBy,
+          postedById: created.postedById,
+          postedByRole: created.postedByRole,
+          postedByAvatar: created.postedByAvatar,
           ...(created.checkInLat != null && created.checkInLng != null && created.checkInRadiusM != null
             ? { checkInLat: created.checkInLat, checkInLng: created.checkInLng, checkInRadiusM: created.checkInRadiusM }
             : {}),
@@ -446,6 +459,24 @@ export default function DashboardLayout() {
     return () => document.removeEventListener("mousedown", close);
   }, [unpaidBreakOpen]);
 
+  useEffect(() => {
+    if (!staffDropdownOpen) return;
+    const close = (e: MouseEvent) => {
+      if (staffDropdownRef.current && !staffDropdownRef.current.contains(e.target as Node)) setStaffDropdownOpen(false);
+    };
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, [staffDropdownOpen]);
+
+  useEffect(() => {
+    if (!salaryDropdownOpen) return;
+    const close = (e: MouseEvent) => {
+      if (salaryDropdownRef.current && !salaryDropdownRef.current.contains(e.target as Node)) setSalaryDropdownOpen(false);
+    };
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, [salaryDropdownOpen]);
+
   // Keep page start consistent between dashboard sections. Must be before any conditional return (Rules of Hooks).
   useEffect(() => {
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
@@ -472,10 +503,10 @@ export default function DashboardLayout() {
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
           </svg>
         </button>
-        <div className="flex items-center gap-2 min-w-0">
+        <Link to="/dashboard" className="flex items-center gap-2 min-w-0" onClick={closeSidebar} aria-label="Work2Now – acasă dashboard">
           <img src="/LogoWork2Now.png" alt="Work2Now" className="h-7 w-auto" />
           <span className="font-bold text-gray-900 truncate">Work2Now</span>
-        </div>
+        </Link>
         {isCustomer && (
           <button
             type="button"
@@ -507,10 +538,10 @@ export default function DashboardLayout() {
         `}
       >
         <div className="p-4 border-b border-secondary/10 flex items-center justify-between gap-2 flex-shrink-0">
-          <div className="flex items-center gap-2">
+          <Link to="/dashboard" className="flex items-center gap-2" onClick={closeSidebar} aria-label="Work2Now – acasă dashboard">
             <img src="/LogoWork2Now.png" alt="Work2Now" className="h-8 w-auto" />
             <span className="font-bold text-gray-900">Work2Now</span>
-          </div>
+          </Link>
           <button type="button" onClick={closeSidebar} className="md:hidden p-2 rounded-lg text-gray-500 hover:bg-gray-100" aria-label="Închide">
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
           </button>
@@ -601,13 +632,13 @@ export default function DashboardLayout() {
       </aside>
 
       <main key={location.pathname} className="flex-1 pt-14 md:pt-0 p-4 md:p-8 page-enter min-w-0">
-        <DashboardContext.Provider value={{ openPostJobModal: () => setShowPostJob(true), jobsAdded, addJob, removeJob, availableToWork, setAvailableToWork, jobsLoadError, userRating: userRating ?? null }}>
+        <DashboardContext.Provider value={{ openPostJobModal: () => setShowPostJob(true), jobsAdded, addJob, removeJob, refreshJobs: fetchJobsForCustomer, availableToWork, setAvailableToWork, jobsLoadError, userRating: userRating ?? null }}>
           <Outlet />
         </DashboardContext.Provider>
       </main>
 
-      {/* Modal Posteaza un job – doar pentru Customer */}
-      {isCustomer && showPostJob && (
+      {/* Modal Posteaza un job – doar pentru Customer (portal în body pentru centrare viewport) */}
+      {isCustomer && showPostJob && createPortal(
         <div
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 modal-overlay-enter"
           onClick={() => {
@@ -652,7 +683,6 @@ export default function DashboardLayout() {
                   {[
                     { id: "one-day" as const, labelKey: "dashboard.oneDayJob", descKey: "dashboard.oneDayJobDesc", icon: "calendar" },
                     { id: "multi-day" as const, labelKey: "dashboard.multiDayJob", descKey: "dashboard.multiDayJobDesc", icon: "multi" },
-                    { id: "full-time" as const, labelKey: "dashboard.fullTimeRecruitment", descKey: "dashboard.fullTimeRecruitmentDesc", icon: "lock" },
                   ].map(({ id, labelKey, descKey, icon }) => (
                     <button
                       key={id}
@@ -670,9 +700,6 @@ export default function DashboardLayout() {
                         )}
                         {icon === "multi" && (
                           <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" /></svg>
-                        )}
-                        {icon === "lock" && (
-                          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
                         )}
                       </span>
                       <div className="min-w-0 flex-1">
@@ -788,15 +815,15 @@ export default function DashboardLayout() {
                     const address = jobAddress.trim() || (form.elements.namedItem("address") as HTMLInputElement)?.value?.trim();
                     const dateVal = jobDate || (form.elements.namedItem("jobDate") as HTMLInputElement)?.value?.trim();
                     const endDateVal = jobEndDate || (form.elements.namedItem("jobEndDate") as HTMLInputElement)?.value?.trim();
-                    const peopleVal = (form.elements.namedItem("numberOfStaff") as HTMLInputElement)?.value?.trim();
-                    const salaryVal = (form.elements.namedItem("estimatedSalary") as HTMLInputElement)?.value?.trim();
+                    const peopleVal = (form.elements.namedItem("numberOfStaff") as HTMLSelectElement)?.value?.trim();
+                    const salaryVal = (form.elements.namedItem("estimatedSalary") as HTMLSelectElement)?.value?.trim();
                     const toYmdToday = () => {
                       const d = new Date();
                       return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
                     };
                     const isYmd = (v?: string) => !!v && /^\d{4}-\d{2}-\d{2}$/.test(v);
                     const normalizedDate = isYmd(dateVal) ? dateVal : toYmdToday();
-                    const normalizedEndDate = isYmd(endDateVal) ? endDateVal : undefined;
+                    const normalizedEndDate = selectedJobType === "multi-day" && isYmd(endDateVal) ? endDateVal : undefined;
                     if (jobTitle && address && selectedJobType) {
                       const ok = await addJob({
                         job: jobTitle,
@@ -873,21 +900,84 @@ export default function DashboardLayout() {
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <label className="block min-w-0">
                           <span className="text-sm font-medium text-gray-700">{t("dashboard.numberOfStaff")}</span>
-                          <input
-                            name="numberOfStaff"
-                            type="text"
-                            placeholder={t("dashboard.numberOfStaffPlaceholder")}
-                            className="mt-1 block w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:ring-2 focus:ring-primary focus:border-primary transition-colors"
-                          />
+                          <input type="hidden" name="numberOfStaff" value={staffCountSelect} readOnly />
+                          <div ref={staffDropdownRef} className="mt-1 relative">
+                            <button
+                              type="button"
+                              onClick={() => { setStaffDropdownOpen((v) => !v); setSalaryDropdownOpen(false); }}
+                              aria-expanded={staffDropdownOpen}
+                              aria-haspopup="listbox"
+                              className="w-full flex items-center justify-between gap-2 px-4 py-2.5 rounded-xl border border-gray-200 bg-white text-left text-gray-900 shadow-sm transition-all hover:border-gray-300 focus:ring-2 focus:ring-primary focus:border-primary"
+                            >
+                              <span className="font-medium">{staffCountSelect}</span>
+                              <svg className={`w-5 h-5 text-gray-400 flex-shrink-0 transition-transform ${staffDropdownOpen ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                            </button>
+                            {staffDropdownOpen && (
+                              <div
+                                role="listbox"
+                                aria-label={t("dashboard.numberOfStaff")}
+                                className="absolute left-0 right-0 top-full z-[70] mt-1.5 max-h-64 overflow-y-auto rounded-xl border border-gray-200 bg-white shadow-lg py-1.5 dropdown-enter origin-top"
+                              >
+                                {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => (
+                                  <button
+                                    key={n}
+                                    type="button"
+                                    role="option"
+                                    aria-selected={staffCountSelect === String(n)}
+                                    onMouseDown={(e) => { e.preventDefault(); setStaffCountSelect(String(n)); setStaffDropdownOpen(false); }}
+                                    className={`block w-full text-left px-4 py-2.5 text-sm font-medium transition-colors ${staffCountSelect === String(n) ? "bg-primary/10 text-primary" : "text-gray-700 hover:bg-gray-50"}`}
+                                  >
+                                    {n}
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                          </div>
                         </label>
                         <label className="block min-w-0">
                           <span className="text-sm font-medium text-gray-700">{t("dashboard.estimatedSalary")}</span>
-                          <input
-                            name="estimatedSalary"
-                            type="text"
-                            placeholder={t("dashboard.estimatedSalaryPlaceholder")}
-                            className="mt-1 block w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:ring-2 focus:ring-primary focus:border-primary transition-colors"
-                          />
+                          <input type="hidden" name="estimatedSalary" value={salarySelect} readOnly />
+                          <div ref={salaryDropdownRef} className="mt-1 relative">
+                            <button
+                              type="button"
+                              onClick={() => { setSalaryDropdownOpen((v) => !v); setStaffDropdownOpen(false); }}
+                              aria-expanded={salaryDropdownOpen}
+                              aria-haspopup="listbox"
+                              className="w-full flex items-center justify-between gap-2 px-4 py-2.5 rounded-xl border border-gray-200 bg-white text-left text-gray-900 shadow-sm transition-all hover:border-gray-300 focus:ring-2 focus:ring-primary focus:border-primary"
+                            >
+                              <span className="font-medium">{salarySelect || "—"}</span>
+                              <svg className={`w-5 h-5 text-gray-400 flex-shrink-0 transition-transform ${salaryDropdownOpen ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                            </button>
+                            {salaryDropdownOpen && (
+                              <div
+                                role="listbox"
+                                aria-label={t("dashboard.estimatedSalary")}
+                                className="absolute left-0 right-0 top-full z-[70] mt-1.5 max-h-64 overflow-y-auto rounded-xl border border-gray-200 bg-white shadow-lg py-1.5 dropdown-enter origin-top"
+                              >
+                                <button
+                                  type="button"
+                                  role="option"
+                                  aria-selected={salarySelect === ""}
+                                  onMouseDown={(e) => { e.preventDefault(); setSalarySelect(""); setSalaryDropdownOpen(false); }}
+                                  className={`block w-full text-left px-4 py-2.5 text-sm font-medium transition-colors ${salarySelect === "" ? "bg-primary/10 text-primary" : "text-gray-700 hover:bg-gray-50"}`}
+                                >
+                                  —
+                                </button>
+                                {["500 MDL", "750 MDL", "1000 MDL", "1500 MDL", "2000 MDL", "2500 MDL", "3000 MDL", "5000 MDL"].map((v) => (
+                                  <button
+                                    key={v}
+                                    type="button"
+                                    role="option"
+                                    aria-selected={salarySelect === v}
+                                    onMouseDown={(e) => { e.preventDefault(); setSalarySelect(v); setSalaryDropdownOpen(false); }}
+                                    className={`block w-full text-left px-4 py-2.5 text-sm font-medium transition-colors ${salarySelect === v ? "bg-primary/10 text-primary" : "text-gray-700 hover:bg-gray-50"}`}
+                                  >
+                                    {v}
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                          </div>
                         </label>
                       </div>
                       <label className="block">
@@ -1038,19 +1128,21 @@ export default function DashboardLayout() {
                           label={t("dashboard.endTime")}
                         />
                       </div>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div className={selectedJobType === "one-day" ? "" : "grid grid-cols-1 sm:grid-cols-2 gap-4"}>
                         <DatePicker
                           name="jobDate"
                           value={jobDate}
                           onChange={setJobDate}
-                          label={t("dashboard.dateFrom")}
+                          label={selectedJobType === "one-day" ? t("dashboard.date") : t("dashboard.dateFrom")}
                         />
-                        <DatePicker
-                          name="jobEndDate"
-                          value={jobEndDate}
-                          onChange={setJobEndDate}
-                          label={t("dashboard.dateTo")}
-                        />
+                        {selectedJobType === "multi-day" && (
+                          <DatePicker
+                            name="jobEndDate"
+                            value={jobEndDate}
+                            onChange={setJobEndDate}
+                            label={t("dashboard.dateTo")}
+                          />
+                        )}
                       </div>
                       <label className="block">
                         <span className="text-sm font-medium text-gray-700 mb-1 block">{t("dashboard.unpaidBreak")}</span>
@@ -1141,10 +1233,11 @@ export default function DashboardLayout() {
               </>
             )}
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
-      {isCustomer && (
+      {isCustomer && createPortal(
         <AddressPickerModal
           open={showAddressModal}
           onClose={() => setShowAddressModal(false)}
@@ -1155,7 +1248,8 @@ export default function DashboardLayout() {
           }}
           initialAddress={jobAddress}
           defaultRadiusM={200}
-        />
+        />,
+        document.body
       )}
 
       {isCustomer && (
@@ -1174,7 +1268,7 @@ export default function DashboardLayout() {
         />
       )}
 
-      {isCustomer && showJobTitleModal && (
+      {isCustomer && showJobTitleModal && createPortal(
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50 modal-overlay-enter" onClick={() => setShowJobTitleModal(false)}>
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] flex flex-col overflow-hidden modal-content-enter" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between p-4 border-b border-gray-100 flex-shrink-0">
@@ -1201,7 +1295,8 @@ export default function DashboardLayout() {
               </div>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

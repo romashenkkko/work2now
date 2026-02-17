@@ -128,6 +128,7 @@ export type JobResponse = {
   endDate?: string;
   jobType?: string;
   applicationsCount?: number;
+  acceptedCount?: number;
   startTime?: string;
   endTime?: string;
   peopleNeeded?: string;
@@ -136,6 +137,10 @@ export type JobResponse = {
   checkInLat?: number;
   checkInLng?: number;
   checkInRadiusM?: number;
+  postedBy?: string;
+  postedById?: string;
+  postedByRole?: string;
+  postedByAvatar?: string;
 };
 
 export const jobsApi = {

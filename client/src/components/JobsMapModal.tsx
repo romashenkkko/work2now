@@ -25,7 +25,7 @@ const myLocationIcon = L.icon({
   popupAnchor: [1, -34],
 });
 
-type JobWithLocation = { job: string; location: string };
+type JobWithLocation = { job: string; location: string; lat?: number; lng?: number };
 type GeocodedJob = { lat: number; lon: number; job: string; location: string };
 
 function FitBounds({ positions }: { positions: [number, number][] }) {
@@ -87,12 +87,33 @@ export default function JobsMapModal({ open, onClose, jobs, showMyLocation = fal
       setMyLocation(null);
       return;
     }
-    navigator.geolocation.getCurrentPosition(
-      (pos) => setMyLocation([pos.coords.latitude, pos.coords.longitude]),
-      () => setMyLocation(null),
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
-    );
-    return () => setMyLocation(null);
+    const opts: PositionOptions = {
+      enableHighAccuracy: true,
+      timeout: 20000,
+      maximumAge: 0,
+    };
+    // Folosim watchPosition câteva secunde și alegem poziția cu cea mai bună acuratețe (minim accuracy în metri)
+    let best: { lat: number; lng: number; accuracy: number } | null = null;
+    const onPos = (pos: GeolocationPosition) => {
+      const acc = pos.coords.accuracy ?? 9999;
+      if (best === null || acc < best.accuracy) {
+        best = { lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: acc };
+        setMyLocation([best.lat, best.lng]);
+      }
+    };
+    const watchId = navigator.geolocation.watchPosition(onPos, () => {
+      if (best) setMyLocation([best.lat, best.lng]);
+      else setMyLocation(null);
+    }, opts);
+    const fallback = setTimeout(() => {
+      navigator.geolocation.clearWatch(watchId);
+      if (best) setMyLocation([best.lat, best.lng]);
+    }, 8000);
+    return () => {
+      clearTimeout(fallback);
+      navigator.geolocation.clearWatch(watchId);
+      setMyLocation(null);
+    };
   }, [open, showMyLocation]);
 
   useEffect(() => {
@@ -100,23 +121,31 @@ export default function JobsMapModal({ open, onClose, jobs, showMyLocation = fal
       setMarkers([]);
       return;
     }
-    const withLocation = jobs.filter((j) => j.location?.trim());
-    if (withLocation.length === 0) {
-      setMarkers([]);
-      return;
-    }
+    // Joburi cu coordonate directe (checkInLat/checkInLng) – le afișăm imediat
+    const withCoords = jobs.filter((j) => typeof j.lat === "number" && typeof j.lng === "number");
+    const withAddressOnly = jobs.filter((j) => j.location?.trim() && !(typeof j.lat === "number" && typeof j.lng === "number"));
+    const results: GeocodedJob[] = withCoords.map((j) => ({
+      lat: j.lat!,
+      lon: j.lng!,
+      job: j.job,
+      location: j.location || "",
+    }));
+    setMarkers([...results]);
+    if (withAddressOnly.length === 0) return;
     setLoading(true);
-    const results: GeocodedJob[] = [];
     let index = 0;
     const run = () => {
-      if (index >= withLocation.length) {
+      if (index >= withAddressOnly.length) {
         setMarkers(results);
         setLoading(false);
         return;
       }
-      const job = withLocation[index];
+      const job = withAddressOnly[index];
       geocodeAddress(job.location).then((coord) => {
         if (coord) results.push({ lat: coord[0], lon: coord[1], job: job.job, location: job.location });
+        index += 1;
+        setTimeout(run, 1100);
+      }).catch(() => {
         index += 1;
         setTimeout(run, 1100);
       });

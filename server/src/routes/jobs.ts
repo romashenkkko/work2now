@@ -104,9 +104,13 @@ async function validateGeoForJob(
 function rowToJob(r: Record<string, unknown>): Record<string, unknown> {
   const postedByName = r.posted_by_name ?? (r as Record<string, unknown>).postedByName;
   const name = typeof postedByName === "string" && postedByName.trim() ? postedByName.trim() : undefined;
+  const postedByUserId = r.posted_by_user_id ?? r.user_id;
+  const postedByRole = r.posted_by_role;
+  const postedByAvatar = r.posted_by_avatar;
   const checkInLat = r.check_in_lat != null ? Number(r.check_in_lat) : undefined;
   const checkInLng = r.check_in_lng != null ? Number(r.check_in_lng) : undefined;
   const checkInRadiusM = r.check_in_radius_m != null ? Number(r.check_in_radius_m) : undefined;
+  const acceptedCount = r.accepted_count != null ? Number(r.accepted_count) : 0;
   return {
     id: String(r.id),
     job: r.job,
@@ -117,6 +121,7 @@ function rowToJob(r: Record<string, unknown>): Record<string, unknown> {
     endDate: r.end_date ?? undefined,
     jobType: r.job_type ?? undefined,
     applicationsCount: r.applications_count ?? 0,
+    acceptedCount,
     startTime: r.start_time ?? undefined,
     endTime: r.end_time ?? undefined,
     peopleNeeded: r.people_needed ?? undefined,
@@ -124,6 +129,9 @@ function rowToJob(r: Record<string, unknown>): Record<string, unknown> {
     estimatedSalary: r.estimated_salary ?? undefined,
     imageUrl: r.image_url ?? undefined,
     postedBy: name,
+    postedById: postedByUserId != null ? String(postedByUserId) : undefined,
+    postedByRole: typeof postedByRole === "string" && postedByRole.trim() ? postedByRole.trim() : undefined,
+    postedByAvatar: typeof postedByAvatar === "string" && postedByAvatar.trim() ? postedByAvatar.trim() : undefined,
     ...(Number.isFinite(checkInLat) && Number.isFinite(checkInLng) && Number.isFinite(checkInRadiusM) && checkInRadiusM! > 0
       ? { checkInLat, checkInLng, checkInRadiusM }
       : {}),
@@ -148,6 +156,10 @@ router.get("/", authMiddleware, async (req: ReqWithUser, res: Response): Promise
   if (customerLike) {
     const [r] = await db.query(
       `SELECT j.*,
+              (SELECT COUNT(*) FROM applications a WHERE a.job_id = j.id AND LOWER(TRIM(COALESCE(a.status,''))) = 'accepted') AS accepted_count,
+              u.Id AS posted_by_user_id,
+              u.Role AS posted_by_role,
+              COALESCE(ep.ProfilePictureFileId, NULL) AS posted_by_avatar,
               COALESCE(
                 bp.CompanyName,
                 TRIM(CONCAT(ep.Name, ' ', ep.Surname)),
@@ -165,6 +177,10 @@ router.get("/", authMiddleware, async (req: ReqWithUser, res: Response): Promise
   } else {
     const [r] = await db.query(
       `SELECT j.*,
+              (SELECT COUNT(*) FROM applications a WHERE a.job_id = j.id AND LOWER(TRIM(COALESCE(a.status,''))) = 'accepted') AS accepted_count,
+              u.Id AS posted_by_user_id,
+              u.Role AS posted_by_role,
+              COALESCE(ep.ProfilePictureFileId, NULL) AS posted_by_avatar,
               COALESCE(
                 bp.CompanyName,
                 TRIM(CONCAT(ep.Name, ' ', ep.Surname)),
@@ -268,6 +284,9 @@ router.post("/", authMiddleware, async (req: ReqWithUser, res: Response): Promis
     // Fetch created job for response
     const [r] = await conn.query(
       `SELECT j.*,
+              u.Id AS posted_by_user_id,
+              u.Role AS posted_by_role,
+              COALESCE(ep.ProfilePictureFileId, NULL) AS posted_by_avatar,
               COALESCE(
                 bp.CompanyName,
                 TRIM(CONCAT(ep.Name, ' ', ep.Surname)),

@@ -1,9 +1,9 @@
 import { useContext, useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "../hooks/useAuth";
-import { DashboardContext, getApplications, setApplications, type Application } from "./DashboardLayout";
+import { DashboardContext, getApplications, setApplications, JobTitleIcon, JOB_TITLE_OPTIONS, type Application } from "./DashboardLayout";
 import { jobsApi, ratingsApi } from "../api/client";
-import { Briefcase, MapPin, Calendar, User, Mail } from "lucide-react";
+import { MapPin, Calendar, User, Mail } from "lucide-react";
 import StarRating from "../components/StarRating";
 
 function ApplicantAvatar({ staffAvatar }: { staffAvatar?: string }) {
@@ -48,7 +48,7 @@ function formatAppDate(ymd: string): string {
 export default function DashboardAplicatii() {
   const { t } = useTranslation();
   const { user } = useAuth();
-  const { jobsAdded } = useContext(DashboardContext);
+  const { jobsAdded, refreshJobs } = useContext(DashboardContext);
   const [applications, setApplicationsState] = useState<Record<string, Application[]>>({});
 
   const refreshApplications = () => {
@@ -110,7 +110,10 @@ export default function DashboardAplicatii() {
   const setStatus = (jobId: string, applicationId: string, status: "accepted" | "refused") => {
     jobsApi
       .setApplicationStatus(applicationId, status)
-      .then(() => refreshApplications())
+      .then(() => {
+        refreshApplications();
+        refreshJobs();
+      })
       .catch(() => {
         const app = getApplications();
         const list = app[jobId] || [];
@@ -124,16 +127,112 @@ export default function DashboardAplicatii() {
   const isCustomer = user?.role === "customer";
   const myJobs = isCustomer ? jobsAdded : [];
 
+  /** Iconița jobului după titlu (Ospătar -> waiter, Barman -> bartender, etc.) */
+  const getJobIconId = (jobTitle: string | undefined): string => {
+    if (!jobTitle) return "";
+    const opt = JOB_TITLE_OPTIONS.find((o) => t(o.labelKey) === jobTitle);
+    return opt?.id ?? "";
+  };
+
+  // Staff: istoricul aplicațiilor (joburi la care a aplicat)
+  type StaffAppItem = {
+    jobId: string;
+    job?: { id: string; job: string; location?: string; date?: string; endDate?: string; status?: string };
+    app: { status: string; applicationId: string; workSessions: { workDate: string; checkedInAt?: string; checkedOutAt?: string }[] };
+  };
+  const [staffHistory, setStaffHistory] = useState<StaffAppItem[]>([]);
+  const [staffHistoryLoading, setStaffHistoryLoading] = useState(false);
+  useEffect(() => {
+    if (user?.role !== "staff") return;
+    setStaffHistoryLoading(true);
+    Promise.all([jobsApi.myApplications(), jobsApi.list()])
+      .then(([appRes, jobsRes]) => {
+        const byJob = appRes.byJob ?? {};
+        const jobs = (jobsRes.jobs || []) as { id: string; job: string; location?: string; date?: string; endDate?: string; status?: string }[];
+        const list: StaffAppItem[] = Object.entries(byJob).map(([jobId, app]) => ({
+          jobId,
+          job: jobs.find((j) => String(j.id) === jobId),
+          app: {
+            status: app.status,
+            applicationId: app.applicationId,
+            workSessions: app.workSessions ?? [],
+          },
+        }));
+        setStaffHistory(list);
+      })
+      .catch(() => setStaffHistory([]))
+      .finally(() => setStaffHistoryLoading(false));
+  }, [user?.role, user?.id]);
+
   if (!isCustomer) {
     return (
       <>
-        <header className="mb-8">
-          <h1 className="text-2xl font-bold text-gray-900">{t("dashboard.aplicatii")}</h1>
-          <p className="text-gray-600">{t("dashboard.myApplications")}</p>
+        <header className="mb-6 md:mb-8 p-5 md:p-6 rounded-2xl bg-gradient-to-br from-white via-[#faf8ff] to-[#f3efff] border border-[rgba(122,99,241,0.12)] shadow-[0_4px_20px_rgba(122,99,241,0.08)]">
+          <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-[#1e1c2f]">{t("dashboard.aplicatii")}</h1>
+          <p className="text-gray-500 text-sm mt-1.5 max-w-md">{t("dashboard.myApplications")}</p>
         </header>
-        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-8 text-center">
-          <p className="text-gray-500">Aici vor apărea aplicațiile tale la joburi.</p>
-        </div>
+        {staffHistoryLoading ? (
+          <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-8 text-center">
+            <p className="text-gray-500">Se încarcă aplicațiile...</p>
+          </div>
+        ) : staffHistory.length === 0 ? (
+          <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-8 text-center">
+            <p className="text-gray-500">Aici vor apărea aplicațiile tale la joburi.</p>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {staffHistory.map(({ jobId, job, app }) => (
+              <article
+                key={jobId}
+                className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden"
+              >
+                <div className="p-4 sm:p-5">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+                        <JobTitleIcon jobId={getJobIconId(job?.job)} className="w-5 h-5 text-primary shrink-0" size={20} />
+                        {job?.job ?? `Job #${jobId}`}
+                      </h2>
+                      {job?.location && (
+                        <p className="text-sm text-gray-600 mt-1 flex items-center gap-1.5">
+                          <MapPin className="w-4 h-4 shrink-0" />
+                          <span className="truncate">{job.location}</span>
+                        </p>
+                      )}
+                      {job?.date && (
+                        <p className="text-sm text-gray-500 mt-0.5 flex items-center gap-1.5">
+                          <Calendar className="w-4 h-4 shrink-0" />
+                          {job.date}
+                          {job.endDate && job.endDate !== job.date ? ` – ${job.endDate}` : ""}
+                        </p>
+                      )}
+                    </div>
+                    <span className={`inline-flex px-3 py-1.5 rounded-xl text-sm font-medium shrink-0 ${
+                      app.status === "accepted" ? "bg-green-100 text-green-800" :
+                      app.status === "refused" ? "bg-red-100 text-red-800" : "bg-amber-100 text-amber-800"
+                    }`}>
+                      {app.status === "accepted" ? t("dashboard.accepted") : app.status === "refused" ? t("dashboard.refused") : t("dashboard.pending")}
+                    </span>
+                  </div>
+                  {app.workSessions && app.workSessions.length > 0 && (
+                    <div className="mt-4 pt-4 border-t border-gray-100">
+                      <h3 className="text-sm font-semibold text-gray-700 mb-2">{t("dashboard.workSessions")}</h3>
+                      <ul className="space-y-1.5 text-sm text-gray-600">
+                        {app.workSessions.map((s) => (
+                          <li key={s.workDate} className="flex flex-wrap items-center gap-x-3 gap-y-0.5">
+                            <span className="font-medium">{formatAppDate(s.workDate)}</span>
+                            {s.checkedInAt && <span>{t("dashboard.checkedInAt")} {formatAppTime(s.checkedInAt)}</span>}
+                            {s.checkedOutAt && <span>{t("dashboard.checkedOutAt")} {formatAppTime(s.checkedOutAt)}</span>}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              </article>
+            ))}
+          </div>
+        )}
       </>
     );
   }
@@ -147,9 +246,9 @@ export default function DashboardAplicatii() {
 
   return (
     <>
-      <header className="mb-6 md:mb-8">
-        <h1 className="text-2xl font-bold text-gray-900">{t("dashboard.aplicatii")}</h1>
-        <p className="text-gray-600">Vezi aplicațiile candidaților la joburile tale.</p>
+      <header className="mb-6 md:mb-8 p-5 md:p-6 rounded-2xl bg-gradient-to-br from-white via-[#faf8ff] to-[#f3efff] border border-[rgba(122,99,241,0.12)] shadow-[0_4px_20px_rgba(122,99,241,0.08)]">
+        <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-[#1e1c2f]">{t("dashboard.aplicatii")}</h1>
+        <p className="text-gray-500 text-sm mt-1.5 max-w-md">Vezi aplicațiile candidaților la joburile tale.</p>
       </header>
 
       {jobsWithApplicants.length === 0 ? (
@@ -165,7 +264,7 @@ export default function DashboardAplicatii() {
             >
               <div className="p-4 sm:p-5 border-b border-gray-100">
                 <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-                  <Briefcase className="w-5 h-5 text-primary" />
+                  <JobTitleIcon jobId={getJobIconId(job.job)} className="w-5 h-5 text-primary shrink-0" size={20} />
                   {job.job}
                 </h2>
                 {job.location && (

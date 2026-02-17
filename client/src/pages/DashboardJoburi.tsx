@@ -87,6 +87,7 @@ export default function DashboardJoburi() {
           endDate: j.endDate,
           jobType: j.jobType,
           applicationsCount: j.applicationsCount ?? 0,
+          acceptedCount: j.acceptedCount ?? 0,
           startTime: j.startTime,
           endTime: j.endTime,
           peopleNeeded: j.peopleNeeded,
@@ -94,6 +95,9 @@ export default function DashboardJoburi() {
           estimatedSalary: j.estimatedSalary,
           imageUrl: j.imageUrl,
           postedBy: j.postedBy ?? (j.posted_by_name as string),
+          postedById: j.postedById,
+          postedByRole: j.postedByRole,
+          postedByAvatar: j.postedByAvatar,
           checkInLat: j.checkInLat != null ? Number(j.checkInLat) : undefined,
           checkInLng: j.checkInLng != null ? Number(j.checkInLng) : undefined,
           checkInRadiusM: j.checkInRadiusM != null ? Number(j.checkInRadiusM) : undefined,
@@ -438,11 +442,20 @@ export default function DashboardJoburi() {
     return { workDate: todayYMD, ...fromApp, ...opt } as { workDate: string; checkedInAt?: string; checkedOutAt?: string };
   };
 
+  const isJobFull = (row: JobRow) => {
+    const needed = parseInt(String(row.peopleNeeded ?? "1"), 10) || 1;
+    return (row.acceptedCount ?? 0) >= needed;
+  };
+
   if (isStaff) {
     const myApp = (jobId: string) => applicationsByJob[String(jobId)];
-    const staffJobsWithLocation = publicJobs.filter((j) => j.location?.trim());
+    const isAcceptedToJob = (row: JobRow) => myApp(normJobId(row.id))?.status === "accepted";
+    const showJobForStaff = (row: JobRow) => !isJobFull(row) || isAcceptedToJob(row);
+    const staffJobsWithLocation = publicJobs.filter((j) => j.location?.trim() && showJobForStaff(j));
+    const staffJobsForMap = publicJobs.filter((j) => showJobForStaff(j) && ((j.location?.trim()) || (j.checkInLat != null && j.checkInLng != null)));
     const q = searchQuery.trim().toLowerCase();
     const filteredJobs = publicJobs.filter((row) => {
+      if (!showJobForStaff(row)) return false;
       const matchSearch = !q || (row.job?.toLowerCase().includes(q) || (row.location ?? "").toLowerCase().includes(q));
       const matchCategory = categoryFilter === "all" || (row.jobType ?? "") === categoryFilter;
       const matchLocation = locationFilter === "all" || (row.location?.trim() ?? "") === locationFilter;
@@ -578,19 +591,19 @@ export default function DashboardJoburi() {
             </div>
           </div>
         )}
-        <header className="mb-6 md:mb-8 flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">{t("dashboard.joburi")}</h1>
-            <p className="text-gray-600">{t("dashboard.staffJoburiDesc")}</p>
+        <header className="mb-6 md:mb-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 p-5 md:p-6 rounded-2xl bg-gradient-to-br from-white via-[#faf8ff] to-[#f3efff] border border-[rgba(122,99,241,0.12)] shadow-[0_4px_20px_rgba(122,99,241,0.08)]">
+          <div className="min-w-0">
+            <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-[#1e1c2f]">{t("dashboard.joburi")}</h1>
+            <p className="text-gray-500 text-sm mt-1.5 max-w-md">{t("dashboard.staffJoburiDesc")}</p>
           </div>
-          {staffJobsWithLocation.length > 0 && (
+          {staffJobsForMap.length > 0 && (
             <div className="flex justify-end sm:flex-shrink-0">
               <button
                 type="button"
                 onClick={() => setShowMapModal(true)}
                 aria-label={t("dashboard.showMap")}
                 title={t("dashboard.showMap")}
-                className="flex items-center justify-center w-12 h-12 rounded-2xl border-2 border-primary bg-white text-primary hover:bg-primary hover:text-white transition-colors shadow-sm"
+                className="flex items-center justify-center w-12 h-12 rounded-2xl bg-gradient-to-br from-primary to-[#9d7bff] text-white shadow-[0_8px_20px_rgba(122,99,241,0.3)] hover:shadow-[0_12px_28px_rgba(122,99,241,0.4)] hover:-translate-y-0.5 transition-all duration-200"
               >
                 <Map className="w-6 h-6 shrink-0" />
               </button>
@@ -741,12 +754,12 @@ export default function DashboardJoburi() {
                         </div>
                       </>
                     )}
-                    <span className="absolute top-3 right-3 px-3 py-1 rounded-full text-xs font-medium bg-white/25 text-white backdrop-blur-sm">
-                      {row.status}
-                    </span>
-                  </div>
-                  <div className="p-4 sm:p-5 flex-1 flex flex-col">
-                    <h2 className="text-lg font-bold text-gray-900 mb-3">{row.job}</h2>
+                <span className="absolute top-3 right-3 px-3 py-1 rounded-full text-xs font-medium bg-white/25 text-white backdrop-blur-sm">
+                  {row.status}
+                </span>
+              </div>
+              <div className="p-4 sm:p-5 flex-1 flex flex-col min-h-0">
+                <h2 className="text-lg font-bold text-gray-900 mb-3">{row.job}</h2>
                     <ul className="space-y-2 text-sm text-gray-600 flex-1">
                       {(row.startTime || row.endTime) && (
                         <li className="flex items-center gap-2">
@@ -768,13 +781,24 @@ export default function DashboardJoburi() {
                       )}
                     </ul>
                     {row.postedBy && (
-                      <div className="flex items-center gap-2 mt-3 pt-3 border-t border-gray-100">
-                        <span className="flex-shrink-0 w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-semibold text-sm">
-                          {row.postedBy.charAt(0).toUpperCase()}
-                        </span>
-                        <span className="text-sm text-gray-600">
-                          {t("dashboard.postedBy")}: <span className="font-medium text-gray-900">{row.postedBy}</span>
-                        </span>
+                      <div className="flex items-center gap-3 mt-3 pt-3 border-t border-gray-100">
+                        <div className="relative flex-shrink-0 w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center overflow-hidden">
+                          <span className="text-primary font-semibold text-sm">{row.postedBy.charAt(0).toUpperCase()}</span>
+                          {row.postedByAvatar && (
+                            <img
+                              src={row.postedByAvatar}
+                              alt=""
+                              className="absolute inset-0 w-full h-full object-cover"
+                              onError={(e) => { e.currentTarget.style.display = "none"; }}
+                            />
+                          )}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-medium text-gray-900 truncate">{row.postedBy}</p>
+                          <span className="inline-block mt-0.5 px-2 py-0.5 rounded-md text-xs font-medium bg-primary/10 text-primary border border-primary/20">
+                            {(() => { const r = (row.postedByRole ?? "").toLowerCase(); return r === "staff" ? t("dashboard.roleStaff") : r === "admin" ? t("dashboard.roleAdmin") : t("dashboard.roleCustomer"); })()}
+                          </span>
+                        </div>
                       </div>
                     )}
                     <div className="mt-4 pt-4 border-t border-gray-100 space-y-2">
@@ -836,7 +860,12 @@ export default function DashboardJoburi() {
         <JobsMapModal
           open={showMapModal}
           onClose={() => setShowMapModal(false)}
-          jobs={staffJobsWithLocation.map((j) => ({ job: j.job, location: j.location ?? "" }))}
+          jobs={staffJobsForMap.map((j) => ({
+            job: j.job,
+            location: j.location ?? "",
+            lat: j.checkInLat,
+            lng: j.checkInLng,
+          }))}
           showMyLocation={isStaff}
         />
         <JobScheduleModal
@@ -890,22 +919,12 @@ export default function DashboardJoburi() {
 
   return (
     <>
-      <header className="mb-6 md:mb-8 flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">{t("dashboard.joburi")}</h1>
-          <p className="text-gray-600">Gestionează anunțurile de joburi publicate.</p>
+      <header className="mb-6 md:mb-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 p-5 md:p-6 rounded-2xl bg-gradient-to-br from-white via-[#faf8ff] to-[#f3efff] border border-[rgba(122,99,241,0.12)] shadow-[0_4px_20px_rgba(122,99,241,0.08)]">
+        <div className="min-w-0">
+          <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-[#1e1c2f]">{t("dashboard.joburi")}</h1>
+          <p className="text-gray-500 text-sm mt-1.5 max-w-md">Gestionează anunțurile de joburi publicate.</p>
         </div>
-        <div className="flex justify-end sm:flex-shrink-0">
-          <button
-            type="button"
-            onClick={() => setShowMapModal(true)}
-            aria-label={t("dashboard.showMap")}
-            title={t("dashboard.showMap")}
-            className="flex items-center justify-center w-12 h-12 rounded-2xl border-2 border-primary bg-white text-primary hover:bg-primary hover:text-white transition-colors shadow-sm"
-          >
-            <Map className="w-6 h-6 shrink-0" />
-          </button>
-        </div>
+        {/* Harta (joburi + locația mea) – doar pentru staff; customer nu o vede */}
       </header>
 
       {jobs.length === 0 ? (
@@ -947,7 +966,7 @@ export default function DashboardJoburi() {
                   </>
                 )}
                 <span className="absolute top-3 right-3 px-3 py-1 rounded-full text-xs font-medium bg-white/25 text-white backdrop-blur-sm">
-                  {row.status}
+                  {isJobFull(row) ? t("dashboard.jobFull") : row.status}
                 </span>
               </div>
 
@@ -997,13 +1016,24 @@ export default function DashboardJoburi() {
                 </ul>
 
                 {row.postedBy && (
-                  <div className="flex items-center gap-2 mt-3 pt-3 border-t border-gray-100">
-                    <span className="flex-shrink-0 w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-semibold text-sm">
-                      {row.postedBy.charAt(0).toUpperCase()}
-                    </span>
-                    <span className="text-sm text-gray-600">
-                      {t("dashboard.postedBy")}: <span className="font-medium text-gray-900">{row.postedBy}</span>
-                    </span>
+                  <div className="flex items-center gap-3 mt-3 pt-3 border-t border-gray-100">
+                    <div className="relative flex-shrink-0 w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center overflow-hidden">
+                      <span className="text-primary font-semibold text-sm">{row.postedBy.charAt(0).toUpperCase()}</span>
+                      {row.postedByAvatar && (
+                        <img
+                          src={row.postedByAvatar}
+                          alt=""
+                          className="absolute inset-0 w-full h-full object-cover"
+                          onError={(e) => { e.currentTarget.style.display = "none"; }}
+                        />
+                      )}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium text-gray-900 truncate">{row.postedBy}</p>
+                      <span className="inline-block mt-0.5 px-2 py-0.5 rounded-md text-xs font-medium bg-primary/10 text-primary border border-primary/20">
+                        {(() => { const r = (row.postedByRole ?? "").toLowerCase(); return r === "staff" ? t("dashboard.roleStaff") : r === "admin" ? t("dashboard.roleAdmin") : t("dashboard.roleCustomer"); })()}
+                      </span>
+                    </div>
                   </div>
                 )}
 
@@ -1044,12 +1074,7 @@ export default function DashboardJoburi() {
         </div>
       )}
 
-      <JobsMapModal
-        open={showMapModal}
-        onClose={() => setShowMapModal(false)}
-        jobs={jobs.map((j) => ({ job: j.job, location: j.location ?? "" }))}
-        showMyLocation={isStaff}
-      />
+      {/* Harta cu joburi + geolocația staff – nu se afișează pentru customer */}
       <JobScheduleModal
         open={scheduleJob !== null}
         onClose={() => setScheduleJob(null)}
