@@ -113,7 +113,12 @@ export type JobPayload = {
   peopleNeeded?: string;
   duration?: string;
   estimatedSalary?: string;
+
+  // ✅ NEW: required for server validation
+  jobCategoryCode: number;   // matches enum code
+  hourlyRateBase: number;    // MDL/hour (will be validated against minHourly)
 };
+
 
 export type JobResponse = {
   id: string;
@@ -130,7 +135,12 @@ export type JobResponse = {
   peopleNeeded?: string;
   duration?: string;
   estimatedSalary?: string;
+
+  // ✅ NEW
+  jobCategoryCode?: number;
+  hourlyRateBase?: number;
 };
+
 export type StaffApplicationItem = {
   id: string;
   jobId: string;

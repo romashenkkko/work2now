@@ -47,9 +47,29 @@ async function optionalQuery(conn: { query: (sql: string, params?: unknown[]) =>
   }
 }
 
+async function getJobCategoryHourlyMin(conn: { query: (sql: string, params?: unknown[]) => Promise<unknown> }, code: number): Promise<number | null> {
+  const [rows] = await conn.query(
+    "SELECT HourlyMin FROM job_categories WHERE Code = ? LIMIT 1",
+    [code]
+  ) as [Record<string, unknown>[], unknown];
+
+  const r = Array.isArray(rows) && rows[0] ? rows[0] : null;
+  if (!r) return null;
+
+  const v = Number((r as any).HourlyMin);
+  return Number.isFinite(v) ? v : null;
+}
+
+function toNumber(v: unknown): number | null {
+  const n = typeof v === "number" ? v : Number(String(v ?? "").trim());
+  return Number.isFinite(n) ? n : null;
+}
+
+
 function rowToJob(r: Record<string, unknown>): Record<string, unknown> {
   const postedByName = r.posted_by_name ?? (r as Record<string, unknown>).postedByName;
   const name = typeof postedByName === "string" && postedByName.trim() ? postedByName.trim() : undefined;
+
   return {
     id: String(r.id),
     job: r.job,
@@ -67,8 +87,13 @@ function rowToJob(r: Record<string, unknown>): Record<string, unknown> {
     estimatedSalary: r.estimated_salary ?? undefined,
     imageUrl: r.image_url ?? undefined,
     postedBy: name,
+
+    // ✅ NEW (so frontend can see/store them)
+    jobCategoryCode: r.job_category_code ?? undefined,
+    hourlyRateBase: r.hourly_rate_base ?? undefined,
   };
 }
+
 
 /** GET /api/jobs - customer/business: doar joburile proprii; staff/admin: toate joburile */
 router.get("/", authMiddleware, async (req: ReqWithUser, res: Response): Promise<void> => {
@@ -146,6 +171,19 @@ router.post("/", authMiddleware, async (req: ReqWithUser, res: Response): Promis
   const statusClass = String(b.statusClass ?? "bg-gray-100 text-gray-700");
   const date = String(b.date ?? "");
   const imageUrl = typeof b.imageUrl === "string" && b.imageUrl.trim() ? b.imageUrl.trim() : null;
+    // ✅ NEW: category + hourly rate base (MDL/hour)
+    const jobCategoryCode = toNumber((b as any).jobCategoryCode);
+    const hourlyRateBase = toNumber((b as any).hourlyRateBase);
+  
+    if (jobCategoryCode == null || jobCategoryCode <= 0) {
+      res.status(400).json({ error: "jobCategoryCode is required and must be a positive number." });
+      return;
+    }
+    if (hourlyRateBase == null || hourlyRateBase <= 0) {
+      res.status(400).json({ error: "hourlyRateBase is required and must be a positive number." });
+      return;
+    }
+  
   if (!job || !location) {
     res.status(400).json({ error: "job și location sunt obligatorii." });
     return;
@@ -155,6 +193,18 @@ router.post("/", authMiddleware, async (req: ReqWithUser, res: Response): Promis
   const conn = await db.getConnection();
   try {
     await conn.beginTransaction();
+        // ✅ NEW: validate hourlyRateBase against job_categories.HourlyMin
+        const minHourly = await getJobCategoryHourlyMin(conn, jobCategoryCode);
+        if (minHourly == null) {
+          await conn.rollback();
+          res.status(400).json({ error: "Invalid jobCategoryCode (not found in job_categories)." });
+          return;
+        }
+        if (hourlyRateBase < minHourly) {
+          await conn.rollback();
+          res.status(400).json({ error: `Hourly rate is too low. Min allowed for this category: ${minHourly} MDL/hour.` });
+          return;
+        }
     
     // MIGRATION FIX: Get UUID for user_id
     const userUuid = await getUserUuidFromLegacyId(userId);
@@ -166,26 +216,48 @@ router.post("/", authMiddleware, async (req: ReqWithUser, res: Response): Promis
     const vacancyStatusCode = stringToVacancyStatus(status);
     
     // Insert job
-    const [result] = await conn.query(
-      `INSERT INTO jobs (user_id, job, location, status, status_class, date, end_date, job_type, applications_count, start_time, end_time, people_needed, duration, estimated_salary, image_url)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?)`,
-      [
-        userId,
-        job,
-        location,
-        status,
-        statusClass,
-        date,
-        b.endDate ?? null,
-        b.jobType ?? null,
-        b.startTime ?? null,
-        b.endTime ?? null,
-        b.peopleNeeded ?? null,
-        b.duration ?? null,
-        b.estimatedSalary ?? null,
-        imageUrl,
-      ]
-    ) as [{ insertId: number }, unknown];
+       // Insert job (✅ now includes category + hourly base)
+       const [result] = await conn.query(
+        `INSERT INTO jobs (
+            user_id,
+            job,
+            location,
+            status,
+            status_class,
+            date,
+            end_date,
+            job_type,
+            applications_count,
+            start_time,
+            end_time,
+            people_needed,
+            duration,
+            estimated_salary,
+            image_url,
+            job_category_code,
+            hourly_rate_base
+         )
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          userId,
+          job,
+          location,
+          status,
+          statusClass,
+          date,
+          (b as any).endDate ?? null,
+          (b as any).jobType ?? null,
+          (b as any).startTime ?? null,
+          (b as any).endTime ?? null,
+          (b as any).peopleNeeded ?? null,
+          (b as any).duration ?? null,
+          (b as any).estimatedSalary ?? null,
+          imageUrl,
+          jobCategoryCode,
+          hourlyRateBase,
+        ]
+      ) as [{ insertId: number }, unknown];
+  
     const id = result.insertId;
     
     // MIGRATION FIX: Update UUID and enum columns

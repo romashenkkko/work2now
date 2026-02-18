@@ -134,6 +134,7 @@ async function dropLegacySchema(conn: mysql.Connection): Promise<void> {
     "application_work_sessions",
     "applications",
     "jobs",
+    "job_categories",
     "experiences",
     "branches",
     "business_profiles",
@@ -150,6 +151,58 @@ async function dropLegacySchema(conn: mysql.Connection): Promise<void> {
     } catch {
       /* ignore */
     }
+  }
+}
+
+/**
+ * Job categories table seed (min salary per hour in MDL).
+ * NOTE: `Code` is INT to match your existing JobCategory enum values.
+ * You can later align enum numeric values with these codes.
+ */
+type JobCategorySeed = {
+  code: number;
+  title: string;
+  hourlyMin: number; // MDL/hour
+};
+
+const JOB_CATEGORY_SEED: JobCategorySeed[] = [
+  { code: 1, title: "Barback", hourlyMin: 30},
+  { code: 2, title: "Barista", hourlyMin: 30 },
+  { code: 3, title: "Bartender", hourlyMin: 45},
+  { code: 4, title: "Cashier", hourlyMin: 40},
+  { code: 5, title: "Chef", hourlyMin: 50},
+  { code: 6, title: "Chef (Head)", hourlyMin: 90},
+  { code: 7, title: "Chef (Pastry)", hourlyMin: 80},
+  { code: 8, title: "Chef (Sous)", hourlyMin: 60},
+  { code: 9, title: "Chef (Sushi)", hourlyMin: 45},
+  { code: 10, title: "Cleaner", hourlyMin: 20},
+  { code: 11, title: "Cocktail Bartender", hourlyMin: 70},
+  { code: 12, title: "Dishwasher", hourlyMin: 40},
+  { code: 13, title: "Event Crew", hourlyMin: 0 }, // TODO: set real min/max when known
+  { code: 14, title: "Grocery Store Worker", hourlyMin: 60},
+  { code: 15, title: "Head Waiter", hourlyMin: 50},
+  { code: 16, title: "Housekeeper", hourlyMin: 45},
+  { code: 17, title: "Maintenance", hourlyMin: 65},
+  { code: 18, title: "Pizzaiolo", hourlyMin: 60},
+  { code: 19, title: "Receptionist", hourlyMin: 30},
+  { code: 20, title: "Sommelier", hourlyMin: 65},
+  { code: 21, title: "T2S App Tester", hourlyMin: 70},
+  { code: 22, title: "Waiter", hourlyMin: 65}, // ✅ must not be less than 65 MDL/hour
+];
+
+async function seedJobCategories(conn: mysql.Connection): Promise<void> {
+  // Upsert by unique Code
+  for (const c of JOB_CATEGORY_SEED) {
+    await conn.query(
+      `
+      INSERT INTO \`job_categories\` (\`Id\`, \`Code\`, \`Title\`, \`HourlyMin\`)
+      VALUES (?, ?, ?, ?, ?)
+      ON DUPLICATE KEY UPDATE
+        \`Title\` = VALUES(\`Title\`),
+        \`HourlyMin\` = VALUES(\`HourlyMin\`),
+      `,
+      [randomUUID(), c.code, c.title, c.hourlyMin ?? null]
+    );
   }
 }
 
@@ -189,7 +242,9 @@ export async function initDatabase(): Promise<void> {
       const cols = await getUserTableShape(conn);
       const ok = isCanonicalUsersTable(cols);
       if (!ok && !FORCE_RESET) {
-        throw new Error("[DB] Found legacy `users` table with wrong columns. Set DB_FORCE_RESET=1 to rebuild schema.");
+        throw new Error(
+          "[DB] Found legacy `users` table with wrong columns. Set DB_FORCE_RESET=1 to rebuild schema."
+        );
       }
       if (!ok && FORCE_RESET) {
         await conn.query(`DROP TABLE IF EXISTS \`users\``);
@@ -209,7 +264,7 @@ export async function initDatabase(): Promise<void> {
         \`Role\` INT NOT NULL,
         \`CreatedAt\` DATETIME NOT NULL,
         INDEX \`idx_users_email\` (\`Email\`),
-        INDEX \`idx_users	dis_idx\` (\`Role\`)
+        INDEX \`idx_users_dis_idx\` (\`Role\`)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
     `);
     await ensureInnoDB(conn, "users");
@@ -243,7 +298,6 @@ export async function initDatabase(): Promise<void> {
     await ensureInnoDB(conn, "business_profiles");
 
     // Branches (BusinessProfile has ICollection<Branch>)
-    // ✅ Added contact person fields: ContactPersonName / ContactPersonSurname
     await conn.query(`
       CREATE TABLE IF NOT EXISTS \`branches\` (
         \`Id\` ${GUID_COL} PRIMARY KEY,
@@ -278,6 +332,22 @@ export async function initDatabase(): Promise<void> {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
     `);
     await ensureInnoDB(conn, "experiences");
+
+    // -------------------------
+    // 1.5) Job Categories table (NEW)
+    // -------------------------
+    await conn.query(`
+      CREATE TABLE IF NOT EXISTS \`job_categories\` (
+        \`Id\` ${GUID_COL} PRIMARY KEY,
+        \`Code\` INT NOT NULL,
+        \`Title\` VARCHAR(150) NOT NULL,
+        \`HourlyMin\` INT NOT NULL,
+        \`CreatedAt\` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY \`uq_job_categories_code\` (\`Code\`),
+        INDEX \`idx_job_categories_title\` (\`Title\`)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
+    `);
+    await ensureInnoDB(conn, "job_categories");
 
     // -------------------------
     // 2) Add foreign keys
@@ -344,6 +414,26 @@ export async function initDatabase(): Promise<void> {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
     `);
     await ensureInnoDB(conn, "jobs");
+
+    // NEW columns for salary/category logic (idempotent)
+    await ensureColumn(conn, "jobs", "job_category_code", "INT NULL");
+    await ensureColumn(conn, "jobs", "hourly_rate_base", "DECIMAL(10,2) NULL");
+
+    // FK from jobs.job_category_code -> job_categories.Code (optional but recommended)
+    if (!(await fkExists(conn, "jobs", "fk_jobs_job_category_code_job_categories_code"))) {
+      try {
+        await conn.query(`
+          ALTER TABLE \`jobs\`
+          ADD CONSTRAINT \`fk_jobs_job_category_code_job_categories_code\`
+          FOREIGN KEY (\`job_category_code\`) REFERENCES \`job_categories\`(\`Code\`)
+          ON DELETE SET NULL
+        `);
+      } catch (e) {
+        // If the column/table exists but types/collation issues occur, don't crash init.
+        // You can remove this catch once everything is stable.
+        console.warn("[DB] Could not add FK fk_jobs_job_category_code_job_categories_code:", e);
+      }
+    }
 
     if (!(await fkExists(conn, "jobs", "fk_jobs_user_id_users_id"))) {
       await conn.query(`
@@ -456,6 +546,11 @@ export async function initDatabase(): Promise<void> {
     }
 
     // -------------------------
+    // 3.5) Seeders
+    // -------------------------
+    await seedJobCategories(conn);
+
+    // -------------------------
     // 4) Sanity check
     // -------------------------
     const usersCols = await getUserTableShape(conn);
@@ -464,7 +559,7 @@ export async function initDatabase(): Promise<void> {
     }
 
     await conn.query("SELECT 1");
-    console.log("[DB] MySQL conectat. Schema .NET (users + profiles) este OK.");
+    console.log("[DB] MySQL conectat. Schema .NET (users + profiles) este OK. job_categories seeded.");
   } finally {
     if (conn) await conn.end();
   }

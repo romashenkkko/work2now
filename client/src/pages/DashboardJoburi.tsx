@@ -94,6 +94,9 @@ export default function DashboardJoburi() {
           estimatedSalary: j.estimatedSalary,
           imageUrl: j.imageUrl,
           postedBy: j.postedBy ?? (j.posted_by_name as string),
+          jobCategoryCode: (j as any).jobCategoryCode,
+          hourlyRateBase: (j as any).hourlyRateBase,
+
         }));
         setPublicJobs(list);
         const byJob = appRes.byJob ?? {};

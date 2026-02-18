@@ -47,6 +47,8 @@ export type JobRow = {
   estimatedSalary?: string;
   imageUrl?: string;
   postedBy?: string;
+  jobCategoryCode?: number;
+  hourlyRateBase?: number;
 };
 
 export type Application = {
@@ -231,6 +233,11 @@ export default function DashboardLayout() {
   const [showPostJob, setShowPostJob] = useState(false);
   const [jobSubmitted, setJobSubmitted] = useState(false);
   const [postJobError, setPostJobError] = useState("");
+  const [postJobFieldErrors, setPostJobFieldErrors] = useState<{
+    hourlyRateBase?: string;
+    jobCategoryCode?: string;
+  }>({});
+  
   const [postJobStep, setPostJobStep] = useState<"choose-type" | "how-to-post" | "form">("choose-type");
   const [selectedJobType, setSelectedJobType] = useState<"one-day" | "multi-day" | "full-time" | null>(null);
   const [postMethod, setPostMethod] = useState<"scratch" | "template" | null>(null);
@@ -381,6 +388,8 @@ export default function DashboardLayout() {
           estimatedSalary: created.estimatedSalary,
           imageUrl: created.imageUrl,
           postedBy: created.postedBy,
+          
+
         };
         setJobsAdded((prev) => [...prev, newJob]);
       setJobsLoadError(false);
@@ -769,7 +778,14 @@ export default function DashboardLayout() {
                   onSubmit={async (e) => {
                     e.preventDefault();
                     setPostJobError("");
+                    setPostJobFieldErrors({});
                     const form = e.currentTarget;
+                    const categoryRaw = (form.elements.namedItem("jobCategoryCode") as HTMLSelectElement)?.value?.trim();
+const hourlyRaw = (form.elements.namedItem("hourlyRateBase") as HTMLInputElement)?.value?.trim();
+
+const jobCategoryCode = categoryRaw ? Number(categoryRaw) : NaN;
+const hourlyRateBase = hourlyRaw ? Number(hourlyRaw) : NaN;
+
                     const jobTitle = jobTitleSelected ? t(JOB_TITLE_OPTIONS.find((o) => o.id === jobTitleSelected)?.labelKey ?? "") : (form.elements.namedItem("jobTitle") as HTMLInputElement)?.value?.trim();
                     const address = jobAddress.trim() || (form.elements.namedItem("address") as HTMLInputElement)?.value?.trim();
                     const dateVal = jobDate || (form.elements.namedItem("jobDate") as HTMLInputElement)?.value?.trim();
@@ -792,6 +808,8 @@ export default function DashboardLayout() {
                         date: normalizedDate,
                         endDate: normalizedEndDate,
                         jobType: selectedJobType,
+                        jobCategoryCode,
+                        hourlyRateBase,
                         startTime: formStartTime,
                         endTime: formEndTime,
                         peopleNeeded: peopleVal || undefined,
@@ -871,6 +889,47 @@ export default function DashboardLayout() {
                             className="mt-1 block w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:ring-2 focus:ring-primary focus:border-primary transition-colors"
                           />
                         </label>
+                        <label className="block min-w-0">
+  <span className="text-sm font-medium text-gray-700">Job Category</span>
+  <select
+    name="jobCategoryCode"
+    className={`mt-1 block w-full px-4 py-2.5 rounded-xl border ${
+      postJobFieldErrors.jobCategoryCode ? "border-red-400" : "border-gray-200"
+    } focus:ring-2 focus:ring-primary focus:border-primary transition-colors`}
+    defaultValue=""
+  >
+    <option value="" disabled>Choose category</option>
+    {/* TODO: replace these with your real enum codes */}
+    <option value="1">Category 1</option>
+    <option value="2">Category 2</option>
+    <option value="3">Category 3</option>
+  </select>
+  {postJobFieldErrors.jobCategoryCode && (
+    <p className="mt-1 text-sm text-red-600">{postJobFieldErrors.jobCategoryCode}</p>
+  )}
+</label>
+<label className="block min-w-0">
+  <span className="text-sm font-medium text-gray-700">Hourly rate (MDL/hour)</span>
+  <input
+    name="hourlyRateBase"
+    type="number"
+    inputMode="decimal"
+    min="0"
+    step="0.01"
+    placeholder="e.g. 65"
+    className={`mt-1 block w-full px-4 py-2.5 rounded-xl border ${
+      postJobFieldErrors.hourlyRateBase ? "border-red-400" : "border-gray-200"
+    } focus:ring-2 focus:ring-primary focus:border-primary transition-colors`}
+    onChange={() => {
+      // clear only this field error when user edits
+      setPostJobFieldErrors((prev) => ({ ...prev, hourlyRateBase: undefined }));
+    }}
+  />
+  {postJobFieldErrors.hourlyRateBase && (
+    <p className="mt-1 text-sm text-red-600">{postJobFieldErrors.hourlyRateBase}</p>
+  )}
+</label>
+
                       </div>
                       <label className="block">
                         <span className="text-sm font-medium text-gray-700">{t("dashboard.jobImage")}</span>

@@ -28,14 +28,22 @@ export enum ExperienceDuration {
 }
 
 export enum JobCategory {
-  Waiter = 1,
-  Chef = 2,
-  Dishwasher = 3,
-  Barista = 4,
-  Bartender = 5,
-  Cleaner = 6,
-  Receptionist = 7,
-  CookAssistant = 8,
+  Barback = 9,
+  Cashier = 10,
+  ChefHead = 11,
+  ChefPastry = 12,
+  ChefSous = 13,
+  ChefSushi = 14,
+  CocktailBartender = 15,
+  EventCrew = 16,
+  GroceryStoreWorker = 17,
+  HeadWaiter = 18,
+  Housekeeper = 19,
+  Maintenance = 20,
+  Pizzaiolo = 21,
+  Sommelier = 22,
+  T2SAppTester = 23,
+
 }
 
 export enum UserRole {
