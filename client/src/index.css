@@ -1326,7 +1326,7 @@
 @keyframes dropdownIn {
   from {
     opacity: 0;
-    transform: scaleY(0.92) translateY(-4px);
+    transform: scaleY(0.95) translateY(-8px);
   }
   to {
     opacity: 1;
@@ -1334,10 +1334,57 @@
   }
 }
 .dropdown-enter {
-  animation: dropdownIn 0.2s ease-out forwards;
+  animation: dropdownIn 0.25s cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 @media (prefers-reduced-motion: reduce) {
   .dropdown-enter { animation: none !important; }
+}
+
+/* Animație apariție card Raport pe job */
+@keyframes reportCardEnter {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.report-card-enter {
+  animation: reportCardEnter 0.5s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+/* Animație apariție conținut raport (după selectare job) */
+@keyframes reportContentEnter {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.report-content-enter {
+  animation: reportContentEnter 0.4s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+@media (prefers-reduced-motion: reduce) {
+  .report-card-enter,
+  .report-content-enter { animation: none !important; opacity: 1; transform: none; }
+}
+
+/* Animație la selectarea unei zile în calendar (ex. din Toate zilele → ziua 17) */
+@keyframes calendarDaySelect {
+  0% { transform: scale(1); box-shadow: none; }
+  40% { transform: scale(1.25); box-shadow: 0 0 0 4px rgba(122, 99, 241, 0.35); }
+  70% { transform: scale(1.08); box-shadow: 0 0 0 2px rgba(122, 99, 241, 0.2); }
+  100% { transform: scale(1); box-shadow: none; }
+}
+.calendar-day-select {
+  animation: calendarDaySelect 0.4s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+@media (prefers-reduced-motion: reduce) {
+  .calendar-day-select { animation: none !important; }
 }
 
 .auth-page {

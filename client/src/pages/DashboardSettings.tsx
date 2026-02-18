@@ -1,6 +1,7 @@
 import { useState, useContext } from "react";
 import { useTranslation } from "react-i18next";
 import { Lock, Eye, EyeOff, MapPin, Briefcase } from "lucide-react";
+import StarRating from "../components/StarRating";
 import { authApi } from "../api/client";
 import { useAuth } from "../hooks/useAuth";
 import { DashboardContext } from "./DashboardLayout";
@@ -101,7 +102,7 @@ const MENU_BUTTONS: { id: Section; labelKey: string }[] = [
 export default function DashboardSettings() {
   const { t, i18n } = useTranslation();
   const { user } = useAuth();
-  const { availableToWork, setAvailableToWork } = useContext(DashboardContext);
+  const { availableToWork, setAvailableToWork, userRating } = useContext(DashboardContext);
   const [activeSection, setActiveSection] = useState<Section | null>(null);
 
   const [currentPassword, setCurrentPassword] = useState("");
@@ -176,6 +177,12 @@ export default function DashboardSettings() {
           <div className="min-w-0 hidden sm:block">
             <p className="font-semibold text-gray-900 truncate">{user?.name ?? ""}</p>
             <p className="text-xs text-gray-500 truncate">{user?.email ?? ""}</p>
+            <div className="flex items-center gap-1 mt-1">
+              <StarRating value={userRating?.average ?? 0} size={14} />
+              {userRating && userRating.count > 0 && (
+                <span className="text-xs text-gray-500">({userRating.count})</span>
+              )}
+            </div>
           </div>
         </div>
       </header>

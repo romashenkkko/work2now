@@ -86,6 +86,7 @@ export default function DashboardJoburi() {
           endDate: j.endDate,
           jobType: j.jobType as JobType | undefined,
           applicationsCount: j.applicationsCount ?? 0,
+          acceptedCount: j.acceptedCount ?? 0,
           startTime: j.startTime,
           endTime: j.endTime,
           peopleNeeded: j.peopleNeeded,
@@ -95,7 +96,13 @@ export default function DashboardJoburi() {
           postedBy: j.postedBy ?? (j.posted_by_name as string),
           jobCategoryCode: (j as any).jobCategoryCode,
           hourlyRateBase: (j as any).hourlyRateBase,
-
+          jobCategoryTitle: (j as any).jobCategoryTitle,
+          postedById: j.postedById,
+          postedByRole: j.postedByRole,
+          postedByAvatar: j.postedByAvatar,
+          checkInLat: j.checkInLat != null ? Number(j.checkInLat) : undefined,
+          checkInLng: j.checkInLng != null ? Number(j.checkInLng) : undefined,
+          checkInRadiusM: j.checkInRadiusM != null ? Number(j.checkInRadiusM) : undefined,
         }));
         setPublicJobs(list);
         const byJob = appRes.byJob ?? {};
@@ -243,41 +250,83 @@ export default function DashboardJoburi() {
     setCheckInOutError(null);
     const now = new Date().toISOString();
     const sessionKey = jid ? `${jid}-${wd}` : (Object.entries(applicationsByJob).find(([, a]) => String(a.applicationId) === String(applicationId))?.[0] ?? "") + "-" + wd;
-    if (sessionKey.length > wd.length + 1) {
+    const job = jobId ? publicJobs.find((j) => String(j.id) === String(jobId)) : null;
+    const jobRow = job as { checkInLat?: number; checkInLng?: number; checkInRadiusM?: number } | undefined;
+    const needsGeo = jobRow?.checkInLat != null && jobRow?.checkInLng != null && jobRow?.checkInRadiusM != null;
+
+    // Do not show "Început" / Check-out until server confirms; for geo jobs, verify location first, then check-in
+    const applyOptimisticCheckIn = () => {
+      if (sessionKey.length > wd.length + 1) {
+        setOptimisticSessions((prev) => {
+          const base = { ...getOptimisticBase(), ...prev };
+          const next = { ...base, [sessionKey]: { ...base[sessionKey], checkedInAt: now } };
+          persistOptimistic(next);
+          return next;
+        });
+      }
+      applyCheckInOptimistic(applicationId, wd, jobId);
+    };
+
+    const clearOptimisticForSession = () => {
+      if (sessionKey.length <= wd.length + 1) return;
       setOptimisticSessions((prev) => {
-        const base = { ...getOptimisticBase(), ...prev };
-        const next = { ...base, [sessionKey]: { ...base[sessionKey], checkedInAt: now } };
+        const next = { ...prev };
+        delete next[sessionKey];
         persistOptimistic(next);
         return next;
       });
-    }
-    applyCheckInOptimistic(applicationId, wd, jobId);
-    jobsApi
-      .checkIn(applicationId, wd)
-      .then(async (data) => {
-        showCheckInOutConfirm("checkin");
-        try {
-          await new Promise((r) => setTimeout(r, 350));
-          await refreshStaffData({ silent: true });
-        } catch (_) {
-          // refresh failed; UI already updated optimistically
-        }
-      })
-      .catch(async (err) => {
-        setConfirmCheckIn(null);
-        setConfirmCheckOut(null);
-        const msg = err instanceof Error ? err.message : (typeof err === "object" && err !== null && "error" in (err as { error?: string }) ? (err as { error: string }).error : String(err)) || "Eroare la check-in";
-        const msgLower = String(msg).toLowerCase();
-        if (msgLower.includes("deja efectuat") || msgLower.includes("already")) {
-          try { await refreshStaffData({ silent: true }); } catch (_) {}
+    };
+
+    const doCheckIn = (geo?: { lat: number; lng: number }) => {
+      jobsApi
+        .checkIn(applicationId, wd, geo)
+        .then(async () => {
+          applyOptimisticCheckIn();
           showCheckInOutConfirm("checkin");
-        } else {
-          try { await refreshStaffData({ silent: true }); } catch (_) {}
-          setCheckInOutError(msg);
+          try {
+            await new Promise((r) => setTimeout(r, 350));
+            await refreshStaffData({ silent: true });
+          } catch (_) {}
+        })
+        .catch(async (err) => {
+          setConfirmCheckIn(null);
+          setConfirmCheckOut(null);
+          clearOptimisticForSession();
+          const msg = err instanceof Error ? err.message : (typeof err === "object" && err !== null && "error" in (err as { error?: string }) ? (err as { error: string }).error : String(err)) || "Eroare la check-in";
+          const msgLower = String(msg).toLowerCase();
+          if (msgLower.includes("deja efectuat") || msgLower.includes("already")) {
+            try { await refreshStaffData({ silent: true }); } catch (_) {}
+            showCheckInOutConfirm("checkin");
+          } else {
+            try { await refreshStaffData({ silent: true }); } catch (_) {}
+            setCheckInOutError(
+              /not within the allowed location radius/i.test(msg) ? t("dashboard.locationRadiusError") : msg
+            );
+            setTimeout(() => setCheckInOutError(null), 5000);
+          }
+        })
+        .finally(() => setCheckInOutLoading(null));
+    };
+
+    if (needsGeo && typeof navigator !== "undefined" && navigator.geolocation) {
+      // 1. Request location permission and get coordinates
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          // 2. Send check-in with lat/lng; server validates distance ≤ 200 m
+          doCheckIn({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+        },
+        () => {
+          setCheckInOutError(t("dashboard.checkInShareLocation"));
           setTimeout(() => setCheckInOutError(null), 5000);
-        }
-      })
-      .finally(() => setCheckInOutLoading(null));
+          setCheckInOutLoading(null);
+        },
+        { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+      );
+    } else {
+      // Job without geo: apply optimistic then call API
+      applyOptimisticCheckIn();
+      doCheckIn();
+    }
   };
   const handleCheckOut = (e: React.MouseEvent, applicationId: string, workDate?: string, jobId?: string) => {
     e?.stopPropagation?.();
@@ -290,41 +339,77 @@ export default function DashboardJoburi() {
     setCheckInOutError(null);
     const now = new Date().toISOString();
     const sessionKeyOut = jid ? `${jid}-${wdOut}` : (Object.entries(applicationsByJob).find(([, a]) => String(a.applicationId) === String(applicationId))?.[0] ?? "") + "-" + wdOut;
-    if (sessionKeyOut.length > wdOut.length + 1) {
+    const jobOut = jobId ? publicJobs.find((j) => String(j.id) === String(jobId)) : null;
+    const jobOutRow = jobOut as { checkInLat?: number; checkInLng?: number; checkInRadiusM?: number } | undefined;
+    const needsGeoOut = jobOutRow?.checkInLat != null && jobOutRow?.checkInLng != null && jobOutRow?.checkInRadiusM != null;
+
+    const applyOptimisticCheckOut = () => {
+      if (sessionKeyOut.length > wdOut.length + 1) {
+        setOptimisticSessions((prev) => {
+          const base = { ...getOptimisticBase(), ...prev };
+          const next = { ...base, [sessionKeyOut]: { ...base[sessionKeyOut], checkedOutAt: now } };
+          persistOptimistic(next);
+          return next;
+        });
+      }
+      applyCheckOutOptimistic(applicationId, wdOut, jobId);
+    };
+
+    const clearOptimisticForSessionOut = () => {
+      if (sessionKeyOut.length <= wdOut.length + 1) return;
       setOptimisticSessions((prev) => {
-        const base = { ...getOptimisticBase(), ...prev };
-        const next = { ...base, [sessionKeyOut]: { ...base[sessionKeyOut], checkedOutAt: now } };
+        const next = { ...prev };
+        delete next[sessionKeyOut];
         persistOptimistic(next);
         return next;
       });
-    }
-    applyCheckOutOptimistic(applicationId, wdOut, jobId);
-    jobsApi
-      .checkOut(applicationId, wdOut)
-      .then(async (data) => {
-        showCheckInOutConfirm("checkout");
-        try {
-          await new Promise((r) => setTimeout(r, 350));
-          await refreshStaffData({ silent: true });
-        } catch (_) {
-          // refresh failed; UI already updated optimistically
-        }
-      })
-      .catch(async (err) => {
-        setConfirmCheckIn(null);
-        setConfirmCheckOut(null);
-        const msg = err instanceof Error ? err.message : (typeof err === "object" && err !== null && "error" in (err as { error?: string }) ? (err as { error: string }).error : String(err)) || "Eroare la check-out";
-        const msgLower = String(msg).toLowerCase();
-        if (msgLower.includes("deja efectuat") || msgLower.includes("already")) {
-          try { await refreshStaffData({ silent: true }); } catch (_) {}
+    };
+
+    const doCheckOut = (geo?: { lat: number; lng: number }) => {
+      jobsApi
+        .checkOut(applicationId, wdOut, geo)
+        .then(async () => {
+          applyOptimisticCheckOut();
           showCheckInOutConfirm("checkout");
-        } else {
-          try { await refreshStaffData({ silent: true }); } catch (_) {}
-          setCheckInOutError(msg);
+          try {
+            await new Promise((r) => setTimeout(r, 350));
+            await refreshStaffData({ silent: true });
+          } catch (_) {}
+        })
+        .catch(async (err) => {
+          setConfirmCheckIn(null);
+          setConfirmCheckOut(null);
+          clearOptimisticForSessionOut();
+          const msg = err instanceof Error ? err.message : (typeof err === "object" && err !== null && "error" in (err as { error?: string }) ? (err as { error: string }).error : String(err)) || "Eroare la check-out";
+          const msgLower = String(msg).toLowerCase();
+          if (msgLower.includes("deja efectuat") || msgLower.includes("already")) {
+            try { await refreshStaffData({ silent: true }); } catch (_) {}
+            showCheckInOutConfirm("checkout");
+          } else {
+            try { await refreshStaffData({ silent: true }); } catch (_) {}
+            setCheckInOutError(
+              /not within the allowed location radius/i.test(msg) ? t("dashboard.locationRadiusError") : msg
+            );
+            setTimeout(() => setCheckInOutError(null), 5000);
+          }
+        })
+        .finally(() => setCheckInOutLoading(null));
+    };
+
+    if (needsGeoOut && typeof navigator !== "undefined" && navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => doCheckOut({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+        () => {
+          setCheckInOutError(t("dashboard.checkInShareLocation"));
           setTimeout(() => setCheckInOutError(null), 5000);
-        }
-      })
-      .finally(() => setCheckInOutLoading(null));
+          setCheckInOutLoading(null);
+        },
+        { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+      );
+    } else {
+      applyOptimisticCheckOut();
+      doCheckOut();
+    }
   };
   const formatTime = (iso: string) => {
     try {
@@ -359,11 +444,19 @@ export default function DashboardJoburi() {
     return { workDate: todayYMD, ...fromApp, ...opt } as { workDate: string; checkedInAt?: string; checkedOutAt?: string };
   };
 
+  const isJobFull = (row: JobRow) => {
+    const needed = parseInt(String(row.peopleNeeded ?? "1"), 10) || 1;
+    return (row.acceptedCount ?? 0) >= needed;
+  };
+
   if (isStaff) {
     const myApp = (jobId: string) => applicationsByJob[String(jobId)];
-    const staffJobsWithLocation = publicJobs.filter((j) => j.location?.trim());
+    const isAcceptedToJob = (row: JobRow) => myApp(normJobId(row.id))?.status === "accepted";
+    const showJobForStaff = (row: JobRow) => !isJobFull(row) || isAcceptedToJob(row);
+    const staffJobsForMap = publicJobs.filter((j) => showJobForStaff(j) && ((j.location?.trim()) || (j.checkInLat != null && j.checkInLng != null)));
     const q = searchQuery.trim().toLowerCase();
     const filteredJobs = publicJobs.filter((row) => {
+      if (!showJobForStaff(row)) return false;
       const matchSearch = !q || (row.job?.toLowerCase().includes(q) || (row.location ?? "").toLowerCase().includes(q));
       const matchCategory = categoryFilter === "all" || (row.jobType ?? "") === categoryFilter;
       const matchLocation = locationFilter === "all" || (row.location?.trim() ?? "") === locationFilter;
@@ -459,6 +552,13 @@ export default function DashboardJoburi() {
                       const forDateLabel = formatWorkDateLabel(confirmCheckIn?.workDate ?? confirmCheckOut?.workDate);
                       return forDateLabel ? <p className="mt-2 text-sm text-gray-600">{t("dashboard.forDate", { date: forDateLabel })}</p> : null;
                     })()}
+                    {confirmCheckIn?.jobId && (() => {
+                      const j = publicJobs.find((job) => String(job.id) === String(confirmCheckIn!.jobId)) as { checkInLat?: number; checkInLng?: number; checkInRadiusM?: number } | undefined;
+                      if (j?.checkInLat != null && j?.checkInLng != null && j?.checkInRadiusM != null) {
+                        return <p className="mt-2 text-sm text-gray-600">{t("dashboard.checkInLocationHint")}</p>;
+                      }
+                      return null;
+                    })()}
                     <div className="mt-3 flex items-center gap-2 text-sm text-gray-600">
                       <Clock className="w-4 h-4 text-gray-400 shrink-0" />
                       <span>{t("dashboard.currentTime")}: <strong className="text-gray-900 font-mono">{new Date().toLocaleTimeString("ro-RO", { hour: "2-digit", minute: "2-digit" })}</strong></span>
@@ -492,19 +592,19 @@ export default function DashboardJoburi() {
             </div>
           </div>
         )}
-        <header className="mb-6 md:mb-8 flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">{t("dashboard.joburi")}</h1>
-            <p className="text-gray-600">{t("dashboard.staffJoburiDesc")}</p>
+        <header className="mb-6 md:mb-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 p-5 md:p-6 rounded-2xl bg-gradient-to-br from-white via-[#faf8ff] to-[#f3efff] border border-[rgba(122,99,241,0.12)] shadow-[0_4px_20px_rgba(122,99,241,0.08)]">
+          <div className="min-w-0">
+            <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-[#1e1c2f]">{t("dashboard.joburi")}</h1>
+            <p className="text-gray-500 text-sm mt-1.5 max-w-md">{t("dashboard.staffJoburiDesc")}</p>
           </div>
-          {staffJobsWithLocation.length > 0 && (
+          {staffJobsForMap.length > 0 && (
             <div className="flex justify-end sm:flex-shrink-0">
               <button
                 type="button"
                 onClick={() => setShowMapModal(true)}
                 aria-label={t("dashboard.showMap")}
                 title={t("dashboard.showMap")}
-                className="flex items-center justify-center w-12 h-12 rounded-2xl border-2 border-primary bg-white text-primary hover:bg-primary hover:text-white transition-colors shadow-sm"
+                className="flex items-center justify-center w-12 h-12 rounded-2xl bg-gradient-to-br from-primary to-[#9d7bff] text-white shadow-[0_8px_20px_rgba(122,99,241,0.3)] hover:shadow-[0_12px_28px_rgba(122,99,241,0.4)] hover:-translate-y-0.5 transition-all duration-200"
               >
                 <Map className="w-6 h-6 shrink-0" />
               </button>
@@ -630,7 +730,7 @@ export default function DashboardJoburi() {
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5 md:gap-6">
-            {filteredJobs.map((row, i) => {
+            {filteredJobs.map((row) => {
               const app = myApp(normJobId(row.id));
               const status = app?.status;
               const isAccepted = status === "accepted";
@@ -659,7 +759,7 @@ export default function DashboardJoburi() {
                       {row.status}
                     </span>
                   </div>
-                  <div className="p-4 sm:p-5 flex-1 flex flex-col">
+                  <div className="p-4 sm:p-5 flex-1 flex flex-col min-h-0">
                     <h2 className="text-lg font-bold text-gray-900 mb-1">{row.job}</h2>
                     {row.jobCategoryTitle && (
                       <p className="text-sm text-gray-600 mb-3">{row.jobCategoryTitle}</p>
@@ -689,13 +789,24 @@ export default function DashboardJoburi() {
                       )}
                     </ul>
                     {row.postedBy && (
-                      <div className="flex items-center gap-2 mt-3 pt-3 border-t border-gray-100">
-                        <span className="flex-shrink-0 w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-semibold text-sm">
-                          {row.postedBy.charAt(0).toUpperCase()}
-                        </span>
-                        <span className="text-sm text-gray-600">
-                          {t("dashboard.postedBy")}: <span className="font-medium text-gray-900">{row.postedBy}</span>
-                        </span>
+                      <div className="flex items-center gap-3 mt-3 pt-3 border-t border-gray-100">
+                        <div className="relative flex-shrink-0 w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center overflow-hidden">
+                          <span className="text-primary font-semibold text-sm">{row.postedBy.charAt(0).toUpperCase()}</span>
+                          {row.postedByAvatar && (
+                            <img
+                              src={row.postedByAvatar}
+                              alt=""
+                              className="absolute inset-0 w-full h-full object-cover"
+                              onError={(e) => { e.currentTarget.style.display = "none"; }}
+                            />
+                          )}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-medium text-gray-900 truncate">{row.postedBy}</p>
+                          <span className="inline-block mt-0.5 px-2 py-0.5 rounded-md text-xs font-medium bg-primary/10 text-primary border border-primary/20">
+                            {(() => { const r = (row.postedByRole ?? "").toLowerCase(); return r === "staff" ? t("dashboard.roleStaff") : r === "admin" ? t("dashboard.roleAdmin") : t("dashboard.roleCustomer"); })()}
+                          </span>
+                        </div>
                       </div>
                     )}
                     <div className="mt-4 pt-4 border-t border-gray-100 space-y-2">
@@ -757,7 +868,13 @@ export default function DashboardJoburi() {
         <JobsMapModal
           open={showMapModal}
           onClose={() => setShowMapModal(false)}
-          jobs={staffJobsWithLocation.map((j) => ({ job: j.job, location: j.location ?? "" }))}
+          jobs={staffJobsForMap.map((j) => ({
+            job: j.job,
+            location: j.location ?? "",
+            lat: j.checkInLat,
+            lng: j.checkInLng,
+          }))}
+          showMyLocation={isStaff}
         />
         <JobScheduleModal
           open={scheduleJob !== null}
@@ -810,22 +927,12 @@ export default function DashboardJoburi() {
 
   return (
     <>
-      <header className="mb-6 md:mb-8 flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">{t("dashboard.joburi")}</h1>
-          <p className="text-gray-600">Gestionează anunțurile de joburi publicate.</p>
+      <header className="mb-6 md:mb-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 p-5 md:p-6 rounded-2xl bg-gradient-to-br from-white via-[#faf8ff] to-[#f3efff] border border-[rgba(122,99,241,0.12)] shadow-[0_4px_20px_rgba(122,99,241,0.08)]">
+        <div className="min-w-0">
+          <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-[#1e1c2f]">{t("dashboard.joburi")}</h1>
+          <p className="text-gray-500 text-sm mt-1.5 max-w-md">Gestionează anunțurile de joburi publicate.</p>
         </div>
-        <div className="flex justify-end sm:flex-shrink-0">
-          <button
-            type="button"
-            onClick={() => setShowMapModal(true)}
-            aria-label={t("dashboard.showMap")}
-            title={t("dashboard.showMap")}
-            className="flex items-center justify-center w-12 h-12 rounded-2xl border-2 border-primary bg-white text-primary hover:bg-primary hover:text-white transition-colors shadow-sm"
-          >
-            <Map className="w-6 h-6 shrink-0" />
-          </button>
-        </div>
+        {/* Harta (joburi + locația mea) – doar pentru staff; customer nu o vede */}
       </header>
 
       {jobs.length === 0 ? (
@@ -867,7 +974,7 @@ export default function DashboardJoburi() {
                   </>
                 )}
                 <span className="absolute top-3 right-3 px-3 py-1 rounded-full text-xs font-medium bg-white/25 text-white backdrop-blur-sm">
-                  {row.status}
+                  {isJobFull(row) ? t("dashboard.jobFull") : row.status}
                 </span>
               </div>
 
@@ -920,13 +1027,24 @@ export default function DashboardJoburi() {
                 </ul>
 
                 {row.postedBy && (
-                  <div className="flex items-center gap-2 mt-3 pt-3 border-t border-gray-100">
-                    <span className="flex-shrink-0 w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-semibold text-sm">
-                      {row.postedBy.charAt(0).toUpperCase()}
-                    </span>
-                    <span className="text-sm text-gray-600">
-                      {t("dashboard.postedBy")}: <span className="font-medium text-gray-900">{row.postedBy}</span>
-                    </span>
+                  <div className="flex items-center gap-3 mt-3 pt-3 border-t border-gray-100">
+                    <div className="relative flex-shrink-0 w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center overflow-hidden">
+                      <span className="text-primary font-semibold text-sm">{row.postedBy.charAt(0).toUpperCase()}</span>
+                      {row.postedByAvatar && (
+                        <img
+                          src={row.postedByAvatar}
+                          alt=""
+                          className="absolute inset-0 w-full h-full object-cover"
+                          onError={(e) => { e.currentTarget.style.display = "none"; }}
+                        />
+                      )}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium text-gray-900 truncate">{row.postedBy}</p>
+                      <span className="inline-block mt-0.5 px-2 py-0.5 rounded-md text-xs font-medium bg-primary/10 text-primary border border-primary/20">
+                        {(() => { const r = (row.postedByRole ?? "").toLowerCase(); return r === "staff" ? t("dashboard.roleStaff") : r === "admin" ? t("dashboard.roleAdmin") : t("dashboard.roleCustomer"); })()}
+                      </span>
+                    </div>
                   </div>
                 )}
 
@@ -967,11 +1085,7 @@ export default function DashboardJoburi() {
         </div>
       )}
 
-      <JobsMapModal
-        open={showMapModal}
-        onClose={() => setShowMapModal(false)}
-        jobs={jobs.map((j) => ({ job: j.job, location: j.location ?? "" }))}
-      />
+      {/* Harta cu joburi + geolocația staff – nu se afișează pentru customer */}
       <JobScheduleModal
         open={scheduleJob !== null}
         onClose={() => setScheduleJob(null)}

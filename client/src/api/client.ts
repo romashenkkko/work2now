@@ -114,9 +114,14 @@ export type JobPayload = {
   duration?: string;
   estimatedSalary?: string;
 
+
   // ✅ NEW: required for server validation
   jobCategoryCode: number;   // matches enum code
   hourlyRateBase: number;    // MDL/hour (will be validated against minHourly)
+  checkInLat?: number;
+  checkInLng?: number;
+  checkInRadiusM?: number;
+
 };
 
 
@@ -133,6 +138,7 @@ export type JobResponse = {
   endDate?: string;
   jobType?: string;
   applicationsCount?: number;
+  acceptedCount?: number;
   startTime?: string;
   endTime?: string;
   peopleNeeded?: string;
@@ -143,6 +149,12 @@ export type JobResponse = {
   // ✅ NEW
   jobCategoryCode?: number;
   hourlyRateBase?: number;
+  postedById?: string;
+  postedByRole?: string;
+  postedByAvatar?: string;
+  checkInLat?: number;
+  checkInLng?: number;
+  checkInRadiusM?: number;
 };
 
 export type StaffApplicationItem = {
@@ -170,6 +182,14 @@ export type JobCategory = {
   code: number;
   title: string;
   hourlyMin: number;
+  checkInLat?: number;
+  checkInLng?: number;
+  checkInRadiusM?: number;
+  postedBy?: string;
+  postedById?: string;
+  postedByRole?: string;
+  postedByAvatar?: string;
+
 };
 
 export const jobsApi = {
@@ -191,22 +211,50 @@ export const jobsApi = {
     }),
   completeApplication: (applicationId: string) =>
     api<{ ok: boolean }>(`/jobs/applications/${applicationId}/complete`, { method: "PATCH" }),
-  checkIn: (applicationId: string, workDate?: string) =>
-    api<{ ok: boolean; alreadyDone?: boolean }>(`/jobs/applications/${applicationId}/check-in`, { method: "PATCH", body: workDate ? JSON.stringify({ workDate }) : "{}" }),
-  checkOut: (applicationId: string, workDate?: string) =>
-    api<{ ok: boolean; alreadyDone?: boolean }>(`/jobs/applications/${applicationId}/check-out`, { method: "PATCH", body: workDate ? JSON.stringify({ workDate }) : "{}" }),
-  myApplicationsList: () =>
-    api<{ applications: StaffApplicationItem[] }>("/jobs/my-applications/list"),
+  checkIn: (applicationId: string, workDate?: string, geo?: { lat: number; lng: number }) =>
+    api<{ ok: boolean; alreadyDone?: boolean }>(`/jobs/applications/${applicationId}/check-in`, {
+      method: "PATCH",
+      body: JSON.stringify({
+        ...(workDate ? { workDate } : {}),
+        ...(geo ? { lat: geo.lat, lng: geo.lng } : {}),
+      }),
+    }),
+  checkOut: (applicationId: string, workDate?: string, geo?: { lat: number; lng: number }) =>
+    api<{ ok: boolean; alreadyDone?: boolean }>(`/jobs/applications/${applicationId}/check-out`, {
+      method: "PATCH",
+      body: JSON.stringify({
+        ...(workDate ? { workDate } : {}),
+        ...(geo ? { lat: geo.lat, lng: geo.lng } : {}),
+      }),
+    }),
+};
+
+export type ReviewItem = {
+  id: string;
+  applicationId: string;
+  jobTitle?: string;
+  otherPartyName?: string;
+  score: number;
+  comment?: string;
+  photoUrl?: string;
+  createdAt?: string;
 };
 
 export const ratingsApi = {
-  submit: (applicationId: string, score: number) =>
+  submit: (applicationId: string, score: number, comment?: string, photoUrl?: string) =>
     api<{ ok: boolean }>("/ratings", {
       method: "POST",
-      body: JSON.stringify({ applicationId, score }),
+      body: JSON.stringify({
+        applicationId: String(applicationId),
+        score: Number(score),
+        ...(comment != null && comment !== "" && { comment }),
+        ...(photoUrl != null && photoUrl !== "" && { photoUrl }),
+      }),
     }),
   getUserRating: (userId: number | string) =>
     api<{ average: number; count: number }>(`/ratings/user/${userId}`),
+  myReviews: () =>
+    api<{ given: ReviewItem[]; received: ReviewItem[] }>("/ratings/me"),
 };
 
 export type Branch = {

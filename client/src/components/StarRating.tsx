@@ -1,17 +1,21 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { Star } from "lucide-react";
 
 const MAX = 5;
 
+/** Rotunjește la cea mai apropiată jumătate (0.5, 1, 1.5, ... 5). */
+function toHalfStep(n: number): number {
+  const v = Math.max(0, Math.min(MAX, n));
+  const half = Math.round(v * 2) / 2;
+  return half === 0 ? 0.5 : half; // minim selectabil 0.5
+}
+
 type Props = {
-  /** Valoare 0–5 (poate fi zecimal pentru medie). La 0 toate stelele sunt goale. */
+  /** Valoare 0–5 (poate fi zecimal pentru medie sau selecție jumătate). */
   value: number;
-  /** Dacă true, utilizatorul poate da click pentru a seta 1–5; altfel doar afișare. */
   editable?: boolean;
   onSelect?: (score: number) => void;
-  /** Clasa pentru steaua colorată (umplută). */
   filledClassName?: string;
-  /** Clasa pentru steaua goală. */
   emptyClassName?: string;
   size?: number;
 };
@@ -25,38 +29,139 @@ export default function StarRating({
   size = 20,
 }: Props) {
   const v = Math.max(0, Math.min(MAX, value));
-  const [hoverStar, setHoverStar] = useState<number | null>(null);
-  const displayValue = editable && hoverStar != null ? hoverStar : v;
+  const [hoverValue, setHoverValue] = useState<number | null>(null);
+  const displayValue = editable && hoverValue != null ? hoverValue : v;
+
+  const fullStars = Math.floor(displayValue);
+  const remainder = displayValue - fullStars;
+  const partialFill = remainder > 0 && remainder < 1 ? remainder : 0;
+  const hasPartial = partialFill > 0;
+
+  const handleStarInteraction = useCallback(
+    (e: React.MouseEvent<HTMLButtonElement>, starIndex: number) => {
+      const target = e.currentTarget;
+      const rect = target.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const isLeftHalf = x < rect.width / 2;
+      const newValue = starIndex + (isLeftHalf ? 0.5 : 1);
+      onSelect?.(toHalfStep(newValue));
+    },
+    [onSelect]
+  );
+
+  const handleStarMouseMove = useCallback(
+    (e: React.MouseEvent<HTMLButtonElement>, starIndex: number) => {
+      const target = e.currentTarget;
+      const rect = target.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const isLeftHalf = x < rect.width / 2;
+      setHoverValue(starIndex + (isLeftHalf ? 0.5 : 1));
+    },
+    []
+  );
 
   return (
     <div
       className="inline-flex items-center gap-0.5"
       role={editable ? "group" : "img"}
-      aria-label={editable ? undefined : `Rating: ${v} din ${MAX}`}
-      onMouseLeave={() => editable && setHoverStar(null)}
+      aria-label={editable ? undefined : `Rating: ${v.toFixed(1)} din ${MAX}`}
+      onMouseLeave={() => editable && setHoverValue(null)}
     >
       {Array.from({ length: MAX }, (_, i) => {
-        const starValue = i + 1;
-        const filled = displayValue >= starValue;
+        const starIndex = i + 1; // 1..5
+        const isFullyFilled = displayValue >= starIndex;
+        const isPartialStar = hasPartial && starIndex === fullStars + 1;
+
+        if (editable) {
+          return (
+            <button
+              key={i}
+              type="button"
+              onClick={(e) => handleStarInteraction(e, i)}
+              onMouseMove={(e) => handleStarMouseMove(e, i)}
+              className="p-0.5 rounded transition-colors focus:outline-none focus:ring-2 focus:ring-amber-400/50 cursor-pointer hover:scale-110 relative"
+              aria-label={`${i + 0.5} sau ${i + 1} stele`}
+              style={{ width: size, height: size }}
+            >
+              <span className="relative inline-block w-full h-full" style={{ width: size, height: size }}>
+                <Star
+                  size={size}
+                  className={emptyClassName}
+                  fill="none"
+                  strokeWidth={2}
+                  style={{ position: "absolute", left: 0, top: 0 }}
+                />
+                {isFullyFilled ? (
+                  <Star
+                    size={size}
+                    className={filledClassName}
+                    fill="currentColor"
+                    strokeWidth={0}
+                    style={{ position: "absolute", left: 0, top: 0 }}
+                  />
+                ) : isPartialStar ? (
+                  <span
+                    className="overflow-hidden"
+                    style={{
+                      position: "absolute",
+                      left: 0,
+                      top: 0,
+                      width: `${Math.round(partialFill * 100)}%`,
+                      height: size,
+                    }}
+                  >
+                    <Star
+                      size={size}
+                      className={filledClassName}
+                      fill="currentColor"
+                      strokeWidth={0}
+                      style={{ position: "absolute", left: 0, top: 0 }}
+                    />
+                  </span>
+                ) : null}
+              </span>
+            </button>
+          );
+        }
+
         return (
-          <button
-            key={i}
-            type="button"
-            disabled={!editable}
-            onClick={() => editable && onSelect?.(starValue)}
-            onMouseEnter={() => editable && setHoverStar(starValue)}
-            className={`p-0.5 rounded transition-colors focus:outline-none focus:ring-2 focus:ring-amber-400/50 ${
-              editable ? "cursor-pointer hover:scale-110" : "cursor-default"
-            }`}
-            aria-label={editable ? `${starValue} din ${MAX} stele` : undefined}
-          >
+          <span key={i} className="relative inline-block shrink-0" style={{ width: size, height: size }}>
             <Star
               size={size}
-              className={filled ? filledClassName : emptyClassName}
-              fill={filled ? "currentColor" : "none"}
-              strokeWidth={filled ? 0 : 2}
+              className={emptyClassName}
+              fill="none"
+              strokeWidth={2}
+              style={{ position: "absolute", left: 0, top: 0 }}
             />
-          </button>
+            {isFullyFilled ? (
+              <Star
+                size={size}
+                className={filledClassName}
+                fill="currentColor"
+                strokeWidth={0}
+                style={{ position: "absolute", left: 0, top: 0 }}
+              />
+            ) : isPartialStar ? (
+              <span
+                className="overflow-hidden"
+                style={{
+                  position: "absolute",
+                  left: 0,
+                  top: 0,
+                  width: `${Math.round(partialFill * 100)}%`,
+                  height: size,
+                }}
+              >
+                <Star
+                  size={size}
+                  className={filledClassName}
+                  fill="currentColor"
+                  strokeWidth={0}
+                  style={{ position: "absolute", left: 0, top: 0 }}
+                />
+              </span>
+            ) : null}
+          </span>
         );
       })}
     </div>

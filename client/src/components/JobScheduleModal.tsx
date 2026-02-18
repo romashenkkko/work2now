@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { JobRow } from "../pages/DashboardLayout";
-import { Briefcase, Clock, MapPin, List, Calendar, Banknote, Users, AlertTriangle, Share2, User } from "lucide-react";
+import { Briefcase, Clock, MapPin, List, Calendar, Banknote, Users, AlertTriangle, Share2 } from "lucide-react";
 
 const WEEKDAY_KEYS = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"] as const;
 const MONTH_KEYS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"] as const;
@@ -122,6 +122,11 @@ function dateToYMD(d: Date): string {
   return `${y}-${m}-${day}`;
 }
 
+/** Normalize workDate for comparison (YYYY-MM-DD only). */
+function normWorkDate(s: string | undefined): string {
+  return (s || "").trim().slice(0, 10);
+}
+
 function formatTime(iso: string): string {
   try {
     const d = new Date(iso);
@@ -136,7 +141,8 @@ export default function JobScheduleModal({ open, onClose, job, myAppInfo, onChec
 
   const dates = useMemo(() => {
     if (!open || !job?.date) return [];
-    return getDatesInRange(job.date, job.endDate ?? job.date);
+    const range = getDatesInRange(job.date, job.endDate ?? job.date);
+    return range.sort((a, b) => a.getTime() - b.getTime());
   }, [open, job?.date, job?.endDate]);
 
   const formatDateLabel = (d: Date) => {
@@ -148,6 +154,8 @@ export default function JobScheduleModal({ open, onClose, job, myAppInfo, onChec
 
   const isStaffWithAccepted = myAppInfo && onCheckIn && onCheckOut;
   const workSessions = myAppInfo?.workSessions ?? [];
+
+  const isJobFull = job && (job.acceptedCount ?? 0) >= (parseInt(String(job.peopleNeeded ?? "1"), 10) || 1);
 
   if (!open) return null;
 
@@ -184,15 +192,33 @@ export default function JobScheduleModal({ open, onClose, job, myAppInfo, onChec
               )}
               <div className="flex items-center justify-between gap-2 mb-4">
                 <h3 className="text-xl font-bold text-gray-900">{job.job}</h3>
-                <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${job.statusClass}`}>
-                  {job.status}
+                <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${isJobFull ? "bg-amber-100 text-amber-800 border border-amber-200" : job.statusClass}`}>
+                  {isJobFull ? t("dashboard.jobFull") : job.status}
                 </span>
               </div>
               {job.postedBy && (
-                <p className="flex items-center gap-2 text-sm text-gray-600 mb-3">
-                  <User className="w-4 h-4 text-primary shrink-0" />
-                  <span>{t("dashboard.postedBy")}: {job.postedBy}</span>
-                </p>
+                <div className="flex items-center gap-3 mb-3 p-2.5 rounded-xl bg-gray-50 border border-gray-100">
+                  <div className="relative flex-shrink-0 w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center overflow-hidden">
+                    <span className="text-primary font-semibold text-sm">{job.postedBy.charAt(0).toUpperCase()}</span>
+                    {job.postedByAvatar && (
+                      <img
+                        src={job.postedByAvatar}
+                        alt=""
+                        className="absolute inset-0 w-full h-full object-cover"
+                        onError={(e) => { e.currentTarget.style.display = "none"; }}
+                      />
+                    )}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-gray-900">{job.postedBy}</p>
+                    <span className="inline-block mt-0.5 px-2 py-0.5 rounded-md text-xs font-medium bg-primary/10 text-primary border border-primary/20">
+                      {(() => {
+                        const r = (job.postedByRole ?? "").toLowerCase();
+                        return r === "staff" ? t("dashboard.roleStaff") : r === "admin" ? t("dashboard.roleAdmin") : t("dashboard.roleCustomer");
+                      })()}
+                    </span>
+                  </div>
+                </div>
               )}
               <ul className="space-y-2.5 text-sm text-gray-600">
                 <li className="flex items-center gap-2">
@@ -265,17 +291,25 @@ export default function JobScheduleModal({ open, onClose, job, myAppInfo, onChec
                     {t("dashboard.noDatesInRange")}
                   </li>
                 ) : (
-                  dates.map((d) => {
+                  dates.map((d, index) => {
                     const workDate = dateToYMD(d);
-                    const session = workSessions.find((s) => s.workDate === workDate);
+                    const session = workSessions.find((s) => normWorkDate(s.workDate) === workDate);
                     const loadingKey = myAppInfo ? `${myAppInfo.applicationId}-${workDate}` : "";
                     const loading = checkInOutLoading === loadingKey;
+                    const isFirstDay = index === 0;
                     return (
                       <li
                         key={d.toISOString()}
                         className="flex flex-wrap items-center justify-between gap-2 py-4 px-4 rounded-2xl bg-white border border-gray-100 shadow-sm hover:shadow-md hover:border-primary/20 transition-all text-gray-900 text-sm"
                       >
-                        <span className="font-medium">{formatDateLabel(d)}</span>
+                        <span className="font-medium">
+                          {formatDateLabel(d)}
+                          {isFirstDay && (
+                            <span className="ml-1.5 text-xs font-normal text-primary/80" title={t("dashboard.firstDay")}>
+                              ({t("dashboard.firstDay")})
+                            </span>
+                          )}
+                        </span>
                         {isStaffWithAccepted ? (
                           <div className="flex items-center gap-2 flex-shrink-0">
                             {!session?.checkedInAt ? (

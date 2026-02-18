@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Employee location map</title>
+  <link href="https://api.mapbox.com/mapbox-gl-js/v3.18.1/mapbox-gl.css" rel="stylesheet" />
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, sans-serif;
+      background: #f5f5f5;
+      color: #1a1a1a;
+    }
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 1rem;
+    }
+    h1 {
+      font-size: 1.25rem;
+      font-weight: 600;
+      margin: 0 0 0.75rem 0;
+    }
+    #map {
+      width: 100%;
+      height: 400px;
+      border-radius: 12px;
+      border: 1px solid #e0e0e0;
+      background: #e8e8e8;
+    }
+    .status {
+      margin-top: 0.75rem;
+      padding: 0.75rem 1rem;
+      border-radius: 8px;
+      font-size: 0.875rem;
+    }
+    .status.loading { background: #e3f2fd; color: #1565c0; }
+    .status.success { background: #e8f5e9; color: #2e7d32; }
+    .status.error   { background: #ffebee; color: #c62828; }
+    .status.hidden  { display: none; }
+    .coords {
+      margin-top: 0.5rem;
+      font-family: ui-monospace, monospace;
+      font-size: 0.8rem;
+      color: #555;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Employee current location</h1>
+    <div id="map"></div>
+    <div id="status" class="status loading">Requesting location permission…</div>
+    <div id="coords" class="coords"></div>
+  </div>
+
+  <script src="https://api.mapbox.com/mapbox-gl-js/v3.18.1/mapbox-gl.js"></script>
+  <script>
+    // Set your Mapbox token here or pass via query: ?token=pk...
+    const urlParams = new URLSearchParams(window.location.search);
+    const MAPBOX_TOKEN = urlParams.get('token') || 'pk.eyJ1IjoidmFzaWxlcG9wb3ZpY2kiLCJhIjoiY21scXZrZjRvMDR5dzNjc2JwajJ5ODQ1eSJ9.41o-jikXSy9CcWbKIhz8cA';
+    const MAPBOX_STYLE = 'mapbox://styles/vasilepopovici/cmlqvsvuc001601scb2aocofg';
+
+    const mapEl = document.getElementById('map');
+    const statusEl = document.getElementById('status');
+    const coordsEl = document.getElementById('coords');
+
+    let map = null;
+    let marker = null;
+    let watchId = null;
+
+    const DEFAULT_CENTER = [28.98, 46.99]; // [lng, lat] Chisinau
+    const DEFAULT_ZOOM = 15;
+
+    function setStatus(message, type) {
+      statusEl.textContent = message;
+      statusEl.className = 'status ' + (type || 'loading');
+      statusEl.classList.remove('hidden');
+    }
+
+    function setCoords(lat, lng) {
+      coordsEl.textContent = lat != null && lng != null
+        ? 'Lat: ' + lat.toFixed(6) + '  ·  Lng: ' + lng.toFixed(6)
+        : '';
+    }
+
+    function initMap(center) {
+      if (map) return;
+      center = center || DEFAULT_CENTER;
+      if (!MAPBOX_TOKEN) {
+        setStatus('Add Mapbox token (e.g. ?token=pk...) or set in page.', 'error');
+        return;
+      }
+      mapboxgl.accessToken = MAPBOX_TOKEN;
+      map = new mapboxgl.Map({
+        container: 'map',
+        style: MAPBOX_STYLE,
+        center: center,
+        zoom: DEFAULT_ZOOM
+      });
+      map.addControl(new mapboxgl.NavigationControl(), 'top-right');
+    }
+
+    function updatePosition(lat, lng) {
+      var lngLat = [lng, lat];
+      if (!map) initMap(lngLat);
+      if (!map) return;
+      if (!marker) {
+        marker = new mapboxgl.Marker().setLngLat(lngLat).addTo(map);
+      } else {
+        marker.setLngLat(lngLat);
+      }
+      map.flyTo({ center: lngLat, zoom: map.getZoom(), duration: 0 });
+      setCoords(lat, lng);
+    }
+
+    function onPositionSuccess(position) {
+      var lat = position.coords.latitude;
+      var lng = position.coords.longitude;
+      updatePosition(lat, lng);
+      setStatus('Location updated. Map is centered on your position.', 'success');
+    }
+
+    function onPositionError(err) {
+      if (watchId != null) {
+        navigator.geolocation.clearWatch(watchId);
+        watchId = null;
+      }
+      var msg = 'Location could not be retrieved.';
+      switch (err.code) {
+        case err.PERMISSION_DENIED:
+          msg = 'Location permission was denied. Enable location access to see your position on the map.';
+          break;
+        case err.POSITION_UNAVAILABLE:
+          msg = 'Location is unavailable. Check your device settings and try again.';
+          break;
+        case err.TIMEOUT:
+          msg = 'Location request timed out. Please try again.';
+          break;
+      }
+      setStatus(msg, 'error');
+      setCoords(null, null);
+      if (!map) initMap();
+    }
+
+    function startWatching() {
+      if (!navigator.geolocation) {
+        setStatus('Geolocation is not supported by your browser.', 'error');
+        initMap();
+        return;
+      }
+      navigator.geolocation.getCurrentPosition(
+        function (position) {
+          onPositionSuccess(position);
+          watchId = navigator.geolocation.watchPosition(
+            onPositionSuccess,
+            onPositionError,
+            { enableHighAccuracy: true, timeout: 10000, maximumAge: 5000 }
+          );
+        },
+        onPositionError,
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+      );
+    }
+
+    startWatching();
+  </script>
+</body>
+</html>
