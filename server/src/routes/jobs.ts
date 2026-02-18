@@ -72,7 +72,8 @@ function rowToJob(r: Record<string, unknown>): Record<string, unknown> {
 
   return {
     id: String(r.id),
-    job: r.job,
+    job: r.job, // Custom title (max 30 chars)
+    jobCategoryTitle: r.job_category_title ?? undefined, // Category name from job_categories
     location: r.location,
     status: r.status,
     statusClass: r.status_class,
@@ -95,6 +96,29 @@ function rowToJob(r: Record<string, unknown>): Record<string, unknown> {
 }
 
 
+/** GET /api/jobs/categories - Get all job categories with minimum hourly rates */
+router.get("/categories", async (_req: Request, res: Response): Promise<void> => {
+  try {
+    const [categories] = await db.query(
+      `SELECT Code, Title, HourlyMin FROM job_categories ORDER BY Code ASC`
+    ) as [{ Code: number; Title: string; HourlyMin: number }[], unknown];
+
+    const result = Array.isArray(categories)
+      ? categories.map((cat) => ({
+          code: cat.Code,
+          title: cat.Title,
+          hourlyMin: cat.HourlyMin,
+        }))
+      : [];
+
+    res.json({ categories: result });
+  } catch (e) {
+    const err = e as Error;
+    console.error("GET /api/jobs/categories error:", err);
+    res.status(500).json({ error: "Eroare la încărcarea categoriilor de job." });
+  }
+});
+
 /** GET /api/jobs - customer/business: doar joburile proprii; staff/admin: toate joburile */
 router.get("/", authMiddleware, async (req: ReqWithUser, res: Response): Promise<void> => {
   const userId = req.user?.userId;
@@ -103,7 +127,7 @@ router.get("/", authMiddleware, async (req: ReqWithUser, res: Response): Promise
     return;
   }
   const [rows] = await db.query(
-    "SELECT role FROM users WHERE id = ?",
+    "SELECT Role FROM users WHERE Id = ?",
     [userId]
   ) as [unknown[], unknown];
   const roleRaw = getRoleFromRow((rows as unknown[] | undefined)?.[0]);
@@ -113,12 +137,15 @@ router.get("/", authMiddleware, async (req: ReqWithUser, res: Response): Promise
   if (customerLike) {
     const [r] = await db.query(
       `SELECT j.*,
+              j.Title AS job,
+              jc.Title AS job_category_title,
               COALESCE(
                 bp.CompanyName,
                 TRIM(CONCAT(ep.Name, ' ', ep.Surname)),
                 u.Email
               ) AS posted_by_name
          FROM jobs j
+         LEFT JOIN job_categories jc ON jc.Code = j.job_category_code
          LEFT JOIN users u ON u.Id = j.user_id
          LEFT JOIN business_profiles bp ON bp.UserId = u.Id
          LEFT JOIN employee_profiles ep ON ep.UserId = u.Id
@@ -130,12 +157,15 @@ router.get("/", authMiddleware, async (req: ReqWithUser, res: Response): Promise
   } else {
     const [r] = await db.query(
       `SELECT j.*,
+              j.Title AS job,
+              jc.Title AS job_category_title,
               COALESCE(
                 bp.CompanyName,
                 TRIM(CONCAT(ep.Name, ' ', ep.Surname)),
                 u.Email
               ) AS posted_by_name
          FROM jobs j
+         LEFT JOIN job_categories jc ON jc.Code = j.job_category_code
          LEFT JOIN users u ON u.Id = j.user_id
          LEFT JOIN business_profiles bp ON bp.UserId = u.Id
          LEFT JOIN employee_profiles ep ON ep.UserId = u.Id
@@ -154,7 +184,7 @@ router.post("/", authMiddleware, async (req: ReqWithUser, res: Response): Promis
     return;
   }
   const [rows] = await db.query(
-    "SELECT role FROM users WHERE id = ?",
+    "SELECT Role FROM users WHERE Id = ?",
     [userId]
   ) as [unknown[], unknown];
   const roleRaw = getRoleFromRow((rows as unknown[] | undefined)?.[0]);
@@ -165,7 +195,7 @@ router.post("/", authMiddleware, async (req: ReqWithUser, res: Response): Promis
     return;
   }
   const b = req.body ?? {};
-  const job = String(b.job ?? "").trim();
+  const jobTitle = String(b.job ?? "").trim().slice(0, 30); // Custom title, max 30 chars
   const location = String(b.location ?? "").trim();
   const status = String(b.status ?? "Draft");
   const statusClass = String(b.statusClass ?? "bg-gray-100 text-gray-700");
@@ -184,8 +214,12 @@ router.post("/", authMiddleware, async (req: ReqWithUser, res: Response): Promis
       return;
     }
   
-  if (!job || !location) {
-    res.status(400).json({ error: "job și location sunt obligatorii." });
+  if (!jobTitle || jobTitle.length === 0) {
+    res.status(400).json({ error: "Titlul jobului este obligatoriu (maxim 30 caractere)." });
+    return;
+  }
+  if (!location) {
+    res.status(400).json({ error: "location este obligatorie." });
     return;
   }
   
@@ -193,25 +227,31 @@ router.post("/", authMiddleware, async (req: ReqWithUser, res: Response): Promis
   const conn = await db.getConnection();
   try {
     await conn.beginTransaction();
-        // ✅ NEW: validate hourlyRateBase against job_categories.HourlyMin
-        const minHourly = await getJobCategoryHourlyMin(conn, jobCategoryCode);
-        if (minHourly == null) {
+        // ✅ NEW: validate hourlyRateBase against job_categories.HourlyMin and get category title
+        const [categoryRows] = await conn.query(
+          "SELECT Title, HourlyMin FROM job_categories WHERE Code = ? LIMIT 1",
+          [jobCategoryCode]
+        ) as [{ Title: string; HourlyMin: number }[], unknown];
+        
+        if (!Array.isArray(categoryRows) || categoryRows.length === 0) {
           await conn.rollback();
           res.status(400).json({ error: "Invalid jobCategoryCode (not found in job_categories)." });
           return;
         }
+        
+        const minHourly = categoryRows[0].HourlyMin;
+        
         if (hourlyRateBase < minHourly) {
           await conn.rollback();
           res.status(400).json({ error: `Hourly rate is too low. Min allowed for this category: ${minHourly} MDL/hour.` });
           return;
         }
     
-    // Insert job
-       // Insert job (✅ now includes category + hourly base)
+    // Insert job (using custom title in job field)
        const [result] = await conn.query(
         `INSERT INTO jobs (
             user_id,
-            job,
+            Title,
             location,
             status,
             status_class,
@@ -231,7 +271,7 @@ router.post("/", authMiddleware, async (req: ReqWithUser, res: Response): Promis
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           userId,
-          job,
+          jobTitle, // Use custom title (max 30 chars)
           location,
           status,
           statusClass,
@@ -256,12 +296,15 @@ router.post("/", authMiddleware, async (req: ReqWithUser, res: Response): Promis
     // Fetch created job for response
     const [r] = await conn.query(
       `SELECT j.*,
+              j.Title AS job,
+              jc.Title AS job_category_title,
               COALESCE(
                 bp.CompanyName,
                 TRIM(CONCAT(ep.Name, ' ', ep.Surname)),
                 u.Email
               ) AS posted_by_name
          FROM jobs j
+         LEFT JOIN job_categories jc ON jc.Code = j.job_category_code
          LEFT JOIN users u ON u.Id = j.user_id
          LEFT JOIN business_profiles bp ON bp.UserId = u.Id
          LEFT JOIN employee_profiles ep ON ep.UserId = u.Id
@@ -315,7 +358,7 @@ router.get("/my-applications", authMiddleware, async (req: ReqWithUser, res: Res
     return;
   }
   const [rows] = await db.query(
-    "SELECT role FROM users WHERE id = ?",
+    "SELECT Role FROM users WHERE Id = ?",
     [userId]
   ) as [unknown[], unknown];
   const roleRaw = getRoleFromRow((rows as unknown[] | undefined)?.[0]);
@@ -380,7 +423,7 @@ router.get("/my-applications/list", authMiddleware, async (req: ReqWithUser, res
   }
 
   // Ensure role = staff
-  const [roleRows] = await db.query("SELECT role FROM users WHERE id = ?", [userId]) as [unknown[], unknown];
+  const [roleRows] = await db.query("SELECT Role FROM users WHERE Id = ?", [userId]) as [unknown[], unknown];
   const roleRaw = getRoleFromRow((roleRows as unknown[] | undefined)?.[0]);
   const role = normalizeRole(roleRaw);
   if (role !== "staff") {
@@ -398,7 +441,8 @@ router.get("/my-applications/list", authMiddleware, async (req: ReqWithUser, res
         a.completed_at,
         a.checked_in_at,
         a.checked_out_at,
-        j.job AS job_title,
+        j.Title AS job_title,
+        jc.Title AS job_category_title,
         j.location AS job_location,
         j.date AS job_date,
         j.end_date AS job_end_date,
@@ -410,6 +454,7 @@ router.get("/my-applications/list", authMiddleware, async (req: ReqWithUser, res
         r.score AS rating_score
      FROM applications a
      JOIN jobs j ON j.id = a.job_id
+     LEFT JOIN job_categories jc ON jc.Code = j.job_category_code
      LEFT JOIN users u ON u.Id = j.user_id
      LEFT JOIN business_profiles bp ON bp.UserId = u.Id
      LEFT JOIN employee_profiles ep ON ep.UserId = u.Id
@@ -513,7 +558,7 @@ router.post("/:id/apply", authMiddleware, async (req: ReqWithUser, res: Response
     res.status(403).json({ error: "Doar staff poate aplica la joburi." });
     return;
   }
-  const [jobRows] = await db.query("SELECT id, job, user_id FROM jobs WHERE id = ?", [jobId]) as [Record<string, unknown>[], unknown];
+  const [jobRows] = await db.query("SELECT id, Title, user_id FROM jobs WHERE id = ?", [jobId]) as [Record<string, unknown>[], unknown];
   if (!Array.isArray(jobRows) || !jobRows[0]) {
     res.status(404).json({ error: "Job negăsit." });
     return;
@@ -553,7 +598,7 @@ router.post("/:id/apply", authMiddleware, async (req: ReqWithUser, res: Response
     if (customerUserId) {
       const [ownerRows] = await conn.query("SELECT Email AS email FROM users WHERE Id = ?", [customerUserId]) as [Record<string, unknown>[], unknown];
       const ownerEmail = Array.isArray(ownerRows) && ownerRows[0] ? String((ownerRows[0] as { email: string }).email ?? "").trim() : "";
-      const jobTitle = String(jobRow.job ?? "").trim() || "Job";
+      const jobTitle = String(jobRow.Title ?? "").trim() || "Job";
       const staffName = String(userRow.staff_name ?? "").trim() || "Angajat";
       if (ownerEmail) notifyCustomerNewApplication(ownerEmail, staffName, jobTitle).catch(() => {});
     }
@@ -578,7 +623,7 @@ router.get("/applications", authMiddleware, async (req: ReqWithUser, res: Respon
     return;
   }
   const [rows] = await db.query(
-    "SELECT role FROM users WHERE id = ?",
+    "SELECT Role FROM users WHERE Id = ?",
     [userId]
   ) as [unknown[], unknown];
   const roleRaw = getRoleFromRow((rows as unknown[] | undefined)?.[0]);
@@ -604,16 +649,17 @@ router.get("/applications", authMiddleware, async (req: ReqWithUser, res: Respon
     jobIds
   ) as [Record<string, unknown>[], unknown];
   const list = Array.isArray(appRows) ? appRows : [];
-  const staffIds = [...new Set(list.map((a) => Number(a.staff_id)).filter(Boolean))];
-  const avatarByStaffId: Record<number, string> = {};
+  // staff_id is now UUID (CHAR(36)), not INT
+  const staffIds = [...new Set(list.map((a) => String(a.staff_id ?? "")).filter((id) => id && id.length > 0))];
+  const avatarByStaffId: Record<string, string> = {};
   if (staffIds.length > 0) {
     const ph = staffIds.map(() => "?").join(",");
     const [userRows] = await db.query(
-      `SELECT id, avatar FROM users WHERE id IN (${ph})`,
+      `SELECT Id, avatar FROM users WHERE Id IN (${ph})`,
       staffIds
     ) as [Record<string, unknown>[], unknown];
     (Array.isArray(userRows) ? userRows : []).forEach((u) => {
-      const id = Number(u.id);
+      const id = String(u.Id ?? "");
       if (!id) return;
       let av = u.avatar;
       if (Buffer.isBuffer(av)) av = av.toString("utf8");
@@ -650,12 +696,12 @@ router.get("/applications", authMiddleware, async (req: ReqWithUser, res: Respon
     const jid = String(a.job_id);
     const aid = String(a.id);
     if (!byJob[jid]) byJob[jid] = [];
-    const sid = Number(a.staff_id);
+    const sid = String(a.staff_id ?? "");
     const staffAvatar = sid ? avatarByStaffId[sid] : undefined;
     byJob[jid].push({
       id: aid,
       jobId: jid,
-      staffId: String(a.staff_id),
+      staffId: sid,
       staffName: a.staff_name,
       staffEmail: a.staff_email ?? undefined,
       staffAvatar,
@@ -800,7 +846,13 @@ router.patch("/applications/:id", authMiddleware, async (req: ReqWithUser, res: 
     return;
   }
   const [rows] = await db.query(
-    "SELECT a.id, a.job_id, a.staff_id, a.staff_email, a.staff_name, j.user_id, j.job AS job_title FROM applications a JOIN jobs j ON j.id = a.job_id WHERE a.id = ? AND j.user_id = ?",
+    `SELECT a.id, a.job_id, a.staff_id, a.staff_email, a.staff_name, j.user_id, 
+            j.Title AS job_title,
+            jc.Title AS job_category_title
+     FROM applications a 
+     JOIN jobs j ON j.id = a.job_id 
+     LEFT JOIN job_categories jc ON jc.Code = j.job_category_code
+     WHERE a.id = ? AND j.user_id = ?`,
     [appId, userId]
   ) as [Record<string, unknown>[], unknown];
   const row = Array.isArray(rows) ? rows[0] : null;
@@ -812,8 +864,8 @@ router.patch("/applications/:id", authMiddleware, async (req: ReqWithUser, res: 
   await db.query("UPDATE applications SET status = ? WHERE id = ?", [status, appId]);
   let staffEmail = row.staff_email != null ? String(row.staff_email).trim() : "";
   if (!staffEmail && row.staff_id) {
-    const [u] = await db.query("SELECT email FROM users WHERE id = ?", [row.staff_id]) as [Record<string, unknown>[], unknown];
-    staffEmail = (Array.isArray(u) && u[0] && u[0].email != null) ? String(u[0].email).trim() : "";
+    const [u] = await db.query("SELECT Email FROM users WHERE Id = ?", [row.staff_id]) as [Record<string, unknown>[], unknown];
+    staffEmail = (Array.isArray(u) && u[0] && u[0].Email != null) ? String(u[0].Email).trim() : "";
   }
   const staffName = String(row.staff_name ?? "").trim() || "Angajat";
   const jobTitle = String(row.job_title ?? "").trim() || "Job";

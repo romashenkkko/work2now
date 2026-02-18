@@ -101,7 +101,7 @@ export const authApi = {
 };
 
 export type JobPayload = {
-  job: string;
+  job: string; // Custom title (max 30 chars) - required
   location: string;
   status?: string;
   statusClass?: string;
@@ -124,7 +124,8 @@ export type JobResponse = {
   imageUrl: string | undefined;
   postedBy: string | undefined;
   id: string;
-  job: string;
+  job: string; // Custom title (max 30 chars)
+  jobCategoryTitle?: string; // Category name from job_categories
   location: string;
   status: string;
   statusClass: string;
@@ -165,8 +166,15 @@ export type StaffApplicationItem = {
   ratingScore?: number;
 };
 
+export type JobCategory = {
+  code: number;
+  title: string;
+  hourlyMin: number;
+};
+
 export const jobsApi = {
   list: () => api<{ jobs: JobResponse[] }>("/jobs"),
+  getCategories: () => api<{ categories: JobCategory[] }>("/jobs/categories"),
   create: (payload: JobPayload) =>
     api<JobResponse>("/jobs", { method: "POST", body: JSON.stringify(payload) }),
   delete: (id: string) => api<{ ok: boolean }>(`/jobs/${id}`, { method: "DELETE" }),

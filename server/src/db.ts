@@ -227,10 +227,10 @@ async function seedJobCategories(conn: mysql.Connection): Promise<void> {
     await conn.query(
       `
       INSERT INTO \`job_categories\` (\`Id\`, \`Code\`, \`Title\`, \`HourlyMin\`)
-      VALUES (?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?)
       ON DUPLICATE KEY UPDATE
         \`Title\` = VALUES(\`Title\`),
-        \`HourlyMin\` = VALUES(\`HourlyMin\`),
+        \`HourlyMin\` = VALUES(\`HourlyMin\`)
       `,
       [randomUUID(), c.code, c.title, c.hourlyMin ?? null]
     );
@@ -426,7 +426,7 @@ export async function initDatabase(): Promise<void> {
       CREATE TABLE IF NOT EXISTS \`jobs\` (
         \`id\` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
         \`user_id\` ${GUID_COL} NULL,
-        \`job\` VARCHAR(255) NOT NULL,
+        \`Title\` VARCHAR(30) NOT NULL,
         \`location\` TEXT,
         \`status\` VARCHAR(50) NOT NULL DEFAULT 'Draft',
         \`status_class\` VARCHAR(100) NOT NULL DEFAULT 'bg-gray-100 text-gray-700',
@@ -449,6 +449,49 @@ export async function initDatabase(): Promise<void> {
     // NEW columns for salary/category logic (idempotent)
     await ensureColumn(conn, "jobs", "job_category_code", "INT NULL");
     await ensureColumn(conn, "jobs", "hourly_rate_base", "DECIMAL(10,2) NULL");
+    
+    // Migration: Add Title column (max 30 chars) and migrate data from job column
+    await ensureColumn(conn, "jobs", "Title", "VARCHAR(30) NULL");
+    
+    // Check if old job column exists and migrate data
+    const jobColumnExists = await columnExists(conn, "jobs", "job");
+    if (jobColumnExists) {
+      // Migrate existing data from job to Title if Title is empty
+      await conn.query(`
+        UPDATE \`jobs\` 
+        SET \`Title\` = SUBSTRING(\`job\`, 1, 30) 
+        WHERE \`Title\` IS NULL AND \`job\` IS NOT NULL
+      `).catch(() => {
+        // Ignore if no data to migrate
+      });
+      
+      // Make Title NOT NULL after migration
+      await conn.query(`
+        ALTER TABLE \`jobs\` 
+        MODIFY COLUMN \`Title\` VARCHAR(30) NOT NULL
+      `).catch(() => {
+        // Ignore if already NOT NULL
+      });
+      
+      // Remove the old job column (after ensuring Title has data)
+      try {
+        await conn.query(`ALTER TABLE \`jobs\` DROP COLUMN \`job\``);
+      } catch (e) {
+        // Ignore if column doesn't exist or can't be dropped
+        const err = e as Error;
+        if (!err.message.includes("doesn't exist") && !err.message.includes("Unknown column")) {
+          console.warn("[DB] Could not drop job column:", err.message);
+        }
+      }
+    } else {
+      // If job column doesn't exist, ensure Title is NOT NULL
+      await conn.query(`
+        ALTER TABLE \`jobs\` 
+        MODIFY COLUMN \`Title\` VARCHAR(30) NOT NULL
+      `).catch(() => {
+        // Ignore if already NOT NULL
+      });
+    }
 
     // FK from jobs.job_category_code -> job_categories.Code (optional but recommended)
     if (!(await fkExists(conn, "jobs", "fk_jobs_job_category_code_job_categories_code"))) {

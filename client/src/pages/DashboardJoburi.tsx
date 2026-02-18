@@ -660,8 +660,15 @@ export default function DashboardJoburi() {
                     </span>
                   </div>
                   <div className="p-4 sm:p-5 flex-1 flex flex-col">
-                    <h2 className="text-lg font-bold text-gray-900 mb-3">{row.job}</h2>
+                    <h2 className="text-lg font-bold text-gray-900 mb-1">{row.job}</h2>
+                    {row.jobCategoryTitle && (
+                      <p className="text-sm text-gray-600 mb-3">{row.jobCategoryTitle}</p>
+                    )}
                     <ul className="space-y-2 text-sm text-gray-600 flex-1">
+                      <li className="flex items-center gap-2">
+                        <Briefcase className="w-4 h-4 text-primary shrink-0" />
+                        <span>{row.jobCategoryTitle || "N/A"}</span>
+                      </li>
                       {(row.startTime || row.endTime) && (
                         <li className="flex items-center gap-2">
                           <Clock className="w-4 h-4 text-primary shrink-0" />
@@ -866,14 +873,17 @@ export default function DashboardJoburi() {
 
               {/* Body: titlu + rânduri cu icoane */}
               <div className="p-4 sm:p-5 flex-1 flex flex-col min-h-0">
-                <h2 className="text-lg font-bold text-gray-900 mb-4 leading-tight">{row.job}</h2>
+                <h2 className="text-lg font-bold text-gray-900 mb-1 leading-tight">{row.job}</h2>
+                {row.jobCategoryTitle && (
+                  <p className="text-sm text-gray-600 mb-4">{row.jobCategoryTitle}</p>
+                )}
 
                 <ul className="space-y-2.5 flex-1">
                   <li className="flex items-center gap-3 text-gray-600 text-sm">
                     <span className="flex-shrink-0 w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center">
                       <Briefcase className="w-4 h-4 text-primary" />
                     </span>
-                    <span className="truncate">{row.job}</span>
+                    <span className="truncate">{row.jobCategoryTitle || "N/A"}</span>
                   </li>
                   {(row.startTime || row.endTime) && (
                     <li className="flex items-center gap-3 text-gray-600 text-sm">
