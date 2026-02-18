@@ -527,21 +527,24 @@ router.get("/applications", authMiddleware, async (req: ReqWithUser, res: Respon
     `SELECT a.id, a.job_id, a.staff_id, a.staff_name, a.staff_email, a.status, a.completed_at, a.checked_in_at, a.checked_out_at, a.created_at,
      r.score AS rating_score
      FROM applications a
-     LEFT JOIN ratings r ON r.application_id = a.id
+     LEFT JOIN ratings r ON r.application_id = a.id AND r.rater_id = ?
      WHERE a.job_id IN (${placeholders}) ORDER BY a.created_at DESC`,
-    jobIds
+    [userId, ...jobIds]
   ) as [Record<string, unknown>[], unknown];
   const list = Array.isArray(appRows) ? appRows : [];
-  const staffIds = [...new Set(list.map((a) => Number(a.staff_id)).filter(Boolean))];
-  const avatarByStaffId: Record<number, string> = {};
-  if (staffIds.length > 0) {
-    const ph = staffIds.map(() => "?").join(",");
+  const staffIdStrings = [...new Set(list.map((a) => (a.staff_id != null ? String(a.staff_id).trim() : "")).filter(Boolean))];
+  const avatarByStaffId: Record<string, string> = {};
+  if (staffIdStrings.length > 0) {
+    const ph = staffIdStrings.map(() => "?").join(",");
     const [userRows] = await db.query(
-      `SELECT Id AS id, NULL AS avatar FROM users WHERE Id IN (${ph})`,
-      staffIds
+      `SELECT u.Id AS id, COALESCE(ep.ProfilePictureFileId, NULL) AS avatar
+       FROM users u
+       LEFT JOIN employee_profiles ep ON u.Id = ep.UserId
+       WHERE u.Id IN (${ph})`,
+      staffIdStrings
     ) as [Record<string, unknown>[], unknown];
     (Array.isArray(userRows) ? userRows : []).forEach((u) => {
-      const id = Number(u.id);
+      const id = u.id != null ? String(u.id).trim() : "";
       if (!id) return;
       let av = u.avatar;
       if (Buffer.isBuffer(av)) av = av.toString("utf8");
@@ -578,8 +581,8 @@ router.get("/applications", authMiddleware, async (req: ReqWithUser, res: Respon
     const jid = String(a.job_id);
     const aid = String(a.id);
     if (!byJob[jid]) byJob[jid] = [];
-    const sid = Number(a.staff_id);
-    const staffAvatar = sid ? avatarByStaffId[sid] : undefined;
+    const sidStr = a.staff_id != null ? String(a.staff_id).trim() : "";
+    const staffAvatar = sidStr ? avatarByStaffId[sidStr] : undefined;
     byJob[jid].push({
       id: aid,
       jobId: jid,

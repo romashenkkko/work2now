@@ -1,63 +1,28 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
-import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet";
-import L from "leaflet";
+import mapboxgl from "mapbox-gl";
 import { Map, Satellite } from "lucide-react";
 
-const NOMINATIM_SEARCH = "https://nominatim.openstreetmap.org/search";
 const CHISINAU_CENTER: [number, number] = [46.99, 28.98];
 const DEFAULT_ZOOM = 12;
-
-const defaultIcon = L.icon({
-  iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
-  iconRetinaUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
-  shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
-  iconSize: [25, 41],
-  iconAnchor: [12, 41],
-});
-
-// Marker pentru locația curentă a angajatului (verde, doar pentru staff)
-const myLocationIcon = L.icon({
-  iconUrl: "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-green.png",
-  shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
-  iconSize: [25, 41],
-  iconAnchor: [12, 41],
-  popupAnchor: [1, -34],
-});
+const MAPBOX_STYLE_ROAD = "mapbox://styles/vasilepopovici/cmlqvsvuc001601scb2aocofg";
+const MAPBOX_STYLE_SATELLITE = "mapbox://styles/mapbox/satellite-streets-v12";
+const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN ?? "";
 
 type JobWithLocation = { job: string; location: string; lat?: number; lng?: number };
 type GeocodedJob = { lat: number; lon: number; job: string; location: string };
 
-function FitBounds({ positions }: { positions: [number, number][] }) {
-  const map = useMap();
-  useEffect(() => {
-    if (positions.length === 0) {
-      map.setView(CHISINAU_CENTER, DEFAULT_ZOOM);
-      return;
-    }
-    if (positions.length === 1) {
-      map.setView(positions[0], 14);
-      return;
-    }
-    const bounds = L.latLngBounds(positions);
-    map.fitBounds(bounds, { padding: [24, 24], maxZoom: 14 });
-  }, [map, positions]);
-  return null;
-}
-
-async function geocodeAddress(address: string): Promise<[number, number] | null> {
+async function geocodeAddress(address: string, token: string): Promise<[number, number] | null> {
   const q = address.trim();
-  if (!q) return null;
+  if (!q || !token.trim()) return null;
   try {
-    const res = await fetch(
-      `${NOMINATIM_SEARCH}?format=json&q=${encodeURIComponent(q)}&addressdetails=1&limit=1`,
-      { headers: { "Accept-Language": "ro,en", "User-Agent": "Work2NowApp/1.0 (contact@work2now.app)" } }
-    );
+    const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(q)}.json?access_token=${encodeURIComponent(token)}&limit=1`;
+    const res = await fetch(url);
     const data = await res.json();
-    if (Array.isArray(data) && data[0]) {
-      const lat = Number(data[0].lat);
-      const lon = Number(data[0].lon);
-      if (Number.isFinite(lat) && Number.isFinite(lon)) return [lat, lon];
+    const features = data?.features ?? [];
+    if (features[0]?.center) {
+      const [lng, lat] = features[0].center as [number, number];
+      if (Number.isFinite(lat) && Number.isFinite(lng)) return [lat, lng];
     }
   } catch {
     // ignore
@@ -69,7 +34,6 @@ type Props = {
   open: boolean;
   onClose: () => void;
   jobs: JobWithLocation[];
-  /** Afișează locația curentă a angajatului pe hartă (doar pentru staff, nu pentru customer). */
   showMyLocation?: boolean;
 };
 
@@ -81,6 +45,10 @@ export default function JobsMapModal({ open, onClose, jobs, showMyLocation = fal
   const [myLocation, setMyLocation] = useState<[number, number] | null>(null);
   const [loading, setLoading] = useState(false);
   const [mapLayer, setMapLayer] = useState<MapLayer>("street");
+  const mapContainerRef = useRef<HTMLDivElement>(null);
+  const mapRef = useRef<mapboxgl.Map | null>(null);
+  const markersRef = useRef<mapboxgl.Marker[]>([]);
+  const myLocationMarkerRef = useRef<mapboxgl.Marker | null>(null);
 
   useEffect(() => {
     if (!open || !showMyLocation || typeof navigator === "undefined" || !navigator.geolocation) {
@@ -92,7 +60,6 @@ export default function JobsMapModal({ open, onClose, jobs, showMyLocation = fal
       timeout: 20000,
       maximumAge: 0,
     };
-    // Folosim watchPosition câteva secunde și alegem poziția cu cea mai bună acuratețe (minim accuracy în metri)
     let best: { lat: number; lng: number; accuracy: number } | null = null;
     const onPos = (pos: GeolocationPosition) => {
       const acc = pos.coords.accuracy ?? 9999;
@@ -121,7 +88,6 @@ export default function JobsMapModal({ open, onClose, jobs, showMyLocation = fal
       setMarkers([]);
       return;
     }
-    // Joburi cu coordonate directe (checkInLat/checkInLng) – le afișăm imediat
     const withCoords = jobs.filter((j) => typeof j.lat === "number" && typeof j.lng === "number");
     const withAddressOnly = jobs.filter((j) => j.location?.trim() && !(typeof j.lat === "number" && typeof j.lng === "number"));
     const results: GeocodedJob[] = withCoords.map((j) => ({
@@ -136,14 +102,15 @@ export default function JobsMapModal({ open, onClose, jobs, showMyLocation = fal
     let index = 0;
     const run = () => {
       if (index >= withAddressOnly.length) {
-        setMarkers(results);
+        setMarkers((prev) => [...prev]);
         setLoading(false);
         return;
       }
       const job = withAddressOnly[index];
-      geocodeAddress(job.location).then((coord) => {
+      geocodeAddress(job.location, MAPBOX_TOKEN).then((coord) => {
         if (coord) results.push({ lat: coord[0], lon: coord[1], job: job.job, location: job.location });
         index += 1;
+        setMarkers([...results]);
         setTimeout(run, 1100);
       }).catch(() => {
         index += 1;
@@ -153,10 +120,98 @@ export default function JobsMapModal({ open, onClose, jobs, showMyLocation = fal
     run();
   }, [open, jobs]);
 
+  // Init Mapbox map
+  useEffect(() => {
+    if (!open || !MAPBOX_TOKEN || !mapContainerRef.current) return;
+    mapboxgl.accessToken = MAPBOX_TOKEN;
+    const map = new mapboxgl.Map({
+      container: mapContainerRef.current,
+      style: mapLayer === "satellite" ? MAPBOX_STYLE_SATELLITE : MAPBOX_STYLE_ROAD,
+      center: [CHISINAU_CENTER[1], CHISINAU_CENTER[0]],
+      zoom: DEFAULT_ZOOM,
+    });
+    map.addControl(new mapboxgl.NavigationControl(), "top-right");
+    mapRef.current = map;
+    return () => {
+      markersRef.current.forEach((m) => m.remove());
+      markersRef.current = [];
+      if (myLocationMarkerRef.current) {
+        myLocationMarkerRef.current.remove();
+        myLocationMarkerRef.current = null;
+      }
+      map.remove();
+      mapRef.current = null;
+    };
+  }, [open, MAPBOX_TOKEN ? "ok" : ""]);
+
+  // Update map style
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    map.setStyle(mapLayer === "satellite" ? MAPBOX_STYLE_SATELLITE : MAPBOX_STYLE_ROAD);
+  }, [mapLayer]);
+
+  // Update markers and fit bounds
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    markersRef.current.forEach((m) => m.remove());
+    markersRef.current = [];
+    const allLngLats: [number, number][] = [];
+    markers.forEach((m) => {
+      const el = document.createElement("div");
+      el.className = "mapboxgl-marker mapboxgl-marker-job";
+      el.style.backgroundColor = "#6366f1";
+      el.style.width = "24px";
+      el.style.height = "24px";
+      el.style.borderRadius = "50%";
+      el.style.border = "2px solid white";
+      el.style.cursor = "pointer";
+      const popup = new mapboxgl.Popup({ offset: 25 }).setHTML(
+        `<div class="text-sm"><p class="font-semibold text-gray-900">${escapeHtml(m.job)}</p><p class="text-gray-600 mt-0.5">${escapeHtml(m.location)}</p></div>`
+      );
+      const marker = new mapboxgl.Marker({ element: el }).setLngLat([m.lon, m.lat]).setPopup(popup).addTo(map);
+      markersRef.current.push(marker);
+      allLngLats.push([m.lon, m.lat]);
+    });
+    if (myLocation) {
+      allLngLats.push([myLocation[1], myLocation[0]]);
+      if (myLocationMarkerRef.current) myLocationMarkerRef.current.remove();
+      const el = document.createElement("div");
+      el.className = "mapboxgl-marker mapboxgl-marker-my";
+      el.style.backgroundColor = "#22c55e";
+      el.style.width = "24px";
+      el.style.height = "24px";
+      el.style.borderRadius = "50%";
+      el.style.border = "2px solid white";
+      const popup = new mapboxgl.Popup({ offset: 25 }).setHTML(
+        `<div class="text-sm font-medium text-gray-900">${escapeHtml(t("dashboard.myLocationOnMap"))}</div>`
+      );
+      const marker = new mapboxgl.Marker({ element: el }).setLngLat([myLocation[1], myLocation[0]]).setPopup(popup).addTo(map);
+      myLocationMarkerRef.current = marker;
+    } else {
+      if (myLocationMarkerRef.current) {
+        myLocationMarkerRef.current.remove();
+        myLocationMarkerRef.current = null;
+      }
+    }
+    if (allLngLats.length > 0) {
+      let minLng = allLngLats[0][0], minLat = allLngLats[0][1], maxLng = minLng, maxLat = minLat;
+      allLngLats.forEach(([lng, lat]) => {
+        if (lng < minLng) minLng = lng;
+        if (lat < minLat) minLat = lat;
+        if (lng > maxLng) maxLng = lng;
+        if (lat > maxLat) maxLat = lat;
+      });
+      map.fitBounds([[minLng, minLat], [maxLng, maxLat]], { padding: 24, maxZoom: 14, duration: 0 });
+    } else {
+      map.flyTo({ center: [CHISINAU_CENTER[1], CHISINAU_CENTER[0]], zoom: DEFAULT_ZOOM });
+    }
+  }, [markers, myLocation, t]);
+
   if (!open) return null;
 
-  const positions = markers.map((m) => [m.lat, m.lon] as [number, number]);
-  const allPositions = myLocation ? [...positions, myLocation] : positions;
+  const hasToken = Boolean(MAPBOX_TOKEN && MAPBOX_TOKEN.trim());
 
   return (
     <div
@@ -176,9 +231,7 @@ export default function JobsMapModal({ open, onClose, jobs, showMyLocation = fal
               title={t("dashboard.mapLayerStreet")}
               aria-label={t("dashboard.mapLayerStreet")}
               className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium transition-colors ${
-                mapLayer === "street"
-                  ? "bg-primary text-white"
-                  : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                mapLayer === "street" ? "bg-primary text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"
               }`}
             >
               <Map className="w-4 h-4" />
@@ -190,9 +243,7 @@ export default function JobsMapModal({ open, onClose, jobs, showMyLocation = fal
               title={t("dashboard.mapLayerSatellite")}
               aria-label={t("dashboard.mapLayerSatellite")}
               className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium transition-colors ${
-                mapLayer === "satellite"
-                  ? "bg-primary text-white"
-                  : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                mapLayer === "satellite" ? "bg-primary text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"
               }`}
             >
               <Satellite className="w-4 h-4" />
@@ -210,56 +261,34 @@ export default function JobsMapModal({ open, onClose, jobs, showMyLocation = fal
             </svg>
           </button>
         </div>
+        {showMyLocation && (
+          <p className="text-xs text-gray-500 px-4 pb-1 flex-shrink-0">
+            {t("dashboard.myLocationOnMapHint", "Markerul verde arată locația ta. Vizibil doar pentru tine.")}
+          </p>
+        )}
         <div className="flex-1 min-h-[400px] relative">
           {loading && markers.length === 0 && (
             <div className="absolute inset-0 z-[10] flex items-center justify-center bg-gray-50/90 rounded-b-2xl">
               <p className="text-gray-600 font-medium">{t("dashboard.loadingMap")}</p>
             </div>
           )}
-          <MapContainer
-            center={CHISINAU_CENTER}
-            zoom={DEFAULT_ZOOM}
-            className="w-full h-full min-h-[400px] rounded-b-2xl"
-            scrollWheelZoom
-          >
-            {mapLayer === "street" ? (
-              <TileLayer
-                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>'
-                url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
-              />
-            ) : (
-              <>
-                <TileLayer
-                  attribution="&copy; Esri"
-                  url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
-                />
-                <TileLayer
-                  attribution='&copy; <a href="https://carto.com/">CARTO</a>'
-                  url="https://cartodb-basemaps-a.global.ssl.fastly.net/light_only_labels/{z}/{x}/{y}.png"
-                />
-              </>
-            )}
-            <FitBounds positions={allPositions} />
-            {myLocation && (
-              <Marker position={myLocation} icon={myLocationIcon}>
-                <Popup>
-                  <div className="text-sm font-medium text-gray-900">{t("dashboard.myLocationOnMap")}</div>
-                </Popup>
-              </Marker>
-            )}
-            {markers.map((m, i) => (
-              <Marker key={`${m.lat}-${m.lon}-${i}`} position={[m.lat, m.lon]} icon={defaultIcon}>
-                <Popup>
-                  <div className="text-sm">
-                    <p className="font-semibold text-gray-900">{m.job}</p>
-                    <p className="text-gray-600 mt-0.5">{m.location}</p>
-                  </div>
-                </Popup>
-              </Marker>
-            ))}
-          </MapContainer>
+          {hasToken ? (
+            <div ref={mapContainerRef} className="w-full h-full min-h-[400px] rounded-b-2xl" />
+          ) : (
+            <div className="w-full h-full min-h-[400px] rounded-b-2xl flex items-center justify-center bg-gray-200 text-gray-600 p-4 text-center">
+              <p className="text-sm">
+                Pentru hartă Mapbox, adaugă <code className="bg-gray-300 px-1 rounded">VITE_MAPBOX_ACCESS_TOKEN</code> în <code className="bg-gray-300 px-1 rounded">client/.env</code>.
+              </p>
+            </div>
+          )}
         </div>
       </div>
     </div>
   );
+}
+
+function escapeHtml(s: string): string {
+  const div = document.createElement("div");
+  div.textContent = s;
+  return div.innerHTML;
 }

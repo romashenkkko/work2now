@@ -179,14 +179,32 @@ export const jobsApi = {
     }),
 };
 
+export type ReviewItem = {
+  id: string;
+  applicationId: string;
+  jobTitle?: string;
+  otherPartyName?: string;
+  score: number;
+  comment?: string;
+  photoUrl?: string;
+  createdAt?: string;
+};
+
 export const ratingsApi = {
-  submit: (applicationId: string, score: number) =>
+  submit: (applicationId: string, score: number, comment?: string, photoUrl?: string) =>
     api<{ ok: boolean }>("/ratings", {
       method: "POST",
-      body: JSON.stringify({ applicationId, score }),
+      body: JSON.stringify({
+        applicationId: String(applicationId),
+        score: Number(score),
+        ...(comment != null && comment !== "" && { comment }),
+        ...(photoUrl != null && photoUrl !== "" && { photoUrl }),
+      }),
     }),
   getUserRating: (userId: number | string) =>
     api<{ average: number; count: number }>(`/ratings/user/${userId}`),
+  myReviews: () =>
+    api<{ given: ReviewItem[]; received: ReviewItem[] }>("/ratings/me"),
 };
 
 export type Branch = {

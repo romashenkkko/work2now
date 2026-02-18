@@ -1,8 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
-import { MapContainer, TileLayer, Marker, useMapEvents, useMap } from "react-leaflet";
-import L from "leaflet";
-import { useJsApiLoader, GoogleMap, Marker as GoogleMarker } from "@react-google-maps/api";
+import mapboxgl from "mapbox-gl";
 
 export type AddressGeo = { lat: number; lng: number; radiusM?: number };
 
@@ -12,51 +10,40 @@ type Props = {
   onConfirm: (address: string, geo?: AddressGeo) => void;
   initialAddress?: string;
   /** Raza implicită (m) pentru check-in la locație (ex. 50) */
-  /** Default 200 m – check-in/check-out allowed only within this radius. */
   defaultRadiusM?: number;
 };
 
 type Suggestion = { display_name: string; lat: string; lon: string };
 
-const NOMINATIM_SEARCH = "https://nominatim.openstreetmap.org/search";
-const NOMINATIM_REVERSE = "https://nominatim.openstreetmap.org/reverse";
 const CHISINAU_CENTER: [number, number] = [46.99, 28.98];
-const CHISINAU_GOOGLE = { lat: 46.99, lng: 28.98 };
-const TILE_ATTR = "© OpenStreetMap © CARTO";
-const ESRI_ATTR = "© Esri";
-const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY ?? "";
+const MAPBOX_STYLE_ROAD = "mapbox://styles/vasilepopovici/cmlqvsvuc001601scb2aocofg";
+const MAPBOX_STYLE_SATELLITE = "mapbox://styles/mapbox/satellite-streets-v12";
+const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN ?? "";
 
-const defaultIcon = L.icon({
-  iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
-  iconRetinaUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
-  shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
-  iconSize: [25, 41],
-  iconAnchor: [12, 41],
-});
-
-function MapClickHandler({ onPick }: { onPick: (lat: number, lon: number) => void }) {
-  useMapEvents({ click(e) { onPick(e.latlng.lat, e.latlng.lng); } });
-  return null;
+function mapboxSearch(query: string, token: string): Promise<Suggestion[]> {
+  if (!token.trim()) return Promise.resolve([]);
+  const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query)}.json?access_token=${encodeURIComponent(token)}&country=MD&limit=6`;
+  return fetch(url)
+    .then((res) => res.json())
+    .then((data: { features?: { place_name: string; center: [number, number] }[] }) => {
+      const features = data?.features ?? [];
+      return features.map((f) => ({
+        display_name: f.place_name,
+        lat: String(f.center[1]),
+        lon: String(f.center[0]),
+      }));
+    })
+    .catch(() => []);
 }
 
-function MapCenter({ position }: { position: [number, number] | null }) {
-  const map = useMap();
-  useEffect(() => {
-    if (position) map.flyTo(position, 15, { duration: 0.5 });
-  }, [position, map]);
-  return null;
+function mapboxReverseGeocode(lat: number, lng: number, token: string): Promise<string | null> {
+  if (!token.trim()) return Promise.resolve(null);
+  const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${lng},${lat}.json?access_token=${encodeURIComponent(token)}`;
+  return fetch(url)
+    .then((res) => res.json())
+    .then((data: { features?: { place_name: string }[] }) => data?.features?.[0]?.place_name ?? null)
+    .catch(() => null);
 }
-
-function MapResizeFix() {
-  const map = useMap();
-  useEffect(() => {
-    const t = setTimeout(() => map.invalidateSize(), 100);
-    return () => clearTimeout(t);
-  }, [map]);
-  return null;
-}
-
-const googleMapContainerStyle = { width: "100%", height: "100%", borderRadius: "0 0 12px 12px" };
 
 export default function AddressPickerModal({ open, onClose, onConfirm, initialAddress = "", defaultRadiusM = 200 }: Props) {
   const { t } = useTranslation();
@@ -66,27 +53,19 @@ export default function AddressPickerModal({ open, onClose, onConfirm, initialAd
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [mapType, setMapType] = useState<"road" | "satellite">("road");
   const [position, setPosition] = useState<[number, number] | null>(null);
-  const [mapReady, setMapReady] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
-
-  const { isLoaded: isGoogleLoaded } = useJsApiLoader({
-    id: "work2now-google-map",
-    googleMapsApiKey: GOOGLE_MAPS_API_KEY || " ",
-  });
-  const useGoogleMap = Boolean(GOOGLE_MAPS_API_KEY && isGoogleLoaded);
+  const mapContainerRef = useRef<HTMLDivElement>(null);
+  const mapRef = useRef<mapboxgl.Map | null>(null);
+  const markerRef = useRef<mapboxgl.Marker | null>(null);
+  const onMapClickRef = useRef<(lat: number, lng: number) => void>(() => {});
 
   useEffect(() => {
-    if (open) {
-      setSearch(initialAddress);
-      setSuggestions([]);
-      setShowSuggestions(false);
-      setPosition(null);
-      const t = setTimeout(() => setMapReady(true), 150);
-      return () => clearTimeout(t);
-    } else {
-      setMapReady(false);
-    }
+    if (!open) return;
+    setSearch(initialAddress);
+    setSuggestions([]);
+    setShowSuggestions(false);
+    setPosition(null);
   }, [open, initialAddress]);
 
   useEffect(() => {
@@ -99,13 +78,9 @@ export default function AddressPickerModal({ open, onClose, onConfirm, initialAd
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
       setLoading(true);
-      fetch(
-        `${NOMINATIM_SEARCH}?format=json&q=${encodeURIComponent(q)}&countrycodes=md&addressdetails=1&limit=6`,
-        { headers: { "Accept-Language": "ro,en", "User-Agent": "Work2NowApp/1.0 (contact@work2now.app)" } }
-      )
-        .then((res) => res.json())
-        .then((data: Suggestion[]) => {
-          setSuggestions(Array.isArray(data) ? data : []);
+      mapboxSearch(q, MAPBOX_TOKEN)
+        .then((data) => {
+          setSuggestions(data);
           setShowSuggestions(true);
         })
         .catch(() => setSuggestions([]))
@@ -126,21 +101,17 @@ export default function AddressPickerModal({ open, onClose, onConfirm, initialAd
   }, [open]);
 
   const reverseGeocode = (lat: number, lon: number) => {
-    fetch(
-      `${NOMINATIM_REVERSE}?lat=${lat}&lon=${lon}&format=json`,
-      { headers: { "Accept-Language": "ro,en", "User-Agent": "Work2NowApp/1.0 (contact@work2now.app)" } }
-    )
-      .then((res) => res.json())
-      .then((data: { display_name?: string }) => {
-        if (data?.display_name) setSearch(data.display_name);
-      })
-      .catch(() => {});
+    mapboxReverseGeocode(lat, lon, MAPBOX_TOKEN).then((placeName) => {
+      if (placeName) setSearch(placeName);
+    });
   };
 
-  const handleMapPick = (lat: number, lon: number) => {
-    setPosition([lat, lon]);
-    reverseGeocode(lat, lon);
+  const handleMapPick = (lat: number, lng: number) => {
+    setPosition([lat, lng]);
+    reverseGeocode(lat, lng);
   };
+
+  onMapClickRef.current = handleMapPick;
 
   const pickSuggestion = (s: Suggestion) => {
     setSearch(s.display_name);
@@ -148,6 +119,60 @@ export default function AddressPickerModal({ open, onClose, onConfirm, initialAd
     setShowSuggestions(false);
     setPosition([Number(s.lat), Number(s.lon)]);
   };
+
+  // Init Mapbox map when modal opens and token exists
+  useEffect(() => {
+    if (!open || !MAPBOX_TOKEN || !mapContainerRef.current) return;
+    mapboxgl.accessToken = MAPBOX_TOKEN;
+    const [lat, lng] = position ?? CHISINAU_CENTER;
+    const map = new mapboxgl.Map({
+      container: mapContainerRef.current,
+      style: mapType === "satellite" ? MAPBOX_STYLE_SATELLITE : MAPBOX_STYLE_ROAD,
+      center: [lng, lat],
+      zoom: position ? 15 : 12,
+    });
+    map.addControl(new mapboxgl.NavigationControl(), "top-right");
+    map.on("click", (e) => {
+      const lat = e.lngLat.lat;
+      const lng = e.lngLat.lng;
+      onMapClickRef.current(lat, lng);
+    });
+    mapRef.current = map;
+    return () => {
+      map.remove();
+      mapRef.current = null;
+      if (markerRef.current) {
+        markerRef.current.remove();
+        markerRef.current = null;
+      }
+    };
+  }, [open, MAPBOX_TOKEN ? "ok" : ""]);
+
+  // Update map style when mapType changes
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    map.setStyle(mapType === "satellite" ? MAPBOX_STYLE_SATELLITE : MAPBOX_STYLE_ROAD);
+  }, [mapType]);
+
+  // Update center and marker when position changes
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    if (position) {
+      const [lat, lng] = position;
+      map.flyTo({ center: [lng, lat], zoom: 15, duration: 0.5 });
+      if (markerRef.current) markerRef.current.remove();
+      const marker = new mapboxgl.Marker().setLngLat([lng, lat]).addTo(map);
+      markerRef.current = marker;
+    } else {
+      if (markerRef.current) {
+        markerRef.current.remove();
+        markerRef.current = null;
+      }
+      map.flyTo({ center: [CHISINAU_CENTER[1], CHISINAU_CENTER[0]], zoom: 12, duration: 0.5 });
+    }
+  }, [position]);
 
   if (!open) return null;
 
@@ -160,6 +185,8 @@ export default function AddressPickerModal({ open, onClose, onConfirm, initialAd
     }
     onClose();
   };
+
+  const hasToken = Boolean(MAPBOX_TOKEN && MAPBOX_TOKEN.trim());
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50 modal-overlay-enter" onClick={onClose}>
@@ -218,7 +245,7 @@ export default function AddressPickerModal({ open, onClose, onConfirm, initialAd
           <div className="rounded-xl border border-gray-200 overflow-hidden bg-gray-100">
             <div className="flex items-center justify-between px-2 py-1.5 bg-gray-50 border-b border-gray-200">
               <span className="text-xs text-gray-500">
-                {useGoogleMap ? "© Google" : mapType === "road" ? TILE_ATTR : ESRI_ATTR}
+                {hasToken ? "© Mapbox" : "Mapbox"}
               </span>
               <div className="flex rounded-lg overflow-hidden border border-gray-200">
                 <button
@@ -238,47 +265,14 @@ export default function AddressPickerModal({ open, onClose, onConfirm, initialAd
               </div>
             </div>
             <div className="relative z-0 w-full rounded-b-xl" style={{ height: 480 }}>
-              {mapReady && useGoogleMap && (
-                <GoogleMap
-                  mapContainerStyle={googleMapContainerStyle}
-                  center={position ? { lat: position[0], lng: position[1] } : CHISINAU_GOOGLE}
-                  zoom={position ? 15 : 12}
-                  onClick={(e) => {
-                    const lat = e.latLng?.lat();
-                    const lng = e.latLng?.lng();
-                    if (typeof lat === "number" && typeof lng === "number") handleMapPick(lat, lng);
-                  }}
-                  mapTypeId={mapType === "satellite" ? "satellite" : "roadmap"}
-                  options={{ scrollwheel: true, fullscreenControl: true, mapTypeControl: false, streetViewControl: false }}
-                >
-                  {position && <GoogleMarker position={{ lat: position[0], lng: position[1] }} />}
-                </GoogleMap>
-              )}
-              {mapReady && !useGoogleMap && (
-                <MapContainer
-                  key="address-map"
-                  center={position ?? CHISINAU_CENTER}
-                  zoom={position ? 15 : 12}
-                  className="w-full h-full rounded-b-xl"
-                  style={{ height: "100%", width: "100%" }}
-                  scrollWheelZoom
-                >
-                  {mapType === "road" ? (
-                    <TileLayer
-                      attribution={TILE_ATTR}
-                      url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
-                    />
-                  ) : (
-                    <TileLayer
-                      attribution={ESRI_ATTR}
-                      url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
-                    />
-                  )}
-                  {position && <Marker position={position} icon={defaultIcon} />}
-                  <MapCenter position={position} />
-                  <MapResizeFix />
-                  <MapClickHandler onPick={handleMapPick} />
-                </MapContainer>
+              {hasToken ? (
+                <div ref={mapContainerRef} className="w-full h-full rounded-b-xl" />
+              ) : (
+                <div className="w-full h-full rounded-b-xl flex items-center justify-center bg-gray-200 text-gray-600 p-4 text-center">
+                  <p className="text-sm">
+                    Pentru hartă Mapbox, adaugă <code className="bg-gray-300 px-1 rounded">VITE_MAPBOX_ACCESS_TOKEN</code> în <code className="bg-gray-300 px-1 rounded">client/.env</code>.
+                  </p>
+                </div>
               )}
             </div>
             <p className="text-xs text-gray-500 px-2 py-1 bg-gray-50">
@@ -287,11 +281,6 @@ export default function AddressPickerModal({ open, onClose, onConfirm, initialAd
             <p className="text-xs text-gray-500 px-2 py-1 bg-gray-50 border-t border-gray-100">
               {t("dashboard.checkInGeoHint", "Locația selectată va fi folosită pentru check-in/check-out (angajații trebuie să fie în raza de 200 m).")}
             </p>
-            {!useGoogleMap && (
-              <p className="text-xs text-gray-400 px-2 py-1 bg-gray-50 border-t border-gray-100">
-                Pentru Google Maps: adaugă <code className="bg-gray-200 px-1 rounded">VITE_GOOGLE_MAPS_API_KEY</code> în <code className="bg-gray-200 px-1 rounded">client/.env</code> — pași în <strong>client/SETUP_GOOGLE_MAPS.md</strong>
-              </p>
-            )}
           </div>
         </div>
         <div className="flex gap-3 p-4 border-t border-gray-100">

@@ -440,11 +440,12 @@ export async function initDatabase(): Promise<void> {
     await conn.query(`
       CREATE TABLE IF NOT EXISTS \`ratings\` (
         \`id\` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-        \`application_id\` INT UNSIGNED NOT NULL UNIQUE,
+        \`application_id\` INT UNSIGNED NOT NULL,
         \`rater_id\` ${GUID_COL} NULL,
         \`rated_id\` ${GUID_COL} NULL,
-        \`score\` TINYINT UNSIGNED NOT NULL,
+        \`score\` DECIMAL(2,1) NOT NULL,
         \`created_at\` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY \`idx_ratings_application_rater\` (\`application_id\`, \`rater_id\`),
         INDEX \`idx_rated_id\` (\`rated_id\`),
         INDEX \`idx_rater_id\` (\`rater_id\`)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
@@ -476,6 +477,36 @@ export async function initDatabase(): Promise<void> {
         FOREIGN KEY (\`rated_id\`) REFERENCES \`users\`(\`Id\`)
         ON DELETE SET NULL
       `);
+    }
+    if (!(await columnExists(conn, "ratings", "comment"))) {
+      await conn.query("ALTER TABLE `ratings` ADD COLUMN `comment` TEXT NULL");
+    }
+    if (!(await columnExists(conn, "ratings", "photo_url"))) {
+      await conn.query("ALTER TABLE `ratings` ADD COLUMN `photo_url` VARCHAR(2000) NULL");
+    }
+    try {
+      await conn.query("ALTER TABLE `ratings` MODIFY COLUMN `score` DECIMAL(2,1) NOT NULL");
+    } catch {
+      // ignore if already DECIMAL or column missing
+    }
+
+    // Allow one rating per (application, rater): both customer and staff can rate the same application
+    const [idxRows] = await conn.query<RowDataPacket[]>(
+      `SELECT 1 AS ok FROM INFORMATION_SCHEMA.STATISTICS
+       WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'ratings' AND INDEX_NAME = 'idx_ratings_application_rater' LIMIT 1`,
+      [DB_NAME]
+    );
+    if (Array.isArray(idxRows) && idxRows.length === 0) {
+      try {
+        await conn.query("ALTER TABLE `ratings` DROP INDEX `application_id`");
+      } catch {
+        // index may already be gone or have different name
+      }
+      try {
+        await conn.query("ALTER TABLE `ratings` ADD UNIQUE INDEX `idx_ratings_application_rater` (`application_id`, `rater_id`)");
+      } catch (e) {
+        console.warn("[DB] ratings unique (application_id, rater_id) migration:", e);
+      }
     }
 
     // -------------------------

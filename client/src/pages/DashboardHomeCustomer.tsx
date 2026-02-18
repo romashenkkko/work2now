@@ -82,7 +82,7 @@ type AppWithSessions = { status: string; staffId?: string; staffName?: string; w
 export default function DashboardHomeCustomer() {
   const { t } = useTranslation();
   const { user } = useAuth();
-  const { openPostJobModal, jobsAdded, removeJob } = useContext(DashboardContext);
+  const { openPostJobModal, jobsAdded, removeJob, userRating } = useContext(DashboardContext);
   const [toast, setToast] = useState<string | null>(null);
   const [applicationsByJob, setApplicationsByJob] = useState<Record<string, AppWithSessions[]>>({});
   const [reportPeriod, setReportPeriod] = useState<ReportPeriod>("week");
@@ -164,8 +164,8 @@ export default function DashboardHomeCustomer() {
     () => allJobs.reduce((sum, j) => sum + (j.applicationsCount ?? 0), 0),
     [allJobs]
   );
-  const ratingValue = 0;
-  const ratingReviews = 0;
+  const ratingValue = userRating?.average ?? 0;
+  const ratingReviews = userRating?.count ?? 0;
 
   const jobFillRate = useMemo(() => {
     const totalSlots = allJobs.reduce((sum, j) => sum + (parseInt(String(j.peopleNeeded ?? "1"), 10) || 1), 0);

@@ -3,25 +3,23 @@ import { useTranslation } from "react-i18next";
 import { useAuth } from "../hooks/useAuth";
 import { DashboardContext, getApplications, setApplications, JobTitleIcon, JOB_TITLE_OPTIONS, type Application } from "./DashboardLayout";
 import { jobsApi, ratingsApi } from "../api/client";
-import { MapPin, Calendar, User, Mail } from "lucide-react";
+import { MapPin, Calendar, Mail } from "lucide-react";
 import StarRating from "../components/StarRating";
+
+const DEFAULT_AVATAR = "/Illustration/AvatarWhiteGuy.png";
 
 function ApplicantAvatar({ staffAvatar }: { staffAvatar?: string }) {
   const [imgFailed, setImgFailed] = useState(false);
-  const showImg = staffAvatar && !imgFailed;
+  const src = staffAvatar && !imgFailed ? staffAvatar : DEFAULT_AVATAR;
   useEffect(() => setImgFailed(false), [staffAvatar]);
   return (
-    <div className="flex-shrink-0 w-10 h-10 rounded-full overflow-hidden bg-primary/10 flex items-center justify-center border border-gray-200">
-      {showImg ? (
-        <img
-          src={staffAvatar}
-          alt=""
-          className="w-full h-full object-cover"
-          onError={() => setImgFailed(true)}
-        />
-      ) : (
-        <User className="w-5 h-5 text-primary" />
-      )}
+    <div className="flex-shrink-0 w-10 h-10 rounded-full overflow-hidden bg-primary/10 border border-gray-200">
+      <img
+        src={src}
+        alt=""
+        className="w-full h-full object-cover"
+        onError={() => setImgFailed(true)}
+      />
     </div>
   );
 }
@@ -48,7 +46,9 @@ function formatAppDate(ymd: string): string {
 export default function DashboardAplicatii() {
   const { t } = useTranslation();
   const { user } = useAuth();
-  const { jobsAdded, refreshJobs } = useContext(DashboardContext);
+  const ctx = useContext(DashboardContext);
+  const jobsAdded = ctx?.jobsAdded ?? [];
+  const refreshJobs = ctx?.refreshJobs ?? (() => {});
   const [applications, setApplicationsState] = useState<Record<string, Application[]>>({});
 
   const refreshApplications = () => {
@@ -90,6 +90,7 @@ export default function DashboardAplicatii() {
 
   const [completingId, setCompletingId] = useState<string | null>(null);
   const [ratingSubmitting, setRatingSubmitting] = useState<string | null>(null);
+  const [ratingDraft, setRatingDraft] = useState<Record<string, { score: number; comment: string }>>({});
 
   const markComplete = (applicationId: string) => {
     setCompletingId(applicationId);
@@ -99,11 +100,18 @@ export default function DashboardAplicatii() {
       .finally(() => setCompletingId(null));
   };
 
-  const submitRating = (applicationId: string, score: number) => {
+  const submitRating = (applicationId: string, score: number, comment?: string) => {
     setRatingSubmitting(applicationId);
     ratingsApi
-      .submit(applicationId, score)
-      .then(() => refreshApplications())
+      .submit(applicationId, score, comment)
+      .then(() => {
+        setRatingDraft((prev) => {
+          const next = { ...prev };
+          delete next[applicationId];
+          return next;
+        });
+        refreshApplications();
+      })
       .finally(() => setRatingSubmitting(null));
   };
 
@@ -228,6 +236,40 @@ export default function DashboardAplicatii() {
                       </ul>
                     </div>
                   )}
+                  {app.status === "accepted" && app.workSessions && app.workSessions.length > 0 && (
+                    <div className="mt-4 pt-4 border-t border-gray-100">
+                      <h3 className="text-sm font-semibold text-gray-700 mb-2">{t("dashboard.reviewYour", "Review-ul tău")}</h3>
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-sm text-gray-600">{t("dashboard.rateWork")}:</span>
+                          <StarRating
+                            value={ratingDraft[app.applicationId]?.score ?? 0}
+                            editable
+                            onSelect={(score) => setRatingDraft((prev) => ({ ...prev, [app.applicationId]: { ...(prev[app.applicationId] ?? { score: 0 }), score } }))}
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-gray-500 mt-1">{t("dashboard.commentOptional")}</label>
+                          <textarea
+                            rows={2}
+                            value={ratingDraft[app.applicationId]?.comment ?? ""}
+                            onChange={(e) => setRatingDraft((prev) => ({ ...prev, [app.applicationId]: { ...(prev[app.applicationId] ?? { score: 0 }), comment: e.target.value.slice(0, 2000) } }))}
+                            className="mt-0.5 w-full rounded-lg border border-gray-200 px-2 py-1.5 text-sm"
+                            placeholder={t("dashboard.commentOptional")}
+                          />
+                        </div>
+                        <p className="text-xs text-gray-500">{t("dashboard.photoOptional")}</p>
+                        <button
+                          type="button"
+                          disabled={!((ratingDraft[app.applicationId]?.score ?? 0) >= 0.5) || ratingSubmitting === app.applicationId}
+                          onClick={() => submitRating(app.applicationId, ratingDraft[app.applicationId]?.score ?? 1, ratingDraft[app.applicationId]?.comment?.trim() || undefined)}
+                          className="px-3 py-1.5 rounded-lg bg-primary text-white text-sm font-medium hover:bg-primary-dark disabled:opacity-50 disabled:pointer-events-none"
+                        >
+                          {ratingSubmitting === app.applicationId ? "..." : t("dashboard.submitReview")}
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </article>
             ))}
@@ -334,7 +376,7 @@ export default function DashboardAplicatii() {
                             </div>
                           )}
                           {a.status === "accepted" && a.completedAt && (
-                            <div className="mt-2 flex items-center gap-2 flex-wrap">
+                            <div className="mt-2 space-y-2">
                               {a.ratingScore != null ? (
                                 <span className="text-sm text-gray-600 flex items-center gap-1">
                                   {t("dashboard.rated")}:
@@ -342,13 +384,35 @@ export default function DashboardAplicatii() {
                                 </span>
                               ) : (
                                 <>
-                                  <span className="text-sm text-gray-600">{t("dashboard.rateWork")}:</span>
-                                  <StarRating
-                                    value={0}
-                                    editable
-                                    onSelect={(score) => submitRating(a.id, score)}
-                                  />
-                                  {ratingSubmitting === a.id && <span className="text-xs text-gray-500">...</span>}
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <span className="text-sm text-gray-600">{t("dashboard.rateWork")}:</span>
+                                    <StarRating
+                                      value={ratingDraft[a.id]?.score ?? 0}
+                                      editable
+                                      onSelect={(score) => setRatingDraft((prev) => ({ ...prev, [a.id]: { ...prev[a.id], score } }))}
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="block text-xs font-medium text-gray-500 mt-1">{t("dashboard.commentOptional")}</label>
+                                    <textarea
+                                      rows={2}
+                                      value={ratingDraft[a.id]?.comment ?? ""}
+                                      onChange={(e) => setRatingDraft((prev) => ({ ...prev, [a.id]: { ...(prev[a.id] ?? { score: 0 }), comment: e.target.value.slice(0, 2000) } }))}
+                                      className="mt-0.5 w-full rounded-lg border border-gray-200 px-2 py-1.5 text-sm"
+                                      placeholder={t("dashboard.commentOptional")}
+                                    />
+                                  </div>
+                                  <p className="text-xs text-gray-500">{t("dashboard.photoOptional")}</p>
+                                  <div className="flex gap-2">
+                                    <button
+                                      type="button"
+                                      disabled={!((ratingDraft[a.id]?.score ?? 0) >= 0.5) || ratingSubmitting === a.id}
+                                      onClick={() => submitRating(a.id, ratingDraft[a.id]?.score ?? 1, ratingDraft[a.id]?.comment?.trim() || undefined)}
+                                      className="px-3 py-1.5 rounded-lg bg-primary text-white text-sm font-medium hover:bg-primary-dark disabled:opacity-50 disabled:pointer-events-none"
+                                    >
+                                      {ratingSubmitting === a.id ? "..." : t("dashboard.submitReview", "Trimite review")}
+                                    </button>
+                                  </div>
                                 </>
                               )}
                             </div>

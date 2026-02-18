@@ -10,19 +10,16 @@
   },
   "dependencies": {
     "@lucide/lab": "^0.1.2",
-    "@react-google-maps/api": "^2.20.8",
     "i18next": "^23.7.11",
-    "leaflet": "^1.9.4",
     "lucide-react": "^0.563.0",
+    "mapbox-gl": "^3.18.1",
     "ogl": "^1.0.11",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-i18next": "^14.0.0",
-    "react-leaflet": "^4.2.1",
     "react-router-dom": "^6.21.1"
   },
   "devDependencies": {
-    "@types/leaflet": "^1.9.21",
     "@types/node": "^25.2.3",
     "@types/react": "^18.2.45",
     "@types/react-dom": "^18.2.18",
