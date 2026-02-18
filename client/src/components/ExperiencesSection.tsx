@@ -218,14 +218,6 @@ export default function ExperiencesSection({ onBack, t }: ExperiencesSectionProp
     return EXPERIENCE_DURATIONS.find((d) => d.id === durationId)?.label || "Unknown";
   };
 
-  const getUsedCategories = () => {
-    return new Set(experiences.map((exp) => exp.jobCategory));
-  };
-
-  const availableCategories = JOB_CATEGORIES.filter(
-    (cat) => !getUsedCategories().has(cat.id) || editingId !== null
-  );
-
   return (
     <section className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6">
       <button

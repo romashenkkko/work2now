@@ -1,5 +1,5 @@
 import { Router, Request, Response } from "express";
-import db, { getUserUuidFromLegacyId } from "../db";
+import db from "../db";
 import { authMiddleware, JwtPayload } from "../middleware/auth";
 
 type ReqWithUser = Request & { user?: JwtPayload };
@@ -27,7 +27,7 @@ router.post("/", authMiddleware, async (req: ReqWithUser, res: Response): Promis
     [applicationId]
   ) as [Record<string, unknown>[], unknown];
   const app = Array.isArray(appRows) && appRows[0] ? appRows[0] : null;
-  if (!app || Number(app.user_id) !== userId) {
+  if (!app || String(app.user_id) !== userId) {
     res.status(404).json({ error: "Aplicație negăsită." });
     return;
   }
@@ -41,46 +41,18 @@ router.post("/", authMiddleware, async (req: ReqWithUser, res: Response): Promis
     return;
   }
   
-  // MIGRATION FIX: Use transaction to ensure atomicity and populate UUID columns
-  const conn = await db.getConnection();
+  // Insert rating (rater_id and rated_id are already GUIDs)
   try {
-    await conn.beginTransaction();
-    
-    // MIGRATION FIX: Get UUIDs for rater_id and rated_id
-    const raterUuid = await getUserUuidFromLegacyId(userId);
-    const ratedUuid = await getUserUuidFromLegacyId(Number(app.staff_id));
-    
-    if (!raterUuid) {
-      console.warn(`[MIGRATION FIX] No UUID mapping found for rater ${userId}, rating will have NULL rater_id_uuid`);
-    }
-    if (!ratedUuid) {
-      console.warn(`[MIGRATION FIX] No UUID mapping found for rated user ${app.staff_id}, rating will have NULL rated_id_uuid`);
-    }
-    
-    // Insert rating
-    await conn.query(
+    await db.query(
       "INSERT INTO ratings (application_id, rater_id, rated_id, score) VALUES (?, ?, ?, ?)",
-      [applicationId, userId, app.staff_id, score]
+      [applicationId, userId, String(app.staff_id), score]
     );
-    
-    // MIGRATION FIX: Update UUID columns
-    if (raterUuid) {
-      await conn.query("UPDATE ratings SET rater_id_uuid = ? WHERE application_id = ?", [raterUuid, applicationId]);
-    }
-    if (ratedUuid) {
-      await conn.query("UPDATE ratings SET rated_id_uuid = ? WHERE application_id = ?", [ratedUuid, applicationId]);
-    }
-    
-    await conn.commit();
     res.status(201).json({ ok: true });
   } catch (error) {
-    await conn.rollback();
     console.error("Rating creation error:", error);
     if (!res.headersSent) {
       res.status(500).json({ error: "Eroare la crearea evaluării." });
     }
-  } finally {
-    conn.release();
   }
 });
 

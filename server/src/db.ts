@@ -1,4 +1,36 @@
 // server/src/db.ts
+
+import path from "path";
+import fs from "fs";
+import dotenv from "dotenv";
+
+/**
+ * ALWAYS load .env relative to project root (/server/.env)
+ * Works in:
+ *   - tsx dev (src/)
+ *   - compiled dist (dist/)
+ *   - pm2 production
+ */
+function loadEnv() {
+  const possiblePaths = [
+    path.resolve(process.cwd(), ".env"),            // when running inside /server
+    path.resolve(__dirname, "../.env"),             // when running from /server/src
+    path.resolve(__dirname, "../../.env"),          // when running from /server/dist
+  ];
+
+  for (const p of possiblePaths) {
+    if (fs.existsSync(p)) {
+      dotenv.config({ path: p });
+      console.log("[ENV] Loaded:", p);
+      return;
+    }
+  }
+
+  console.warn("[ENV] .env file not found. Using system environment variables.");
+}
+
+loadEnv();
+
 import mysql, { RowDataPacket } from "mysql2/promise";
 import { randomUUID } from "crypto";
 
@@ -7,7 +39,6 @@ const DB_USER = process.env.DB_USER || "root";
 const DB_PORT = process.env.DB_PORT;
 const DB_PASSWORD = process.env.DB_PASSWORD || "";
 const DB_NAME = process.env.DB_NAME || "time2go";
-
 /**
  * IMPORTANT:
  * On Windows/XAMPP, table names are often case-insensitive (lower_case_table_names=1).

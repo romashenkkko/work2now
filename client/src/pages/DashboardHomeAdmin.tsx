@@ -1,5 +1,4 @@
 import { useState, useEffect } from "react";
-import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "../hooks/useAuth";
 import { authApi } from "../api/client";
@@ -15,7 +14,6 @@ type UserRow = { id: number; name: string; email: string; role: string };
 export default function DashboardHomeAdmin() {
   const { t } = useTranslation();
   const { user } = useAuth();
-  const [toast, setToast] = useState<string | null>(null);
   const [users, setUsers] = useState<UserRow[]>([]);
   const [usersLoading, setUsersLoading] = useState(true);
   const [usersError, setUsersError] = useState<string | null>(null);
@@ -29,18 +27,8 @@ export default function DashboardHomeAdmin() {
       .finally(() => setUsersLoading(false));
   }, [user?.role]);
 
-  const showToast = (msg: string) => {
-    setToast(msg);
-    setTimeout(() => setToast(null), 2500);
-  };
-
   return (
     <>
-      {toast && (
-        <div className="fixed bottom-6 left-4 right-4 sm:left-auto sm:right-6 sm:max-w-sm z-50 px-4 py-3 rounded-xl bg-gray-900 text-white text-sm font-medium shadow-lg">
-          {toast}
-        </div>
-      )}
       <div className="page-enter-stagger">
         <header className="mb-6 md:mb-8 w-full flex items-center justify-between gap-4 p-4 sm:p-6 rounded-2xl bg-white border border-gray-200 shadow-sm">
           <div className="min-w-0">

@@ -121,6 +121,8 @@ export type JobPayload = {
 
 
 export type JobResponse = {
+  imageUrl: string | undefined;
+  postedBy: string | undefined;
   id: string;
   job: string;
   location: string;
@@ -135,6 +137,7 @@ export type JobResponse = {
   peopleNeeded?: string;
   duration?: string;
   estimatedSalary?: string;
+  posted_by_name?: string;
 
   // ✅ NEW
   jobCategoryCode?: number;

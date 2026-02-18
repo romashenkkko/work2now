@@ -1,12 +1,13 @@
-import "dotenv/config";
-// Asigură fallback în memorie (auth) când rulezi cu npm run dev
-if (typeof process.env.NODE_ENV === "undefined" || process.env.NODE_ENV === "") {
-  process.env.NODE_ENV = "development";
-}
+import dotenv from "dotenv";
+import path from "path";
+
+// Always load .env from /server folder, even when running from /src
+dotenv.config({
+  path: path.resolve(__dirname, "../.env"),
+});
 import "express-async-errors";
 import express from "express";
 import cors from "cors";
-import path from "path";
 import fs from "fs";
 import os from "os";
 import authRoutes, { ensureDefaultAdmin } from "./routes/auth";

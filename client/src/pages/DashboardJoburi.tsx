@@ -1,7 +1,7 @@
 import { useContext, useState, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "../hooks/useAuth";
-import { DashboardContext, getApplications, setApplications, type JobRow } from "./DashboardLayout";
+import { DashboardContext, getApplications, setApplications, type JobRow, type JobType } from "./DashboardLayout";
 import { jobsApi } from "../api/client";
 import JobsMapModal from "../components/JobsMapModal";
 import JobScheduleModal from "../components/JobScheduleModal";
@@ -10,7 +10,7 @@ import { MapPin, Clock, Users, Banknote, Calendar, Briefcase, Map, Search } from
 export default function DashboardJoburi() {
   const { t } = useTranslation();
   const { user } = useAuth();
-  const { jobsAdded, openPostJobModal, removeJob, jobsLoadError } = useContext(DashboardContext);
+  const { jobsAdded, openPostJobModal, removeJob } = useContext(DashboardContext);
   const [showMapModal, setShowMapModal] = useState(false);
   const [scheduleJob, setScheduleJob] = useState<JobRow | null>(null);
 
@@ -18,7 +18,6 @@ export default function DashboardJoburi() {
   const isCustomer = roleLower === "customer";
   const isStaff = roleLower === "staff";
   const jobs = isCustomer ? jobsAdded : [];
-  const jobsWithLocation = jobs.filter((j) => j.location?.trim());
 
   type MyAppInfo = { status: string; applicationId: string; checkedInAt?: string; checkedOutAt?: string; workSessions?: { workDate: string; checkedInAt?: string; checkedOutAt?: string }[] };
   const [publicJobs, setPublicJobs] = useState<JobRow[]>([]);
@@ -77,7 +76,7 @@ export default function DashboardJoburi() {
     }
     return Promise.all([jobsApi.list(), jobsApi.myApplications()])
       .then(([jobsRes, appRes]) => {
-        const list = (jobsRes.jobs || []).map((j: Record<string, unknown>) => ({
+        const list: JobRow[] = (jobsRes.jobs || []).map((j) => ({
           id: j.id,
           job: j.job,
           location: j.location,
@@ -85,7 +84,7 @@ export default function DashboardJoburi() {
           statusClass: j.statusClass ?? "bg-gray-100 text-gray-700",
           date: j.date,
           endDate: j.endDate,
-          jobType: j.jobType,
+          jobType: j.jobType as JobType | undefined,
           applicationsCount: j.applicationsCount ?? 0,
           startTime: j.startTime,
           endTime: j.endTime,

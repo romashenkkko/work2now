@@ -1,5 +1,5 @@
 import { Router, Request, Response } from "express";
-import db, { getUserUuidFromLegacyId } from "../db";
+import db from "../db";
 import { authMiddleware, JwtPayload } from "../middleware/auth";
 import { notifyCustomerNewApplication, notifyStaffAccepted, notifyStaffRefused } from "../email";
 import { stringToVacancyStatus, ApplicationStatus, stringToApplicationStatus } from "../enums";
@@ -206,15 +206,6 @@ router.post("/", authMiddleware, async (req: ReqWithUser, res: Response): Promis
           return;
         }
     
-    // MIGRATION FIX: Get UUID for user_id
-    const userUuid = await getUserUuidFromLegacyId(userId);
-    if (!userUuid) {
-      console.warn(`[MIGRATION FIX] No UUID mapping found for user ${userId}, job will have NULL user_id_uuid`);
-    }
-    
-    // MIGRATION FIX: Map status string to enum code
-    const vacancyStatusCode = stringToVacancyStatus(status);
-    
     // Insert job
        // Insert job (✅ now includes category + hourly base)
        const [result] = await conn.query(
@@ -259,12 +250,6 @@ router.post("/", authMiddleware, async (req: ReqWithUser, res: Response): Promis
       ) as [{ insertId: number }, unknown];
   
     const id = result.insertId;
-    
-    // MIGRATION FIX: Update UUID and enum columns
-    if (userUuid) {
-      await optionalQuery(conn, "UPDATE jobs SET user_id_uuid = ? WHERE id = ?", [userUuid, id]);
-    }
-    await optionalQuery(conn, "UPDATE jobs SET vacancy_status_code = ? WHERE id = ?", [vacancyStatusCode, id]);
     
     await conn.commit();
     
@@ -313,7 +298,7 @@ router.delete("/:id", authMiddleware, async (req: ReqWithUser, res: Response): P
     res.status(404).json({ error: "Job negăsit." });
     return;
   }
-  if (String(row.user_id ?? "") !== String(userId)) {
+  if (String(row.user_id) !== userId) {
     res.status(403).json({ error: "Nu poți șterge acest job." });
     return;
   }
@@ -548,27 +533,12 @@ router.post("/:id/apply", authMiddleware, async (req: ReqWithUser, res: Response
   try {
     await conn.beginTransaction();
     
-    // MIGRATION FIX: Get UUID for staff_id
-    const staffUuid = await getUserUuidFromLegacyId(userId);
-    if (!staffUuid) {
-      console.warn(`[MIGRATION FIX] No UUID mapping found for user ${userId}, application will have NULL staff_id_uuid`);
-    }
-    
-    // MIGRATION FIX: Set status_code enum
-    const statusCode = ApplicationStatus.Pending;
-    
     // Insert application
     const [insertResult] = await conn.query(
       "INSERT INTO applications (job_id, staff_id, staff_name, staff_email, status) VALUES (?, ?, ?, ?, 'pending')",
       [jobId, userId, String(userRow.staff_name ?? "").trim(), (userRow.staff_email as string | undefined) ?? null]
     ) as [{ insertId: number }, unknown];
     const appId = insertResult.insertId;
-    
-    // MIGRATION FIX: Update UUID and enum columns
-    if (staffUuid) {
-      await optionalQuery(conn, "UPDATE applications SET staff_id_uuid = ? WHERE id = ?", [staffUuid, appId]);
-    }
-    await optionalQuery(conn, "UPDATE applications SET status_code = ? WHERE id = ?", [statusCode, appId]);
     
     // Update applications count
     await conn.query(
@@ -719,7 +689,7 @@ router.patch("/applications/:id/check-in", authMiddleware, async (req: ReqWithUs
     [appId, userId]
   ) as [Record<string, unknown>[], unknown];
   const row = Array.isArray(rows) ? rows[0] : null;
-  if (!row) {
+  if (!row || String(row.staff_id) !== userId) {
     res.status(404).json({ error: "Aplicație negăsită." });
     return;
   }
@@ -766,7 +736,7 @@ router.patch("/applications/:id/check-out", authMiddleware, async (req: ReqWithU
     [appId, userId]
   ) as [Record<string, unknown>[], unknown];
   const row = Array.isArray(rows) ? rows[0] : null;
-  if (!row) {
+  if (!row || String(row.staff_id) !== userId) {
     res.status(404).json({ error: "Aplicație negăsită." });
     return;
   }
@@ -808,7 +778,7 @@ router.patch("/applications/:id/complete", authMiddleware, async (req: ReqWithUs
     [appId, userId]
   ) as [Record<string, unknown>[], unknown];
   const row = Array.isArray(rows) ? rows[0] : null;
-  if (!row) {
+  if (!row || String(row.user_id) !== userId) {
     res.status(404).json({ error: "Aplicație negăsită." });
     return;
   }
@@ -834,14 +804,12 @@ router.patch("/applications/:id", authMiddleware, async (req: ReqWithUser, res: 
     [appId, userId]
   ) as [Record<string, unknown>[], unknown];
   const row = Array.isArray(rows) ? rows[0] : null;
-  if (!row) {
+  if (!row || String(row.user_id) !== userId) {
     res.status(404).json({ error: "Aplicație negăsită." });
     return;
   }
   
-  // MIGRATION FIX: Update both status string and status_code enum atomically
-  const statusCode = stringToApplicationStatus(status);
-  await db.query("UPDATE applications SET status = ?, status_code = ? WHERE id = ?", [status, statusCode, appId]);
+  await db.query("UPDATE applications SET status = ? WHERE id = ?", [status, appId]);
   let staffEmail = row.staff_email != null ? String(row.staff_email).trim() : "";
   if (!staffEmail && row.staff_id) {
     const [u] = await db.query("SELECT email FROM users WHERE id = ?", [row.staff_id]) as [Record<string, unknown>[], unknown];
