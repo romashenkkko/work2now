@@ -66,6 +66,41 @@ function toNumber(v: unknown): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+/**
+ * Parse "HH:mm" or "H:mm" to minutes since midnight (0..1439).
+ * Returns null if invalid.
+ */
+function timeStringToMinutes(s: string | undefined): number | null {
+  if (s == null || typeof s !== "string") return null;
+  const t = s.trim();
+  const match = /^(\d{1,2}):(\d{2})$/.exec(t);
+  if (!match) return null;
+  const h = parseInt(match[1], 10);
+  const m = parseInt(match[2], 10);
+  if (!Number.isFinite(h) || !Number.isFinite(m) || m < 0 || m > 59) return null;
+  if (h < 0 || h > 23) return null;
+  return h * 60 + m;
+}
+
+/**
+ * Duration in hours between start and end time.
+ * If end time is before or equal to start time (e.g. 20:00 -> 05:00), end is treated as next day.
+ */
+function hoursBetweenTimes(startStr: string | undefined, endStr: string | undefined): number | null {
+  const startM = timeStringToMinutes(startStr);
+  const endM = timeStringToMinutes(endStr);
+  if (startM == null || endM == null) return null;
+  const minsPerDay = 24 * 60;
+  let durationMins: number;
+  if (endM <= startM) {
+    durationMins = minsPerDay - startM + endM;
+  } else {
+    durationMins = endM - startM;
+  }
+  const hours = durationMins / 60;
+  return Number.isFinite(hours) && hours >= 0 ? Math.round(hours * 100) / 100 : null;
+}
+
 
 /** Distanță în metri între două puncte (Haversine formula). */
 function haversineMeters(
@@ -132,6 +167,12 @@ function rowToJob(r: Record<string, unknown>): Record<string, unknown> {
   const checkInRadiusM = r.check_in_radius_m != null ? Number(r.check_in_radius_m) : undefined;
   const acceptedCount = r.accepted_count != null ? Number(r.accepted_count) : 0;
 
+  const startTime = r.start_time != null ? String(r.start_time) : undefined;
+  const endTime = r.end_time != null ? String(r.end_time) : undefined;
+  const storedDuration = r.duration != null && String(r.duration).trim() !== "" ? String(r.duration).trim() : undefined;
+  const computedDuration = hoursBetweenTimes(startTime, endTime);
+  const duration = storedDuration ?? (computedDuration != null ? String(computedDuration) : undefined);
+
   return {
     id: String(r.id),
     job: r.job, // Custom title (max 30 chars)
@@ -144,10 +185,10 @@ function rowToJob(r: Record<string, unknown>): Record<string, unknown> {
     jobType: r.job_type ?? undefined,
     applicationsCount: r.applications_count ?? 0,
     acceptedCount,
-    startTime: r.start_time ?? undefined,
-    endTime: r.end_time ?? undefined,
+    startTime,
+    endTime,
     peopleNeeded: r.people_needed ?? undefined,
-    duration: r.duration ?? undefined,
+    duration,
     estimatedSalary: r.estimated_salary ?? undefined,
     imageUrl: r.image_url ?? undefined,
     postedBy: name,
@@ -210,12 +251,13 @@ router.get("/", authMiddleware, async (req: ReqWithUser, res: Response): Promise
     const [r] = await db.query(
       `SELECT j.*,
               j.Title AS job,
-              jc.Title AS job_category_title,
+              COALESCE(jc.Title, (SELECT Title FROM job_categories WHERE Code = j.job_category_code LIMIT 1)) AS job_category_title,
               COALESCE(
                 bp.CompanyName,
                 TRIM(CONCAT(ep.Name, ' ', ep.Surname)),
                 u.Email
-              ) AS posted_by_name
+              ) AS posted_by_name,
+              (SELECT COUNT(*) FROM applications a WHERE a.job_id = j.id AND LOWER(TRIM(COALESCE(a.status,''))) = 'accepted') AS accepted_count
          FROM jobs j
          LEFT JOIN job_categories jc ON jc.Code = j.job_category_code
          LEFT JOIN users u ON u.Id = j.user_id
@@ -230,12 +272,13 @@ router.get("/", authMiddleware, async (req: ReqWithUser, res: Response): Promise
     const [r] = await db.query(
       `SELECT j.*,
               j.Title AS job,
-              jc.Title AS job_category_title,
+              COALESCE(jc.Title, (SELECT Title FROM job_categories WHERE Code = j.job_category_code LIMIT 1)) AS job_category_title,
               COALESCE(
                 bp.CompanyName,
                 TRIM(CONCAT(ep.Name, ' ', ep.Surname)),
                 u.Email
-              ) AS posted_by_name
+              ) AS posted_by_name,
+              (SELECT COUNT(*) FROM applications a WHERE a.job_id = j.id AND LOWER(TRIM(COALESCE(a.status,''))) = 'accepted') AS accepted_count
          FROM jobs j
          LEFT JOIN job_categories jc ON jc.Code = j.job_category_code
          LEFT JOIN users u ON u.Id = j.user_id
@@ -302,6 +345,13 @@ router.post("/", authMiddleware, async (req: ReqWithUser, res: Response): Promis
     b.checkInRadiusM != null
       ? Math.max(1, Math.min(500, Number(b.checkInRadiusM)))
       : (checkInLat != null && checkInLng != null ? DEFAULT_GEO_RADIUS_M : null);
+
+  const startTime = (b as any).startTime != null ? String((b as any).startTime).trim() : null;
+  const endTime = (b as any).endTime != null ? String((b as any).endTime).trim() : null;
+  const computedDurationHours = hoursBetweenTimes(startTime ?? undefined, endTime ?? undefined);
+  const durationValue = computedDurationHours != null
+    ? String(computedDurationHours)
+    : ((b as any).duration != null ? String((b as any).duration) : null);
   
   // MIGRATION FIX: Use transaction to ensure atomicity and populate UUID/enum columns
   const conn = await db.getConnection();
@@ -358,10 +408,10 @@ router.post("/", authMiddleware, async (req: ReqWithUser, res: Response): Promis
           date,
           (b as any).endDate ?? null,
           (b as any).jobType ?? null,
-          (b as any).startTime ?? null,
-          (b as any).endTime ?? null,
+          startTime,
+          endTime,
           (b as any).peopleNeeded ?? null,
-          (b as any).duration ?? null,
+          durationValue,
           (b as any).estimatedSalary ?? null,
           imageUrl,
           jobCategoryCode,
@@ -717,8 +767,10 @@ router.get("/applications", authMiddleware, async (req: ReqWithUser, res: Respon
     res.status(403).json({ error: "Doar customer poate vedea aplicațiile." });
     return;
   }
-  const [jobRows] = await db.query("SELECT id FROM jobs WHERE user_id = ?", [userId]) as [Record<string, unknown>[], unknown];
-  const jobIds = (Array.isArray(jobRows) ? jobRows : []).map((r) => r.id);
+  const [jobRows] = await db.query("SELECT id FROM jobs WHERE user_id = ? ORDER BY id", [userId]) as [Record<string, unknown>[], unknown];
+  const jobIds = (Array.isArray(jobRows) ? jobRows : [])
+    .map((r) => r.id ?? (r as Record<string, unknown>).Id)
+    .filter((id) => id != null && id !== "");
   if (jobIds.length === 0) {
     res.json({ applications: {} });
     return;
@@ -779,7 +831,9 @@ router.get("/applications", authMiddleware, async (req: ReqWithUser, res: Respon
   }
   const byJob: Record<string, unknown[]> = {};
   list.forEach((a) => {
-    const jid = String(a.job_id);
+    const rawJobId = a.job_id ?? (a as Record<string, unknown>).job_Id;
+    const jid = rawJobId != null && String(rawJobId).trim() !== "" ? String(rawJobId).trim() : null;
+    if (jid == null) return;
     const aid = String(a.id);
     if (!byJob[jid]) byJob[jid] = [];
     const sidStr = a.staff_id != null ? String(a.staff_id).trim() : "";

@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 import { coffeemaker } from "@lucide/lab";
 import { useAuth } from "../hooks/useAuth";
+import { getBusinessTotal, roundMoney } from "../utils/salary";
 import { jobsApi, ratingsApi, experiencesApi, type JobCategory } from "../api/client";
 import TimePicker from "../components/TimePicker";
 import StarRating from "../components/StarRating";
@@ -303,6 +304,7 @@ export default function DashboardLayout() {
         const list = (r.jobs || []).map((j) => ({
           id: j.id,
           job: j.job,
+          jobCategoryTitle: (j as any).jobCategoryTitle,
           location: j.location,
           status: j.status,
           statusClass: j.statusClass ?? "bg-gray-100 text-gray-700",
@@ -318,6 +320,8 @@ export default function DashboardLayout() {
           estimatedSalary: j.estimatedSalary,
           imageUrl: j.imageUrl,
           postedBy: j.postedBy,
+          jobCategoryCode: (j as any).jobCategoryCode,
+          hourlyRateBase: (j as any).hourlyRateBase,
         }));
         setJobsAdded(list);
         try {
@@ -400,8 +404,8 @@ export default function DashboardLayout() {
       return;
     }
 
-    const salary = totalHours * rate;
-    setCalculatedSalary(salary);
+    const baseTotal = totalHours * rate;
+    setCalculatedSalary(roundMoney(getBusinessTotal(baseTotal)));
   }, [formStartTime, formEndTime, hourlyRate]);
   const [availableToWork, setAvailableToWorkState] = useState(() => {
     if (typeof window === "undefined") return true;
@@ -1120,11 +1124,11 @@ export default function DashboardLayout() {
                         {calculatedSalary !== null && (
                           <div className="col-span-1 sm:col-span-2 p-4 rounded-xl bg-primary/5 border border-primary/20">
                             <div className="flex items-center justify-between">
-                              <span className="text-sm font-medium text-gray-700">Total Salary:</span>
+                              <span className="text-sm font-medium text-gray-700">{t("dashboard.estimatedTotalCost", "Total (incl. 22.5% tax + 10% platform)")}</span>
                               <span className="text-lg font-bold text-primary">{calculatedSalary.toFixed(2)} MDL</span>
                             </div>
                             <p className="mt-1 text-xs text-gray-500">
-                              Based on {formStartTime} - {formEndTime} ({((parseFloat(hourlyRate) || 0) > 0 ? calculatedSalary / parseFloat(hourlyRate) : 0).toFixed(2)} hours) × {hourlyRate} MDL/hour
+                              Based on {formStartTime} – {formEndTime} ({((parseFloat(hourlyRate) || 0) > 0 ? (calculatedSalary / (1 + 0.225 + 0.1) / parseFloat(hourlyRate)).toFixed(2) : 0)} hours) × {hourlyRate} MDL/hour
                             </p>
                           </div>
                         )}

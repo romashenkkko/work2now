@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { JobRow } from "../pages/DashboardLayout";
 import { Briefcase, Clock, MapPin, List, Calendar, Banknote, Users, AlertTriangle, Share2 } from "lucide-react";
+import { getBusinessTotal, getStaffNet, roundMoney } from "../utils/salary";
 
 const WEEKDAY_KEYS = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"] as const;
 const MONTH_KEYS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"] as const;
@@ -109,11 +110,33 @@ type Props = {
   open: boolean;
   onClose: () => void;
   job: JobRow | null;
+  /** When true, show staff net (base - 22.5%). When false, show business total (base + 22.5% + 10%). */
+  viewerIsStaff?: boolean;
   myAppInfo?: MyAppInfoForModal | null;
   onCheckIn?: (applicationId: string, workDate: string) => void;
   onCheckOut?: (applicationId: string, workDate: string) => void;
   checkInOutLoading?: string | null;
 };
+
+/** Parse "HH:MM" or "H:MM" to minutes since midnight. Returns NaN if invalid. */
+function timeToMinutes(str: string): number {
+  if (!str || typeof str !== "string") return NaN;
+  const parts = str.trim().split(/[:\s]+/);
+  const h = parseInt(parts[0], 10);
+  const m = parts.length >= 2 ? parseInt(parts[1], 10) : 0;
+  if (!Number.isFinite(h) || !Number.isFinite(m)) return NaN;
+  return h * 60 + m;
+}
+
+/** Hours between start and end time. If end <= start (e.g. 22:00–02:00), treats end as next day. Returns 0 if invalid. */
+function hoursBetweenTimes(startStr: string, endStr: string): number {
+  const start = timeToMinutes(startStr);
+  const end = timeToMinutes(endStr);
+  if (!Number.isFinite(start) || !Number.isFinite(end)) return 0;
+  const minsPerDay = 24 * 60;
+  const durationMins = end <= start ? minsPerDay - start + end : end - start;
+  return durationMins / 60;
+}
 
 function dateToYMD(d: Date): string {
   const y = d.getFullYear();
@@ -136,7 +159,7 @@ function formatTime(iso: string): string {
   }
 }
 
-export default function JobScheduleModal({ open, onClose, job, myAppInfo, onCheckIn, onCheckOut, checkInOutLoading }: Props) {
+export default function JobScheduleModal({ open, onClose, job, viewerIsStaff = false, myAppInfo, onCheckIn, onCheckOut, checkInOutLoading }: Props) {
   const { t } = useTranslation();
 
   const dates = useMemo(() => {
@@ -221,10 +244,12 @@ export default function JobScheduleModal({ open, onClose, job, myAppInfo, onChec
                 </div>
               )}
               <ul className="space-y-2.5 text-sm text-gray-600">
-                <li className="flex items-center gap-2">
-                  <Briefcase className="w-4 h-4 text-primary shrink-0" />
-                  <span>{job.job}</span>
-                </li>
+                {(job.jobCategoryTitle || job.job) && (
+                  <li className="flex items-center gap-2">
+                    <Briefcase className="w-4 h-4 text-primary shrink-0" />
+                    <span>{job.jobCategoryTitle ?? job.job}</span>
+                  </li>
+                )}
                 {(job.startTime || job.endTime) && (
                   <li className="flex items-center gap-2">
                     <Clock className="w-4 h-4 text-primary shrink-0" />
@@ -237,12 +262,41 @@ export default function JobScheduleModal({ open, onClose, job, myAppInfo, onChec
                     <span className="break-words">{job.location}</span>
                   </li>
                 )}
-                {job.estimatedSalary && (
-                  <li className="flex items-center gap-2">
-                    <Banknote className="w-4 h-4 text-primary shrink-0" />
-                    <span>{job.estimatedSalary}</span>
-                  </li>
-                )}
+                {(() => {
+                  const hourlyRate = job.hourlyRateBase != null ? Number(job.hourlyRateBase) : (job.estimatedSalary ? parseFloat(String(job.estimatedSalary).replace(/,/g, ".")) : NaN);
+                  const hasRate = Number.isFinite(hourlyRate) && hourlyRate > 0;
+                  const startT = (job.startTime ?? "").trim();
+                  const endT = (job.endTime ?? "").trim();
+                  const hoursPerDay = startT && endT ? hoursBetweenTimes(startT, endT) : 0;
+                  const numDays = dates.length || 1;
+                  const totalHours = hoursPerDay * numDays;
+                  const baseTotal = hasRate && totalHours > 0 ? hourlyRate * totalHours : null;
+                  const displayTotal = baseTotal != null && baseTotal > 0
+                    ? roundMoney(viewerIsStaff ? getStaffNet(baseTotal) : getBusinessTotal(baseTotal))
+                    : null;
+                  return (
+                    <>
+                      {hasRate && (
+                        <li className="flex items-center gap-2">
+                          <Banknote className="w-4 h-4 text-primary shrink-0" />
+                          <span>{hourlyRate.toFixed(2)} MDL/hour</span>
+                        </li>
+                      )}
+                      {!hasRate && job.estimatedSalary && (
+                        <li className="flex items-center gap-2">
+                          <Banknote className="w-4 h-4 text-primary shrink-0" />
+                          <span>{job.estimatedSalary}</span>
+                        </li>
+                      )}
+                      {displayTotal != null && displayTotal > 0 && (
+                        <li className="flex items-center gap-2 font-medium text-gray-900">
+                          <Banknote className="w-4 h-4 text-primary shrink-0" />
+                          <span>{t("dashboard.totalEstimated", "Total (estimated)")}: {displayTotal.toFixed(2)} MDL</span>
+                        </li>
+                      )}
+                    </>
+                  );
+                })()}
                 {job.peopleNeeded && (
                   <li className="flex items-center gap-2">
                     <Users className="w-4 h-4 text-primary shrink-0" />

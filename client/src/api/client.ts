@@ -202,6 +202,24 @@ export const jobsApi = {
     api<{ ok: boolean }>(`/jobs/${jobId}/apply`, { method: "POST" }),
   myApplications: () =>
     api<{ byJob: Record<string, { status: string; applicationId: string; checkedInAt?: string; checkedOutAt?: string; workSessions: { workDate: string; checkedInAt?: string; checkedOutAt?: string }[] }> }>("/jobs/my-applications"),
+  /** Staff: full list of my applications with job details, sessions, rating (GET /api/jobs/my-applications/list). */
+  myApplicationsList: () =>
+    api<{ applications: Array<{
+      id: string;
+      jobId: string;
+      status: "pending" | "accepted" | "refused";
+      createdAt?: string;
+      jobTitle?: string;
+      jobLocation?: string;
+      jobDate?: string;
+      jobEndDate?: string;
+      customerName?: string;
+      completedAt?: string;
+      checkedInAt?: string;
+      checkedOutAt?: string;
+      workSessions?: { workDate: string; checkedInAt?: string; checkedOutAt?: string }[];
+      ratingScore?: number;
+    }> }>("/jobs/my-applications/list"),
   applications: () =>
     api<{ applications: Record<string, { id: string; jobId: string; staffId: string; staffName: string; staffEmail?: string; status: string; checkedInAt?: string; checkedOutAt?: string; workSessions?: { workDate: string; checkedInAt?: string; checkedOutAt?: string }[] }[]> }>("/jobs/applications"),
   setApplicationStatus: (applicationId: string, status: "accepted" | "refused") =>
