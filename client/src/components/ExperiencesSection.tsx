@@ -2,16 +2,30 @@ import { useState, useEffect, useRef } from "react";
 import { Briefcase, Plus, Edit, Trash2, Save, X, ChevronDown } from "lucide-react";
 import { experiencesApi } from "../api/client";
 
-// Job categories matching the enum
+// Job categories matching the database enum (codes 1-22)
 enum JobCategory {
-  Waiter = 1,
-  Chef = 2,
-  Dishwasher = 3,
-  Barista = 4,
-  Bartender = 5,
-  Cleaner = 6,
-  Receptionist = 7,
-  CookAssistant = 8,
+  Barback = 1,
+  Barista = 2,
+  Bartender = 3,
+  Cashier = 4,
+  Chef = 5,
+  ChefHead = 6,
+  ChefPastry = 7,
+  ChefSous = 8,
+  ChefSushi = 9,
+  Cleaner = 10,
+  CocktailBartender = 11,
+  Dishwasher = 12,
+  EventCrew = 13,
+  GroceryStoreWorker = 14,
+  HeadWaiter = 15,
+  Housekeeper = 16,
+  Maintenance = 17,
+  Pizzaiolo = 18,
+  Receptionist = 19,
+  Sommelier = 20,
+  T2SAppTester = 21,
+  Waiter = 22,
 }
 
 // Experience duration matching the enum
@@ -23,14 +37,28 @@ enum ExperienceDuration {
 }
 
 const JOB_CATEGORIES = [
-  { id: JobCategory.Waiter, name: "Waiter", icon: "🍽️" },
-  { id: JobCategory.Chef, name: "Chef", icon: "👨‍🍳" },
-  { id: JobCategory.Dishwasher, name: "Dishwasher", icon: "🧽" },
+  { id: JobCategory.Barback, name: "Barback", icon: "🍺" },
   { id: JobCategory.Barista, name: "Barista", icon: "☕" },
   { id: JobCategory.Bartender, name: "Bartender", icon: "🍸" },
+  { id: JobCategory.Cashier, name: "Cashier", icon: "💰" },
+  { id: JobCategory.Chef, name: "Chef", icon: "👨‍🍳" },
+  { id: JobCategory.ChefHead, name: "Chef (Head)", icon: "👨‍🍳" },
+  { id: JobCategory.ChefPastry, name: "Chef (Pastry)", icon: "🧁" },
+  { id: JobCategory.ChefSous, name: "Chef (Sous)", icon: "👨‍🍳" },
+  { id: JobCategory.ChefSushi, name: "Chef (Sushi)", icon: "🍣" },
   { id: JobCategory.Cleaner, name: "Cleaner", icon: "🧹" },
+  { id: JobCategory.CocktailBartender, name: "Cocktail Bartender", icon: "🍹" },
+  { id: JobCategory.Dishwasher, name: "Dishwasher", icon: "🧽" },
+  { id: JobCategory.EventCrew, name: "Event Crew", icon: "🎉" },
+  { id: JobCategory.GroceryStoreWorker, name: "Grocery Store Worker", icon: "🛒" },
+  { id: JobCategory.HeadWaiter, name: "Head Waiter", icon: "🍽️" },
+  { id: JobCategory.Housekeeper, name: "Housekeeper", icon: "🏠" },
+  { id: JobCategory.Maintenance, name: "Maintenance", icon: "🔧" },
+  { id: JobCategory.Pizzaiolo, name: "Pizzaiolo", icon: "🍕" },
   { id: JobCategory.Receptionist, name: "Receptionist", icon: "📞" },
-  { id: JobCategory.CookAssistant, name: "Cook Assistant", icon: "👨‍🍳" },
+  { id: JobCategory.Sommelier, name: "Sommelier", icon: "🍷" },
+  { id: JobCategory.T2SAppTester, name: "T2S App Tester", icon: "📱" },
+  { id: JobCategory.Waiter, name: "Waiter", icon: "🍽️" },
 ];
 
 const EXPERIENCE_DURATIONS = [
@@ -217,14 +245,6 @@ export default function ExperiencesSection({ onBack, t }: ExperiencesSectionProp
   const getDurationLabel = (durationId: number) => {
     return EXPERIENCE_DURATIONS.find((d) => d.id === durationId)?.label || "Unknown";
   };
-
-  const getUsedCategories = () => {
-    return new Set(experiences.map((exp) => exp.jobCategory));
-  };
-
-  const availableCategories = JOB_CATEGORIES.filter(
-    (cat) => !getUsedCategories().has(cat.id) || editingId !== null
-  );
 
   return (
     <section className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6">

@@ -1,19 +1,48 @@
 // server/src/db.ts
+
+import path from "path";
+import fs from "fs";
+import dotenv from "dotenv";
+
+/**
+ * ALWAYS load .env relative to project root (/server/.env)
+ * Works in:
+ *   - tsx dev (src/)
+ *   - compiled dist (dist/)
+ *   - pm2 production
+ */
+function loadEnv() {
+  const possiblePaths = [
+    path.resolve(process.cwd(), ".env"),            // when running inside /server
+    path.resolve(__dirname, "../.env"),             // when running from /server/src
+    path.resolve(__dirname, "../../.env"),          // when running from /server/dist
+  ];
+
+  for (const p of possiblePaths) {
+    if (fs.existsSync(p)) {
+      dotenv.config({ path: p });
+      console.log("[ENV] Loaded:", p);
+      return;
+    }
+  }
+
+  console.warn("[ENV] .env file not found. Using system environment variables.");
+}
+
+loadEnv();
+
 import mysql, { RowDataPacket } from "mysql2/promise";
 import { randomUUID } from "crypto";
 
 const DB_HOST = process.env.DB_HOST || "localhost";
 const DB_USER = process.env.DB_USER || "root";
+const DB_PORT = process.env.DB_PORT;
 const DB_PASSWORD = process.env.DB_PASSWORD || "";
-const DB_NAME = process.env.DB_NAME || "work2now";
-
+const DB_NAME = process.env.DB_NAME || "time2go";
 /**
- * IMPORTANT (your current bug):
- * On Windows/XAMPP, MySQL/MariaDB is usually case-insensitive for table names
- * (lower_case_table_names=1). That means `Users` and `users` are THE SAME TABLE.
- * This is why you "created Users", but you still see the old `users` schema.
- *
- * Solution: use ONE canonical table name: `users` (lowercase) with the .NET columns.
+ * IMPORTANT:
+ * On Windows/XAMPP, table names are often case-insensitive (lower_case_table_names=1).
+ * Use ONE canonical table name: `users` (lowercase) with the .NET columns.
  */
 
 /**
@@ -91,6 +120,18 @@ async function ensureInnoDB(conn: mysql.Connection, tableName: string): Promise<
   }
 }
 
+async function ensureColumn(
+  conn: mysql.Connection,
+  tableName: string,
+  columnName: string,
+  columnDefSql: string
+): Promise<void> {
+  const exists = await columnExists(conn, tableName, columnName);
+  if (!exists) {
+    await conn.query(`ALTER TABLE \`${tableName}\` ADD COLUMN \`${columnName}\` ${columnDefSql}`);
+  }
+}
+
 async function getUserTableShape(conn: mysql.Connection): Promise<Set<string>> {
   const [rows] = await conn.query<RowDataPacket[]>(
     `SELECT COLUMN_NAME
@@ -104,17 +145,19 @@ async function getUserTableShape(conn: mysql.Connection): Promise<Set<string>> {
 function isCanonicalUsersTable(cols: Set<string>): boolean {
   const required = ["Id", "Email", "PasswordHash", "Role", "CreatedAt"];
   for (const c of required) if (!cols.has(c)) return false;
-  
-  // Also check that legacy columns don't exist (mixed schema detection)
+
+  // Mixed schema / legacy detection
   const legacyColumns = ["email", "password_hash", "created_at", "name", "role", "avatar"];
   for (const legacy of legacyColumns) {
-    if (cols.has(legacy)) {
-      return false; // Has legacy columns, not canonical
-    }
+    if (cols.has(legacy)) return false;
   }
   return true;
 }
 
+/**
+ * Drops tables only (NO DROP DATABASE).
+ * Used only when DB_FORCE_RESET=1.
+ */
 async function dropLegacySchema(conn: mysql.Connection): Promise<void> {
   // Drop children first to avoid FK errors.
   const dropOrder = [
@@ -122,21 +165,18 @@ async function dropLegacySchema(conn: mysql.Connection): Promise<void> {
     "application_work_sessions",
     "applications",
     "jobs",
+    "job_categories",
     "experiences",
     "branches",
     "business_profiles",
     "employee_profiles",
-    // legacy mapping table from your old attempt
     "userlegacymap",
     "UserLegacyMap",
-    // canonical
     "users",
-    // old phpmyadmin sample DB might also have capitalized variants on other OS
     "Users",
   ];
 
   for (const t of dropOrder) {
-    // ignore errors if table doesn't exist
     try {
       await conn.query(`DROP TABLE IF EXISTS \`${t}\``);
     } catch {
@@ -145,14 +185,55 @@ async function dropLegacySchema(conn: mysql.Connection): Promise<void> {
   }
 }
 
-async function dropDatabase(conn: mysql.Connection): Promise<void> {
-  try {
-    await conn.query(`DROP DATABASE IF EXISTS \`${DB_NAME}\``);
-    console.log(`[DB] Dropped database ${DB_NAME}`);
-  } catch (e) {
-    const err = e as Error;
-    console.warn(`[DB] Failed to drop database: ${err.message}`);
-    throw e;
+/**
+ * Job categories table seed (min salary per hour in MDL).
+ * NOTE: `Code` is INT to match your existing JobCategory enum values.
+ * You can later align enum numeric values with these codes.
+ */
+type JobCategorySeed = {
+  code: number;
+  title: string;
+  hourlyMin: number; // MDL/hour
+};
+
+const JOB_CATEGORY_SEED: JobCategorySeed[] = [
+  { code: 1, title: "Barback", hourlyMin: 30},
+  { code: 2, title: "Barista", hourlyMin: 30 },
+  { code: 3, title: "Bartender", hourlyMin: 45},
+  { code: 4, title: "Cashier", hourlyMin: 40},
+  { code: 5, title: "Chef", hourlyMin: 50},
+  { code: 6, title: "Chef (Head)", hourlyMin: 90},
+  { code: 7, title: "Chef (Pastry)", hourlyMin: 80},
+  { code: 8, title: "Chef (Sous)", hourlyMin: 60},
+  { code: 9, title: "Chef (Sushi)", hourlyMin: 45},
+  { code: 10, title: "Cleaner", hourlyMin: 20},
+  { code: 11, title: "Cocktail Bartender", hourlyMin: 70},
+  { code: 12, title: "Dishwasher", hourlyMin: 40},
+  { code: 13, title: "Event Crew", hourlyMin: 0 }, // TODO: set real min/max when known
+  { code: 14, title: "Grocery Store Worker", hourlyMin: 60},
+  { code: 15, title: "Head Waiter", hourlyMin: 50},
+  { code: 16, title: "Housekeeper", hourlyMin: 45},
+  { code: 17, title: "Maintenance", hourlyMin: 65},
+  { code: 18, title: "Pizzaiolo", hourlyMin: 60},
+  { code: 19, title: "Receptionist", hourlyMin: 30},
+  { code: 20, title: "Sommelier", hourlyMin: 65},
+  { code: 21, title: "T2S App Tester", hourlyMin: 70},
+  { code: 22, title: "Waiter", hourlyMin: 65}, // ✅ must not be less than 65 MDL/hour
+];
+
+async function seedJobCategories(conn: mysql.Connection): Promise<void> {
+  // Upsert by unique Code
+  for (const c of JOB_CATEGORY_SEED) {
+    await conn.query(
+      `
+      INSERT INTO \`job_categories\` (\`Id\`, \`Code\`, \`Title\`, \`HourlyMin\`)
+      VALUES (?, ?, ?, ?)
+      ON DUPLICATE KEY UPDATE
+        \`Title\` = VALUES(\`Title\`),
+        \`HourlyMin\` = VALUES(\`HourlyMin\`)
+      `,
+      [randomUUID(), c.code, c.title, c.hourlyMin ?? null]
+    );
   }
 }
 
@@ -161,10 +242,6 @@ async function dropDatabase(conn: mysql.Connection): Promise<void> {
  * users { Id Guid, Email, PasswordHash, Role(int), CreatedAt(datetime) }
  * employee_profiles 1:1 users via UNIQUE FK (UserId)
  * business_profiles 1:1 users via UNIQUE FK (UserId)
- *
- * Notes:
- * - Your .NET models have MaxLength constraints; we apply VARCHAR where applicable.
- * - We keep names snake_case for MySQL, but columns match .NET property names where it matters.
  */
 export async function initDatabase(): Promise<void> {
   let conn: mysql.Connection | null = null;
@@ -176,44 +253,34 @@ export async function initDatabase(): Promise<void> {
       password: DB_PASSWORD,
       charset: "utf8mb4",
       multipleStatements: false,
+      port: DB_PORT ? Number(DB_PORT) : undefined,
     });
 
-    // If FORCE_RESET is enabled, drop and recreate the entire database
-    if (FORCE_RESET) {
-      const [dbExists] = await conn.query<RowDataPacket[]>(
-        `SELECT SCHEMA_NAME FROM INFORMATION_SCHEMA.SCHEMATA WHERE SCHEMA_NAME = ?`,
-        [DB_NAME]
-      ) as [{ SCHEMA_NAME: string }[], unknown];
-      if (Array.isArray(dbExists) && dbExists.length > 0) {
-        await conn.query(`USE \`${DB_NAME}\``);
-        await dropLegacySchema(conn);
-        await dropDatabase(conn);
-        console.log(`[DB] Dropped database ${DB_NAME} for clean rebuild`);
-      }
-    }
-
+    // Ensure DB exists and use it
     await conn.query(
       `CREATE DATABASE IF NOT EXISTS \`${DB_NAME}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci`
     );
     await conn.changeUser({ database: DB_NAME });
 
-    // Check if users table exists and has correct schema
+    // Only drop TABLES when FORCE_RESET=1
+    if (FORCE_RESET) {
+      await dropLegacySchema(conn);
+      console.log(`[DB] DB_FORCE_RESET=1 → dropped tables for clean rebuild (no DROP DATABASE).`);
+    }
+
+    // If users table exists but wrong schema and FORCE_RESET=0 → fail fast
     if (await tableExists(conn, "users")) {
       const cols = await getUserTableShape(conn);
-      // Check for required columns AND ensure no legacy columns exist
-      const hasRequired = isCanonicalUsersTable(cols);
-      const hasLegacy = cols.has("email") || cols.has("password_hash") || cols.has("created_at") || cols.has("name");
-      
-      if (!hasRequired || hasLegacy) {
-        if (!FORCE_RESET) {
-          throw new Error(
-            "[DB] Found legacy `users` table with wrong columns. Set DB_FORCE_RESET=1 to rebuild schema."
-          );
-        }
-        // Drop users table specifically to remove mixed columns
+      const ok = isCanonicalUsersTable(cols);
+      if (!ok && !FORCE_RESET) {
+        throw new Error(
+          "[DB] Found legacy `users` table with wrong columns. Set DB_FORCE_RESET=1 to rebuild schema."
+        );
+      }
+      if (!ok && FORCE_RESET) {
         await conn.query(`DROP TABLE IF EXISTS \`users\``);
         await conn.query(`DROP TABLE IF EXISTS \`Users\``);
-        console.log(`[DB] Dropped users table to remove mixed schema columns`);
+        console.log(`[DB] Dropped users/Users to remove mixed schema columns`);
       }
     }
 
@@ -228,7 +295,7 @@ export async function initDatabase(): Promise<void> {
         \`Role\` INT NOT NULL,
         \`CreatedAt\` DATETIME NOT NULL,
         INDEX \`idx_users_email\` (\`Email\`),
-        INDEX \`idx_users_role\` (\`Role\`)
+        INDEX \`idx_users_dis_idx\` (\`Role\`)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
     `);
     await ensureInnoDB(conn, "users");
@@ -261,7 +328,7 @@ export async function initDatabase(): Promise<void> {
     `);
     await ensureInnoDB(conn, "business_profiles");
 
-    // Branches (because BusinessProfile has ICollection<Branch>)
+    // Branches (BusinessProfile has ICollection<Branch>)
     await conn.query(`
       CREATE TABLE IF NOT EXISTS \`branches\` (
         \`Id\` ${GUID_COL} PRIMARY KEY,
@@ -271,6 +338,8 @@ export async function initDatabase(): Promise<void> {
         \`City\` VARCHAR(120) NOT NULL,
         \`Country\` VARCHAR(120) NOT NULL,
         \`PhoneNumber\` VARCHAR(50) NOT NULL,
+        \`ContactPersonName\` VARCHAR(100) NOT NULL DEFAULT '',
+        \`ContactPersonSurname\` VARCHAR(100) NOT NULL DEFAULT '',
         \`IsActive\` TINYINT(1) NOT NULL DEFAULT 1,
         \`CreatedAt\` DATETIME NOT NULL,
         INDEX \`idx_branches_business_profile_id\` (\`BusinessProfileId\`)
@@ -278,8 +347,11 @@ export async function initDatabase(): Promise<void> {
     `);
     await ensureInnoDB(conn, "branches");
 
-    // Experiences (because EmployeeProfile has ICollection<Experience>)
-    // NOTE: your real Experience model may have more fields; add them later.
+    // If table existed before, ensure new columns exist (idempotent)
+    await ensureColumn(conn, "branches", "ContactPersonName", "VARCHAR(100) NOT NULL DEFAULT ''");
+    await ensureColumn(conn, "branches", "ContactPersonSurname", "VARCHAR(100) NOT NULL DEFAULT ''");
+
+    // Experiences
     await conn.query(`
       CREATE TABLE IF NOT EXISTS \`experiences\` (
         \`Id\` ${GUID_COL} PRIMARY KEY,
@@ -293,7 +365,23 @@ export async function initDatabase(): Promise<void> {
     await ensureInnoDB(conn, "experiences");
 
     // -------------------------
-    // 2) Add foreign keys (idempotent)
+    // 1.5) Job Categories table (NEW)
+    // -------------------------
+    await conn.query(`
+      CREATE TABLE IF NOT EXISTS \`job_categories\` (
+        \`Id\` ${GUID_COL} PRIMARY KEY,
+        \`Code\` INT NOT NULL,
+        \`Title\` VARCHAR(150) NOT NULL,
+        \`HourlyMin\` INT NOT NULL,
+        \`CreatedAt\` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY \`uq_job_categories_code\` (\`Code\`),
+        INDEX \`idx_job_categories_title\` (\`Title\`)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
+    `);
+    await ensureInnoDB(conn, "job_categories");
+
+    // -------------------------
+    // 2) Add foreign keys
     // -------------------------
     if (!(await fkExists(conn, "employee_profiles", "fk_employee_profiles_userid_users_id"))) {
       await conn.query(`
@@ -332,14 +420,13 @@ export async function initDatabase(): Promise<void> {
     }
 
     // -------------------------
-    // 3) Optional: keep your existing app tables, but make them GUID-based
+    // 3) Optional app tables
     // -------------------------
-    // If you don't need these yet, you can delete this whole block.
     await conn.query(`
       CREATE TABLE IF NOT EXISTS \`jobs\` (
         \`id\` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
         \`user_id\` ${GUID_COL} NULL,
-        \`job\` VARCHAR(255) NOT NULL,
+        \`Title\` VARCHAR(30) NOT NULL,
         \`location\` TEXT,
         \`status\` VARCHAR(50) NOT NULL DEFAULT 'Draft',
         \`status_class\` VARCHAR(100) NOT NULL DEFAULT 'bg-gray-100 text-gray-700',
@@ -358,6 +445,69 @@ export async function initDatabase(): Promise<void> {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
     `);
     await ensureInnoDB(conn, "jobs");
+
+    // NEW columns for salary/category logic (idempotent)
+    await ensureColumn(conn, "jobs", "job_category_code", "INT NULL");
+    await ensureColumn(conn, "jobs", "hourly_rate_base", "DECIMAL(10,2) NULL");
+    
+    // Migration: Add Title column (max 30 chars) and migrate data from job column
+    await ensureColumn(conn, "jobs", "Title", "VARCHAR(30) NULL");
+    
+    // Check if old job column exists and migrate data
+    const jobColumnExists = await columnExists(conn, "jobs", "job");
+    if (jobColumnExists) {
+      // Migrate existing data from job to Title if Title is empty
+      await conn.query(`
+        UPDATE \`jobs\` 
+        SET \`Title\` = SUBSTRING(\`job\`, 1, 30) 
+        WHERE \`Title\` IS NULL AND \`job\` IS NOT NULL
+      `).catch(() => {
+        // Ignore if no data to migrate
+      });
+      
+      // Make Title NOT NULL after migration
+      await conn.query(`
+        ALTER TABLE \`jobs\` 
+        MODIFY COLUMN \`Title\` VARCHAR(30) NOT NULL
+      `).catch(() => {
+        // Ignore if already NOT NULL
+      });
+      
+      // Remove the old job column (after ensuring Title has data)
+      try {
+        await conn.query(`ALTER TABLE \`jobs\` DROP COLUMN \`job\``);
+      } catch (e) {
+        // Ignore if column doesn't exist or can't be dropped
+        const err = e as Error;
+        if (!err.message.includes("doesn't exist") && !err.message.includes("Unknown column")) {
+          console.warn("[DB] Could not drop job column:", err.message);
+        }
+      }
+    } else {
+      // If job column doesn't exist, ensure Title is NOT NULL
+      await conn.query(`
+        ALTER TABLE \`jobs\` 
+        MODIFY COLUMN \`Title\` VARCHAR(30) NOT NULL
+      `).catch(() => {
+        // Ignore if already NOT NULL
+      });
+    }
+
+    // FK from jobs.job_category_code -> job_categories.Code (optional but recommended)
+    if (!(await fkExists(conn, "jobs", "fk_jobs_job_category_code_job_categories_code"))) {
+      try {
+        await conn.query(`
+          ALTER TABLE \`jobs\`
+          ADD CONSTRAINT \`fk_jobs_job_category_code_job_categories_code\`
+          FOREIGN KEY (\`job_category_code\`) REFERENCES \`job_categories\`(\`Code\`)
+          ON DELETE SET NULL
+        `);
+      } catch (e) {
+        // If the column/table exists but types/collation issues occur, don't crash init.
+        // You can remove this catch once everything is stable.
+        console.warn("[DB] Could not add FK fk_jobs_job_category_code_job_categories_code:", e);
+      }
+    }
 
     if (!(await fkExists(conn, "jobs", "fk_jobs_user_id_users_id"))) {
       await conn.query(`
@@ -386,7 +536,6 @@ export async function initDatabase(): Promise<void> {
         \`staff_email\` VARCHAR(191),
         \`status\` VARCHAR(20) NOT NULL DEFAULT 'pending',
         \`status_code\` INT NULL,
-        \`completed_at\` TIMESTAMP NULL,
         \`checked_in_at\` TIMESTAMP NULL,
         \`checked_out_at\` TIMESTAMP NULL,
         \`created_at\` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -412,6 +561,12 @@ export async function initDatabase(): Promise<void> {
         FOREIGN KEY (\`staff_id\`) REFERENCES \`users\`(\`Id\`)
         ON DELETE SET NULL
       `);
+    }
+    if (!(await columnExists(conn, "applications", "business_confirmed_at"))) {
+      await conn.query("ALTER TABLE `applications` ADD COLUMN `business_confirmed_at` TIMESTAMP NULL");
+    }
+    if (await columnExists(conn, "applications", "completed_at")) {
+      await conn.query("ALTER TABLE `applications` DROP COLUMN `completed_at`");
     }
 
     await conn.query(`
@@ -510,17 +665,20 @@ export async function initDatabase(): Promise<void> {
     }
 
     // -------------------------
-    // 4) Sanity check (fail fast)
+    // 3.5) Seeders
+    // -------------------------
+    await seedJobCategories(conn);
+
+    // -------------------------
+    // 4) Sanity check
     // -------------------------
     const usersCols = await getUserTableShape(conn);
     for (const must of ["Id", "Email", "PasswordHash", "Role", "CreatedAt"]) {
-      if (!usersCols.has(must)) {
-        throw new Error(`[DB] Schema invalid: users.${must} is missing`);
-      }
+      if (!usersCols.has(must)) throw new Error(`[DB] Schema invalid: users.${must} is missing`);
     }
 
     await conn.query("SELECT 1");
-    console.log("[DB] MySQL conectat. Schema .NET (users + profiles) este OK.");
+    console.log("[DB] MySQL conectat. Schema .NET (users + profiles) este OK. job_categories seeded.");
   } finally {
     if (conn) await conn.end();
   }
@@ -528,20 +686,15 @@ export async function initDatabase(): Promise<void> {
 
 /**
  * Canonical user creation (matches .NET models).
- * Use this from your register/auth flow.
- *
- * NOTE:
- * - role is the .NET enum int (Employee | Employer | Admin).
- * - Provide exactly ONE of employeeProfile or businessProfile.
  */
 export async function createUserDotNetStyle(params: {
   email: string;
   passwordHash: string;
-  role: number; // .NET enum int
+  role: number;
   employeeProfile?: {
     name: string;
     surname: string;
-    dateOfBirth: string; // ISO date/datetime
+    dateOfBirth: string;
     aboutMe?: string;
     profilePictureFileId?: string | null;
   };
@@ -549,7 +702,7 @@ export async function createUserDotNetStyle(params: {
     companyName: string;
     contactPersonName: string;
     contactPersonSurname: string;
-    companyCategory: number; // enum int
+    companyCategory: number;
     infoForStaff?: string;
   };
   branch?: {
@@ -558,6 +711,8 @@ export async function createUserDotNetStyle(params: {
     city: string;
     country?: string;
     phoneNumber: string;
+    contactPersonName?: string;
+    contactPersonSurname?: string;
   };
 }): Promise<{ userId: string }> {
   const conn = await pool.getConnection();
@@ -612,13 +767,14 @@ export async function createUserDotNetStyle(params: {
         ]
       );
 
-      // Automatically create the branch if branch data is provided
+      // Create branch if provided
       if (params.branch) {
         const branchId = randomUUID();
         await conn.query(
           `INSERT INTO \`branches\`
-           (\`Id\`, \`BusinessProfileId\`, \`Name\`, \`Address\`, \`City\`, \`Country\`, \`PhoneNumber\`, \`IsActive\`, \`CreatedAt\`)
-           VALUES (?, ?, ?, ?, ?, ?, ?, 1, NOW())`,
+           (\`Id\`, \`BusinessProfileId\`, \`Name\`, \`Address\`, \`City\`, \`Country\`, \`PhoneNumber\`,
+            \`ContactPersonName\`, \`ContactPersonSurname\`, \`IsActive\`, \`CreatedAt\`)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, NOW())`,
           [
             branchId,
             busId,
@@ -627,6 +783,8 @@ export async function createUserDotNetStyle(params: {
             params.branch.city.trim(),
             params.branch.country?.trim() || "Moldova",
             params.branch.phoneNumber.trim(),
+            (params.branch.contactPersonName ?? "").trim(),
+            (params.branch.contactPersonSurname ?? "").trim(),
           ]
         );
       }
@@ -649,10 +807,7 @@ export async function createUserDotNetStyle(params: {
 export async function getUserUuidFromLegacyId(legacyId: string | number): Promise<string | null> {
   const id = String(legacyId ?? "").trim();
   if (!id) return null;
-  const [rows] = await pool.query<RowDataPacket[]>(
-    "SELECT Id FROM users WHERE Id = ? LIMIT 1",
-    [id]
-  );
+  const [rows] = await pool.query<RowDataPacket[]>("SELECT Id FROM users WHERE Id = ? LIMIT 1", [id]);
   const userId = Array.isArray(rows) && rows[0] ? String(rows[0].Id ?? "").trim() : "";
   return userId || null;
 }

@@ -24,17 +24,6 @@ function getDaysAgo(n: number): Date {
   return d;
 }
 
-const WEEKDAY_KEYS = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"] as const;
-const MONTH_KEYS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"] as const;
-
-function formatDateLabel(t: (key: string) => string, ymd: string): string {
-  const d = new Date(ymd + "T12:00:00");
-  const weekday = WEEKDAY_KEYS[d.getDay()];
-  const day = d.getDate();
-  const month = MONTH_KEYS[d.getMonth()];
-  return `${t(`dashboard.weekdayShort.${weekday}`)}, ${day} ${t(`dashboard.monthShort.${month}`)}`;
-}
-
 const MONTH_NAMES_LONG = ["Ianuarie", "Februarie", "Martie", "Aprilie", "Mai", "Iunie", "Iulie", "August", "Septembrie", "Octombrie", "Noiembrie", "Decembrie"] as const;
 const WEEKDAY_HEADERS = ["Lun", "Mar", "Mie", "Joi", "Vin", "Sâm", "Dum"] as const;
 
@@ -83,9 +72,9 @@ export default function DashboardHomeCustomer() {
   const { t } = useTranslation();
   const { user } = useAuth();
   const { openPostJobModal, jobsAdded, removeJob, userRating } = useContext(DashboardContext);
-  const [toast, setToast] = useState<string | null>(null);
+  const [toast] = useState<string | null>(null);
   const [applicationsByJob, setApplicationsByJob] = useState<Record<string, AppWithSessions[]>>({});
-  const [reportPeriod, setReportPeriod] = useState<ReportPeriod>("week");
+  const [reportPeriod] = useState<ReportPeriod>("week");
   const [selectedJobIdForReport, setSelectedJobIdForReport] = useState<string | null>(null);
   const [selectedDateForReport, setSelectedDateForReport] = useState<string | null>(null);
   const [selectedStaffIdForReport, setSelectedStaffIdForReport] = useState<string | null>(null);
@@ -153,11 +142,6 @@ export default function DashboardHomeCustomer() {
     return () => window.removeEventListener("focus", onFocus);
   }, [selectedJobIdForReport, user?.id, fetchApplications]);
 
-  const showToast = (msg: string) => {
-    setToast(msg);
-    setTimeout(() => setToast(null), 2500);
-  };
-
   const allJobs = useMemo(() => [...jobsAdded], [jobsAdded]);
 
   const totalApplications = useMemo(
@@ -174,7 +158,7 @@ export default function DashboardHomeCustomer() {
     return Math.min(100, Math.round((filled / totalSlots) * 100));
   }, [allJobs]);
 
-  const reportStats = useMemo(() => {
+  const _reportStats = useMemo(() => {
     const now = new Date();
     const periodStart =
       reportPeriod === "week" ? getDaysAgo(7) : reportPeriod === "month" ? getDaysAgo(30) : getDaysAgo(365);
@@ -215,8 +199,7 @@ export default function DashboardHomeCustomer() {
     const activityLabels = reportPeriod === "week" ? weekDayLabels : reportPeriod === "month" ? [t("dashboard.week") + " 1", t("dashboard.week") + " 2", t("dashboard.week") + " 3", t("dashboard.week") + " 4"] : ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
     return { totalHours: Math.round(totalHours * 10) / 10, completedJobs, activityBars, activityLabels };
   }, [applicationsByJob, reportPeriod, t]);
-
-  const maxActivityHours = useMemo(() => Math.max(1, ...reportStats.activityBars), [reportStats.activityBars]);
+  void _reportStats; // reserved for future report charts
 
   const statsWithValues = useMemo(
     () => [
@@ -455,7 +438,6 @@ export default function DashboardHomeCustomer() {
               const job = allJobs.find((j, i) => ("id" in j && j.id != null ? String(j.id) : `job-${i}`) === selectedJobIdForReport) as { date?: string; endDate?: string; startTime?: string; endTime?: string; peopleNeeded?: string } | undefined;
               const apps = applicationsByJob[selectedJobIdForReport] ?? [];
               const accepted = apps.filter((a) => String(a.status).toLowerCase() === "accepted");
-              const peopleNeeded = job ? (parseInt(String(job.peopleNeeded ?? "1"), 10) || 1) : 0;
               const jobDate = (job?.date || "").trim();
               const jobEndDate = (job?.endDate || "").trim();
               const scheduledDates = jobDate ? getScheduledDates(jobDate, jobEndDate || undefined) : [];

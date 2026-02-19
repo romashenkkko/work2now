@@ -101,7 +101,7 @@ export const authApi = {
 };
 
 export type JobPayload = {
-  job: string;
+  job: string; // Custom title (max 30 chars) - required
   location: string;
   status?: string;
   statusClass?: string;
@@ -113,14 +113,24 @@ export type JobPayload = {
   peopleNeeded?: string;
   duration?: string;
   estimatedSalary?: string;
+
+
+  // ✅ NEW: required for server validation
+  jobCategoryCode: number;   // matches enum code
+  hourlyRateBase: number;    // MDL/hour (will be validated against minHourly)
   checkInLat?: number;
   checkInLng?: number;
   checkInRadiusM?: number;
+
 };
 
+
 export type JobResponse = {
+  imageUrl: string | undefined;
+  postedBy: string | undefined;
   id: string;
-  job: string;
+  job: string; // Custom title (max 30 chars)
+  jobCategoryTitle?: string; // Category name from job_categories
   location: string;
   status: string;
   statusClass: string;
@@ -134,6 +144,43 @@ export type JobResponse = {
   peopleNeeded?: string;
   duration?: string;
   estimatedSalary?: string;
+  posted_by_name?: string;
+
+  // ✅ NEW
+  jobCategoryCode?: number;
+  hourlyRateBase?: number;
+  postedById?: string;
+  postedByRole?: string;
+  postedByAvatar?: string;
+  checkInLat?: number;
+  checkInLng?: number;
+  checkInRadiusM?: number;
+};
+
+export type StaffApplicationItem = {
+  id: string;
+  jobId: string;
+  status: "pending" | "accepted" | "refused";
+  createdAt?: string;
+
+  jobTitle?: string;
+  jobLocation?: string;
+  jobDate?: string;
+  jobEndDate?: string;
+
+  customerName?: string;
+
+  checkedInAt?: string;
+  checkedOutAt?: string;
+  workSessions?: { workDate: string; checkedInAt?: string; checkedOutAt?: string }[];
+
+  ratingScore?: number;
+};
+
+export type JobCategory = {
+  code: number;
+  title: string;
+  hourlyMin: number;
   checkInLat?: number;
   checkInLng?: number;
   checkInRadiusM?: number;
@@ -141,10 +188,12 @@ export type JobResponse = {
   postedById?: string;
   postedByRole?: string;
   postedByAvatar?: string;
+
 };
 
 export const jobsApi = {
   list: () => api<{ jobs: JobResponse[] }>("/jobs"),
+  getCategories: () => api<{ categories: JobCategory[] }>("/jobs/categories"),
   create: (payload: JobPayload) =>
     api<JobResponse>("/jobs", { method: "POST", body: JSON.stringify(payload) }),
   delete: (id: string) => api<{ ok: boolean }>(`/jobs/${id}`, { method: "DELETE" }),
@@ -152,6 +201,23 @@ export const jobsApi = {
     api<{ ok: boolean }>(`/jobs/${jobId}/apply`, { method: "POST" }),
   myApplications: () =>
     api<{ byJob: Record<string, { status: string; applicationId: string; checkedInAt?: string; checkedOutAt?: string; workSessions: { workDate: string; checkedInAt?: string; checkedOutAt?: string }[] }> }>("/jobs/my-applications"),
+  /** Staff: full list of my applications with job details, sessions, rating (GET /api/jobs/my-applications/list). */
+  myApplicationsList: () =>
+    api<{ applications: Array<{
+      id: string;
+      jobId: string;
+      status: "pending" | "accepted" | "refused";
+      createdAt?: string;
+      jobTitle?: string;
+      jobLocation?: string;
+      jobDate?: string;
+      jobEndDate?: string;
+      customerName?: string;
+      checkedInAt?: string;
+      checkedOutAt?: string;
+      workSessions?: { workDate: string; checkedInAt?: string; checkedOutAt?: string }[];
+      ratingScore?: number;
+    }> }>("/jobs/my-applications/list"),
   applications: () =>
     api<{ applications: Record<string, { id: string; jobId: string; staffId: string; staffName: string; staffEmail?: string; status: string; checkedInAt?: string; checkedOutAt?: string; workSessions?: { workDate: string; checkedInAt?: string; checkedOutAt?: string }[] }[]> }>("/jobs/applications"),
   setApplicationStatus: (applicationId: string, status: "accepted" | "refused") =>
@@ -159,8 +225,9 @@ export const jobsApi = {
       method: "PATCH",
       body: JSON.stringify({ status }),
     }),
-  completeApplication: (applicationId: string) =>
-    api<{ ok: boolean }>(`/jobs/applications/${applicationId}/complete`, { method: "PATCH" }),
+  /** Customer: confirm job finished (after staff checkout); application then moves to history. */
+  confirmCompletion: (applicationId: string) =>
+    api<{ ok: boolean }>(`/jobs/applications/${applicationId}/confirm-completion`, { method: "PATCH" }),
   checkIn: (applicationId: string, workDate?: string, geo?: { lat: number; lng: number }) =>
     api<{ ok: boolean; alreadyDone?: boolean }>(`/jobs/applications/${applicationId}/check-in`, {
       method: "PATCH",
