@@ -16,6 +16,22 @@
   }
 }
 
+/* Blur pentru elementele din spatele nav bar-ului */
+.nav-bar-blur {
+  position: relative;
+}
+
+.nav-bar-blur::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  z-index: -1;
+  pointer-events: none;
+  background: transparent;
+}
+
 @layer components {
   .btn-primary {
     @apply inline-flex items-center justify-center px-6 py-3 rounded-2xl text-white font-semibold transition-all duration-200;

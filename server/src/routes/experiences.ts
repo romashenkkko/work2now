@@ -179,6 +179,47 @@ router.get("/", authMiddleware, async (req: ReqWithUser, res: Response): Promise
 });
 
 /**
+ * GET /api/experiences/user/:userId - Get experiences for a user (e.g. staff profile)
+ */
+router.get("/user/:userId", authMiddleware, async (req: ReqWithUser, res: Response): Promise<void> => {
+  const userId = req.params.userId;
+  if (!userId) {
+    res.status(400).json({ error: "userId lipsă." });
+    return;
+  }
+  try {
+    const [employeeRows] = await db.query(
+      `SELECT Id FROM employee_profiles WHERE UserId = ?`,
+      [userId]
+    ) as [{ Id: string }[], unknown];
+    if (!Array.isArray(employeeRows) || employeeRows.length === 0) {
+      res.json({ experiences: [] });
+      return;
+    }
+    const employeeProfileId = employeeRows[0].Id;
+    const [experiences] = await db.query(
+      `SELECT Id, JobCategory, Duration, Description
+       FROM experiences WHERE EmployeeProfileId = ?
+       ORDER BY JobCategory, Duration`,
+      [employeeProfileId]
+    ) as [{ Id: string; JobCategory: number; Duration: number; Description: string }[], unknown];
+    const mappedExperiences = Array.isArray(experiences)
+      ? experiences.map((exp) => ({
+          id: exp.Id,
+          jobCategory: exp.JobCategory,
+          duration: exp.Duration,
+          description: exp.Description || "",
+        }))
+      : [];
+    res.json({ experiences: mappedExperiences });
+  } catch (e) {
+    const err = e as Error;
+    console.error("GET /api/experiences/user/:userId error:", err);
+    res.status(500).json({ error: "Eroare la încărcarea profilului." });
+  }
+});
+
+/**
  * POST /api/experiences - Add a new experience
  */
 router.post("/", authMiddleware, async (req: ReqWithUser, res: Response): Promise<void> => {

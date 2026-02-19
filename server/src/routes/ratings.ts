@@ -201,4 +201,46 @@ router.get("/user/:userId", async (req: ReqWithUser, res: Response): Promise<voi
   res.json({ average, count });
 });
 
+const toIsoReceived = (v: unknown): string | undefined => {
+  if (v == null) return undefined;
+  if (v instanceof Date) return v.toISOString();
+  const s = String(v);
+  return s.trim() || undefined;
+};
+const mapRowReceived = (row: Record<string, unknown>) => ({
+  id: String(row.id),
+  applicationId: String(row.application_id),
+  jobTitle: row.job_title != null ? String(row.job_title) : undefined,
+  otherPartyName: row.other_name != null ? String(row.other_name) : undefined,
+  score: Number(row.score) || 0,
+  comment: typeof row.comment === "string" && row.comment.trim() ? row.comment.trim() : undefined,
+  photoUrl: typeof row.photo_url === "string" && row.photo_url.trim() ? row.photo_url.trim() : undefined,
+  createdAt: toIsoReceived(row.created_at),
+});
+
+/** GET /api/ratings/received/:userId - lista recenziilor primite de un user (pentru profil) */
+router.get("/received/:userId", authMiddleware, async (req: ReqWithUser, res: Response): Promise<void> => {
+  const userId = req.params.userId;
+  if (!userId) {
+    res.status(400).json({ error: "userId lipsă." });
+    return;
+  }
+  const [receivedRows] = await db.query(
+    `SELECT r.id, r.application_id, r.score, r.comment, r.photo_url, r.created_at,
+            j.job AS job_title,
+            COALESCE(bp.CompanyName, TRIM(CONCAT(ep.Name, ' ', ep.Surname)), a.staff_name, u.Email) AS other_name
+     FROM ratings r
+     JOIN applications a ON a.id = r.application_id
+     JOIN jobs j ON j.id = a.job_id
+     LEFT JOIN users u ON u.Id = r.rater_id
+     LEFT JOIN business_profiles bp ON bp.UserId = u.Id
+     LEFT JOIN employee_profiles ep ON ep.UserId = u.Id
+     WHERE r.rated_id = ?
+     ORDER BY r.created_at DESC`,
+    [userId]
+  ) as [Record<string, unknown>[], unknown];
+  const received = (Array.isArray(receivedRows) ? receivedRows : []).map(mapRowReceived);
+  res.json({ reviews: received });
+});
+
 export default router;
