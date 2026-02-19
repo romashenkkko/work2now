@@ -203,6 +203,8 @@ export const ratingsApi = {
     }),
   getUserRating: (userId: number | string) =>
     api<{ average: number; count: number }>(`/ratings/user/${userId}`),
+  getReviewsReceivedBy: (userId: number | string) =>
+    api<{ reviews: ReviewItem[] }>(`/ratings/received/${userId}`),
   myReviews: () =>
     api<{ given: ReviewItem[]; received: ReviewItem[] }>("/ratings/me"),
 };
@@ -251,6 +253,8 @@ export const experiencesApi = {
       body: JSON.stringify({ experiences }),
     }),
   list: () => api<{ experiences: Experience[] }>("/experiences"),
+  listByUser: (userId: string) =>
+    api<{ experiences: Experience[] }>(`/experiences/user/${encodeURIComponent(userId)}`),
   create: (data: { jobCategory: number; duration: number; description?: string }) =>
     api<Experience>("/experiences", {
       method: "POST",
