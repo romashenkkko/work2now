@@ -44,11 +44,11 @@ router.post("/", authMiddleware, async (req: ReqWithUser, res: Response): Promis
     return;
   }
   const [appRows] = await db.query(
-    "SELECT a.id, a.staff_id, a.completed_at, j.user_id FROM applications a JOIN jobs j ON j.id = a.job_id WHERE a.id = ?",
+    "SELECT a.id, a.staff_id, a.checked_out_at, j.user_id FROM applications a JOIN jobs j ON j.id = a.job_id WHERE a.id = ?",
     [applicationId]
   ) as [Record<string, unknown>[], unknown];
   const app = Array.isArray(appRows) && appRows[0] ? appRows[0] : null;
-  if (!app || !app.completed_at) {
+  if (!app || !app.checked_out_at) {
     res.status(404).json({ error: "Aplicație negăsită sau lucrul nu e finalizat." });
     return;
   }

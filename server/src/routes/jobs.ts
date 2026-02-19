@@ -572,7 +572,6 @@ router.get("/my-applications/list", authMiddleware, async (req: ReqWithUser, res
         a.job_id,
         a.status,
         a.created_at,
-        a.completed_at,
         a.checked_in_at,
         a.checked_out_at,
         j.Title AS job_title,
@@ -656,7 +655,6 @@ router.get("/my-applications/list", authMiddleware, async (req: ReqWithUser, res
 
       customerName: a.customer_name != null ? String(a.customer_name) : undefined,
 
-      completedAt: toIso(a.completed_at),
       checkedInAt: toIso(a.checked_in_at),
       checkedOutAt: toIso(a.checked_out_at),
       workSessions: sessionsByAppId[aid] ?? [],
@@ -777,7 +775,7 @@ router.get("/applications", authMiddleware, async (req: ReqWithUser, res: Respon
   }
   const placeholders = jobIds.map(() => "?").join(",");
   const [appRows] = await db.query(
-    `SELECT a.id, a.job_id, a.staff_id, a.staff_name, a.staff_email, a.status, a.completed_at, a.checked_in_at, a.checked_out_at, a.created_at,
+    `SELECT a.id, a.job_id, a.staff_id, a.staff_name, a.staff_email, a.status, a.checked_in_at, a.checked_out_at, a.business_confirmed_at, a.created_at,
      r.score AS rating_score
      FROM applications a
      LEFT JOIN ratings r ON r.application_id = a.id AND r.rater_id = ?
@@ -838,6 +836,7 @@ router.get("/applications", authMiddleware, async (req: ReqWithUser, res: Respon
     if (!byJob[jid]) byJob[jid] = [];
     const sidStr = a.staff_id != null ? String(a.staff_id).trim() : "";
     const staffAvatar = sidStr ? avatarByStaffId[sidStr] : undefined;
+    const businessConfirmedAtVal = toIso(a.business_confirmed_at ?? (a as Record<string, unknown>).business_confirmed_at);
     byJob[jid].push({
       id: aid,
       jobId: jid,
@@ -846,9 +845,10 @@ router.get("/applications", authMiddleware, async (req: ReqWithUser, res: Respon
       staffEmail: a.staff_email ?? undefined,
       staffAvatar,
       status: a.status,
-      completedAt: a.completed_at ?? undefined,
       checkedInAt: toIso(a.checked_in_at),
       checkedOutAt: toIso(a.checked_out_at),
+      businessConfirmedAt: businessConfirmedAtVal,
+      isBusinessConfirmed: !!businessConfirmedAtVal,
       workSessions: sessionsByAppId[aid] ?? [],
       ratingScore: a.rating_score != null ? Number(a.rating_score) : undefined,
     });
@@ -856,121 +856,8 @@ router.get("/applications", authMiddleware, async (req: ReqWithUser, res: Respon
   res.json({ applications: byJob });
 });
 
-/** PATCH /api/jobs/applications/:id/check-in - staff: înregistrează începutul lucrului (per zi, workDate în body; opțional lat, lng pentru geo-fencing) */
-router.patch("/applications/:id/check-in", authMiddleware, async (req: ReqWithUser, res: Response): Promise<void> => {
-  const userId = req.user?.userId;
-  const appIdRaw = req.params.id;
-  const appId = appIdRaw ? Number(appIdRaw) : NaN;
-  if (!userId || !appIdRaw || Number.isNaN(appId) || appId < 1) {
-    res.status(401).json({ error: "Unauthorized" });
-    return;
-  }
-  const body = req.body ?? {};
-  let workDate = typeof body.workDate === "string" ? body.workDate.trim().slice(0, 10) : "";
-  if (!workDate || !/^\d{4}-\d{2}-\d{2}$/.test(workDate)) {
-    const now = new Date();
-    workDate = now.getFullYear() + "-" + String(now.getMonth() + 1).padStart(2, "0") + "-" + String(now.getDate()).padStart(2, "0");
-  }
-  const [rows] = await db.query(
-    "SELECT a.id, a.staff_id, a.status, a.job_id FROM applications a WHERE a.id = ? AND a.staff_id = ?",
-    [appId, userId]
-  ) as [Record<string, unknown>[], unknown];
-  const row = Array.isArray(rows) ? rows[0] : null;
-  if (!row || String(row.staff_id) !== userId) {
-    res.status(404).json({ error: "Aplicație negăsită." });
-    return;
-  }
-  if (String(row.status) !== "accepted") {
-    res.status(400).json({ error: "Doar aplicațiile acceptate pot fi check-in." });
-    return;
-  }
-  const jobId = row.job_id != null ? Number(row.job_id) : NaN;
-  if (Number.isFinite(jobId) && jobId > 0) {
-    const geoResult = await validateGeoForJob(jobId, body);
-    if (!geoResult.valid) {
-      res.status(geoResult.statusCode).json({ error: geoResult.error });
-      return;
-    }
-  }
-  const [existing] = await db.query(
-    "SELECT id, checked_in_at FROM application_work_sessions WHERE application_id = ? AND work_date = ?",
-    [appId, workDate]
-  ) as [Record<string, unknown>[], unknown];
-  const ex = Array.isArray(existing) ? existing[0] : null;
-  if (ex && ex.checked_in_at != null) {
-    res.json({ ok: true, alreadyDone: true });
-    return;
-  }
-  if (ex) {
-    await db.query("UPDATE application_work_sessions SET checked_in_at = CURRENT_TIMESTAMP WHERE application_id = ? AND work_date = ?", [appId, workDate]);
-  } else {
-    await db.query(
-      "INSERT INTO application_work_sessions (application_id, work_date, checked_in_at) VALUES (?, ?, CURRENT_TIMESTAMP)",
-      [appId, workDate]
-    );
-  }
-  res.json({ ok: true });
-});
-
-/** PATCH /api/jobs/applications/:id/check-out - staff: înregistrează sfârșitul lucrului (per zi, workDate în body; opțional lat, lng pentru geo) */
-router.patch("/applications/:id/check-out", authMiddleware, async (req: ReqWithUser, res: Response): Promise<void> => {
-  const userId = req.user?.userId;
-  const appIdRaw = req.params.id;
-  const appId = appIdRaw ? Number(appIdRaw) : NaN;
-  if (!userId || !appIdRaw || Number.isNaN(appId) || appId < 1) {
-    res.status(401).json({ error: "Unauthorized" });
-    return;
-  }
-  const body = req.body ?? {};
-  let workDate = typeof body.workDate === "string" ? body.workDate.trim().slice(0, 10) : "";
-  if (!workDate || !/^\d{4}-\d{2}-\d{2}$/.test(workDate)) {
-    const now = new Date();
-    workDate = now.getFullYear() + "-" + String(now.getMonth() + 1).padStart(2, "0") + "-" + String(now.getDate()).padStart(2, "0");
-  }
-  const [rows] = await db.query(
-    "SELECT id, staff_id, status, job_id FROM applications WHERE id = ? AND staff_id = ?",
-    [appId, userId]
-  ) as [Record<string, unknown>[], unknown];
-  const row = Array.isArray(rows) ? rows[0] : null;
-  if (!row || String(row.staff_id) !== userId) {
-    res.status(404).json({ error: "Aplicație negăsită." });
-    return;
-  }
-  if (String(row.status) !== "accepted") {
-    res.status(400).json({ error: "Doar aplicațiile acceptate pot fi check-out." });
-    return;
-  }
-  const jobId = row.job_id != null ? Number(row.job_id) : NaN;
-  if (Number.isFinite(jobId) && jobId > 0) {
-    const geoResult = await validateGeoForJob(jobId, body);
-    if (!geoResult.valid) {
-      res.status(geoResult.statusCode).json({ error: geoResult.error });
-      return;
-    }
-  }
-  const [existing] = await db.query(
-    "SELECT id, checked_in_at, checked_out_at FROM application_work_sessions WHERE application_id = ? AND work_date = ?",
-    [appId, workDate]
-  ) as [Record<string, unknown>[], unknown];
-  const ex = Array.isArray(existing) ? existing[0] : null;
-  if (!ex) {
-    res.status(400).json({ error: "Efectuează mai întâi check-in pentru această zi." });
-    return;
-  }
-  if (ex.checked_in_at == null) {
-    res.status(400).json({ error: "Efectuează mai întâi check-in pentru această zi." });
-    return;
-  }
-  if (ex.checked_out_at != null) {
-    res.json({ ok: true, alreadyDone: true });
-    return;
-  }
-  await db.query("UPDATE application_work_sessions SET checked_out_at = CURRENT_TIMESTAMP WHERE application_id = ? AND work_date = ?", [appId, workDate]);
-  res.json({ ok: true });
-});
-
-/** PATCH /api/jobs/applications/:id/complete - customer: marchează aplicația ca finalizată (ora de lucru încheiată) */
-router.patch("/applications/:id/complete", authMiddleware, async (req: ReqWithUser, res: Response): Promise<void> => {
+/** PATCH /api/jobs/applications/:id/confirm-completion - customer: confirm job finished (after staff checkout); application then moves to history */
+router.patch("/applications/:id/confirm-completion", authMiddleware, async (req: ReqWithUser, res: Response): Promise<void> => {
   const userId = req.user?.userId;
   const appId = req.params.id;
   if (!userId || !appId) {
@@ -987,10 +874,92 @@ router.patch("/applications/:id/complete", authMiddleware, async (req: ReqWithUs
     return;
   }
   if (String(row.status) !== "accepted") {
-    res.status(400).json({ error: "Doar aplicațiile acceptate pot fi marcate ca finalizate." });
+    res.status(400).json({ error: "Doar aplicațiile acceptate pot fi confirmate ca finalizate." });
     return;
   }
-  await db.query("UPDATE applications SET completed_at = CURRENT_TIMESTAMP WHERE id = ?", [appId]);
+  await db.query("UPDATE applications SET business_confirmed_at = CURRENT_TIMESTAMP WHERE id = ?", [appId]);
+  res.json({ ok: true });
+});
+
+/** PATCH /api/jobs/applications/:id/check-in - staff: înregistrează începutul lucrului; stored on applications.checked_in_at */
+router.patch("/applications/:id/check-in", authMiddleware, async (req: ReqWithUser, res: Response): Promise<void> => {
+  const userId = req.user?.userId;
+  const appIdRaw = req.params.id;
+  const appId = appIdRaw ? Number(appIdRaw) : NaN;
+  if (!userId || !appIdRaw || Number.isNaN(appId) || appId < 1) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+  const body = req.body ?? {};
+  const [rows] = await db.query(
+    "SELECT a.id, a.staff_id, a.status, a.job_id, a.checked_in_at FROM applications a WHERE a.id = ? AND a.staff_id = ?",
+    [appId, userId]
+  ) as [Record<string, unknown>[], unknown];
+  const row = Array.isArray(rows) ? rows[0] : null;
+  if (!row || String(row.staff_id) !== userId) {
+    res.status(404).json({ error: "Aplicație negăsită." });
+    return;
+  }
+  if (String(row.status) !== "accepted") {
+    res.status(400).json({ error: "Doar aplicațiile acceptate pot fi check-in." });
+    return;
+  }
+  if (row.checked_in_at != null) {
+    res.json({ ok: true, alreadyDone: true });
+    return;
+  }
+  const jobId = row.job_id != null ? Number(row.job_id) : NaN;
+  if (Number.isFinite(jobId) && jobId > 0) {
+    const geoResult = await validateGeoForJob(jobId, body);
+    if (!geoResult.valid) {
+      res.status(geoResult.statusCode).json({ error: geoResult.error });
+      return;
+    }
+  }
+  await db.query("UPDATE applications SET checked_in_at = CURRENT_TIMESTAMP WHERE id = ? AND staff_id = ?", [appId, userId]);
+  res.json({ ok: true });
+});
+
+/** PATCH /api/jobs/applications/:id/check-out - staff: înregistrează sfârșitul lucrului; stored on applications.checked_out_at */
+router.patch("/applications/:id/check-out", authMiddleware, async (req: ReqWithUser, res: Response): Promise<void> => {
+  const userId = req.user?.userId;
+  const appIdRaw = req.params.id;
+  const appId = appIdRaw ? Number(appIdRaw) : NaN;
+  if (!userId || !appIdRaw || Number.isNaN(appId) || appId < 1) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+  const body = req.body ?? {};
+  const [rows] = await db.query(
+    "SELECT id, staff_id, status, job_id, checked_in_at, checked_out_at FROM applications WHERE id = ? AND staff_id = ?",
+    [appId, userId]
+  ) as [Record<string, unknown>[], unknown];
+  const row = Array.isArray(rows) ? rows[0] : null;
+  if (!row || String(row.staff_id) !== userId) {
+    res.status(404).json({ error: "Aplicație negăsită." });
+    return;
+  }
+  if (String(row.status) !== "accepted") {
+    res.status(400).json({ error: "Doar aplicațiile acceptate pot fi check-out." });
+    return;
+  }
+  if (row.checked_in_at == null) {
+    res.status(400).json({ error: "Efectuează mai întâi check-in." });
+    return;
+  }
+  if (row.checked_out_at != null) {
+    res.json({ ok: true, alreadyDone: true });
+    return;
+  }
+  const jobId = row.job_id != null ? Number(row.job_id) : NaN;
+  if (Number.isFinite(jobId) && jobId > 0) {
+    const geoResult = await validateGeoForJob(jobId, body);
+    if (!geoResult.valid) {
+      res.status(geoResult.statusCode).json({ error: geoResult.error });
+      return;
+    }
+  }
+  await db.query("UPDATE applications SET checked_out_at = CURRENT_TIMESTAMP WHERE id = ? AND staff_id = ?", [appId, userId]);
   res.json({ ok: true });
 });
 

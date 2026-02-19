@@ -170,7 +170,6 @@ export type StaffApplicationItem = {
 
   customerName?: string;
 
-  completedAt?: string;
   checkedInAt?: string;
   checkedOutAt?: string;
   workSessions?: { workDate: string; checkedInAt?: string; checkedOutAt?: string }[];
@@ -214,7 +213,6 @@ export const jobsApi = {
       jobDate?: string;
       jobEndDate?: string;
       customerName?: string;
-      completedAt?: string;
       checkedInAt?: string;
       checkedOutAt?: string;
       workSessions?: { workDate: string; checkedInAt?: string; checkedOutAt?: string }[];
@@ -227,8 +225,9 @@ export const jobsApi = {
       method: "PATCH",
       body: JSON.stringify({ status }),
     }),
-  completeApplication: (applicationId: string) =>
-    api<{ ok: boolean }>(`/jobs/applications/${applicationId}/complete`, { method: "PATCH" }),
+  /** Customer: confirm job finished (after staff checkout); application then moves to history. */
+  confirmCompletion: (applicationId: string) =>
+    api<{ ok: boolean }>(`/jobs/applications/${applicationId}/confirm-completion`, { method: "PATCH" }),
   checkIn: (applicationId: string, workDate?: string, geo?: { lat: number; lng: number }) =>
     api<{ ok: boolean; alreadyDone?: boolean }>(`/jobs/applications/${applicationId}/check-in`, {
       method: "PATCH",

@@ -536,7 +536,6 @@ export async function initDatabase(): Promise<void> {
         \`staff_email\` VARCHAR(191),
         \`status\` VARCHAR(20) NOT NULL DEFAULT 'pending',
         \`status_code\` INT NULL,
-        \`completed_at\` TIMESTAMP NULL,
         \`checked_in_at\` TIMESTAMP NULL,
         \`checked_out_at\` TIMESTAMP NULL,
         \`created_at\` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -562,6 +561,12 @@ export async function initDatabase(): Promise<void> {
         FOREIGN KEY (\`staff_id\`) REFERENCES \`users\`(\`Id\`)
         ON DELETE SET NULL
       `);
+    }
+    if (!(await columnExists(conn, "applications", "business_confirmed_at"))) {
+      await conn.query("ALTER TABLE `applications` ADD COLUMN `business_confirmed_at` TIMESTAMP NULL");
+    }
+    if (await columnExists(conn, "applications", "completed_at")) {
+      await conn.query("ALTER TABLE `applications` DROP COLUMN `completed_at`");
     }
 
     await conn.query(`

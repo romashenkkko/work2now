@@ -106,6 +106,15 @@ function ShareJobButton({ job, t }: { job: JobRow; t: (key: string) => string })
 export type WorkSession = { workDate: string; checkedInAt?: string; checkedOutAt?: string };
 export type MyAppInfoForModal = { applicationId: string; workSessions: WorkSession[] };
 
+/** Minimal app shape for customer: show "employee started at" and "Finished". */
+export type JobApplicationForCustomer = {
+  id: string;
+  status?: string;
+  staffName?: string;
+  checkedInAt?: string;
+  checkedOutAt?: string;
+};
+
 type Props = {
   open: boolean;
   onClose: () => void;
@@ -116,6 +125,8 @@ type Props = {
   onCheckIn?: (applicationId: string, workDate: string) => void;
   onCheckOut?: (applicationId: string, workDate: string) => void;
   checkInOutLoading?: string | null;
+  /** Customer: accepted applications for this job (for "employee started at" + "Finished" label). */
+  jobApplications?: JobApplicationForCustomer[];
 };
 
 /** Parse "HH:MM" or "H:MM" to minutes since midnight. Returns NaN if invalid. */
@@ -159,7 +170,16 @@ function formatTime(iso: string): string {
   }
 }
 
-export default function JobScheduleModal({ open, onClose, job, viewerIsStaff = false, myAppInfo, onCheckIn, onCheckOut, checkInOutLoading }: Props) {
+function formatTimeFromIso(iso: string): string {
+  try {
+    const d = new Date(iso);
+    return d.toLocaleTimeString("ro-RO", { hour: "2-digit", minute: "2-digit" });
+  } catch {
+    return iso;
+  }
+}
+
+export default function JobScheduleModal({ open, onClose, job, viewerIsStaff = false, myAppInfo, onCheckIn, onCheckOut, checkInOutLoading, jobApplications = [] }: Props) {
   const { t } = useTranslation();
 
   const dates = useMemo(() => {
@@ -316,6 +336,28 @@ export default function JobScheduleModal({ open, onClose, job, viewerIsStaff = f
               <div className="mt-4 pt-4 border-t border-gray-100">
                 <ShareJobButton job={job} t={t} />
               </div>
+
+              {/* Customer: "Angajatul a început lucrul la ora ..." and "Finished" */}
+              {!viewerIsStaff && jobApplications.length > 0 && (() => {
+                const accepted = jobApplications.filter((a) => a.status === "accepted");
+                const inProcess = accepted.filter((a) => a.checkedInAt && !a.checkedOutAt);
+                const anyCheckedOut = accepted.some((a) => a.checkedOutAt);
+                const firstCheckedInAt = accepted.map((a) => a.checkedInAt).filter(Boolean)[0] as string | undefined;
+                const hasStartedLine = !!firstCheckedInAt && (inProcess.length > 0 || anyCheckedOut);
+                if (!hasStartedLine && !anyCheckedOut) return null;
+                return (
+                  <div className="mt-4 pt-4 border-t border-gray-100 space-y-3">
+                    {hasStartedLine && (
+                      <p className="text-sm text-gray-700">
+                        {t("dashboard.employeeStartedAt", "Angajatul a început lucrul la ora {{time}}.", { time: formatTimeFromIso(firstCheckedInAt!) })}
+                      </p>
+                    )}
+                    {anyCheckedOut && (
+                      <p className="text-sm font-medium text-green-700">{t("dashboard.finished")}</p>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
 
             <div className="px-4 pb-2 flex gap-2 flex-shrink-0">

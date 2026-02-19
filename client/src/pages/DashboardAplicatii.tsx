@@ -60,7 +60,6 @@ type StaffApplication = {
   customerName?: string;
 
   // Work sessions / check-in/out info (optional)
-  completedAt?: string;
   checkedInAt?: string;
   checkedOutAt?: string;
   workSessions?: { workDate: string; checkedInAt?: string; checkedOutAt?: string }[];
@@ -134,9 +133,10 @@ export default function DashboardAplicatii() {
               staffEmail: a.staffEmail as string | undefined,
               staffAvatar,
               status: a.status as "pending" | "accepted" | "refused",
-              completedAt: a.completedAt as string | undefined,
               checkedInAt: a.checkedInAt as string | undefined,
               checkedOutAt: a.checkedOutAt as string | undefined,
+              businessConfirmedAt: (a.businessConfirmedAt as string | undefined) ?? undefined,
+              isBusinessConfirmed: !!(a.isBusinessConfirmed ?? (a.businessConfirmedAt != null && String(a.businessConfirmedAt).trim() !== "")),
               workSessions: Array.isArray(a.workSessions)
                 ? (a.workSessions as { workDate: string; checkedInAt?: string; checkedOutAt?: string }[])
                 : undefined,
@@ -170,7 +170,6 @@ export default function DashboardAplicatii() {
   
         customerName: a.customerName,
   
-        completedAt: a.completedAt,
         checkedInAt: a.checkedInAt,
         checkedOutAt: a.checkedOutAt,
         workSessions: Array.isArray(a.workSessions) ? a.workSessions : undefined,
@@ -196,16 +195,19 @@ export default function DashboardAplicatii() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.role, user?.id]);
 
-  const [completingId, setCompletingId] = useState<string | null>(null);
+  const [confirmingCompletionId, setConfirmingCompletionId] = useState<string | null>(null);
   const [ratingSubmitting, setRatingSubmitting] = useState<string | null>(null);
   const [ratingDraft, setRatingDraft] = useState<Record<string, { score: number; comment: string }>>({});
 
-  const markComplete = (applicationId: string) => {
-    setCompletingId(applicationId);
+  const confirmCompletion = (applicationId: string) => {
+    setConfirmingCompletionId(applicationId);
     jobsApi
-      .completeApplication(applicationId)
-      .then(() => refreshCustomerApplications())
-      .finally(() => setCompletingId(null));
+      .confirmCompletion(applicationId)
+      .then(() => {
+        refreshCustomerApplications();
+        refreshJobs();
+      })
+      .finally(() => setConfirmingCompletionId(null));
   };
 
   const submitRating = (applicationId: string, score: number, comment?: string) => {
@@ -349,7 +351,7 @@ export default function DashboardAplicatii() {
                       );
                     })()}
 
-                    {a.status === "accepted" && a.completedAt && (
+                    {a.status === "accepted" && a.checkedOutAt && (
                       <div className="mt-2 flex items-center gap-2 flex-wrap">
                         {a.ratingScore != null ? (
                           <span className="text-sm text-gray-600 flex items-center gap-1">
@@ -399,7 +401,8 @@ export default function DashboardAplicatii() {
   const jobsWithApplicants = myJobs
     .map((job) => {
       const jobKey = String(job?.id ?? "").trim();
-      const applicants = (applications[jobKey] || []).filter((a) => a.staffId);
+      const applicants = (applications[jobKey] || [])
+        .filter((a) => a.staffId && !a.businessConfirmedAt);
       return { job, applicants };
     })
     .filter(({ applicants }) => applicants.length > 0);
@@ -546,21 +549,20 @@ export default function DashboardAplicatii() {
                               );
                             })()}
 
-                          {a.status === "accepted" && !a.completedAt && (
-                            <div className="mt-2">
-                              <button
-                                type="button"
-                                onClick={() => markComplete(a.id)}
-                                disabled={completingId === a.id}
-                                className="text-sm font-medium text-primary hover:underline disabled:opacity-50"
-                              >
-                                {completingId === a.id ? "..." : t("dashboard.markCompleted")}
-                              </button>
-                            </div>
-                          )}
-
-                          {a.status === "accepted" && a.completedAt && (
+                          {a.status === "accepted" && a.checkedOutAt && (
                             <div className="mt-2 space-y-2">
+                              {!a.businessConfirmedAt && (
+                                <div>
+                                  <button
+                                    type="button"
+                                    onClick={() => confirmCompletion(a.id)}
+                                    disabled={confirmingCompletionId === a.id}
+                                    className="text-sm font-medium text-primary hover:underline disabled:opacity-50"
+                                  >
+                                    {confirmingCompletionId === a.id ? "..." : t("dashboard.confirmFinished")}
+                                  </button>
+                                </div>
+                              )}
                               {a.ratingScore != null ? (
                                 <span className="text-sm text-gray-600 flex items-center gap-1">
                                   {t("dashboard.rated")}:

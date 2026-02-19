@@ -1,7 +1,7 @@
-import { useContext, useState, useEffect, useRef } from "react";
+import { useContext, useState, useEffect, useRef, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "../hooks/useAuth";
-import { DashboardContext, getApplications, setApplications, type JobRow, type JobType } from "./DashboardLayout";
+import { DashboardContext, getApplications, setApplications, type JobRow, type Application, type JobType } from "./DashboardLayout";
 import { jobsApi } from "../api/client";
 import JobsMapModal from "../components/JobsMapModal";
 import JobScheduleModal from "../components/JobScheduleModal";
@@ -54,6 +54,54 @@ export default function DashboardJoburi() {
   const isCustomer = roleLower === "customer";
   const isStaff = roleLower === "staff";
   const jobs = isCustomer ? jobsAdded : [];
+
+  /** Customer: applications per job (for "In process" / "Finished" and confirm). */
+  const [customerApplicationsByJob, setCustomerApplicationsByJob] = useState<Record<string, Application[]>>({});
+  const loadCustomerApplications = useCallback(() => {
+    if (!isCustomer) return Promise.resolve();
+    return jobsApi
+      .applications()
+      .then((r) => {
+        const raw = r?.applications ?? {};
+        const byJob: Record<string, Application[]> = {};
+        Object.keys(raw).forEach((jobId) => {
+          const list = raw[jobId];
+          if (!Array.isArray(list)) return;
+          byJob[jobId] = list.map((a: Record<string, unknown>) => ({
+            id: String(a.id ?? ""),
+            jobId: String(a.jobId ?? jobId),
+            staffId: String(a.staffId ?? ""),
+            staffName: String(a.staffName ?? ""),
+            staffEmail: a.staffEmail != null ? String(a.staffEmail) : undefined,
+            staffAvatar: a.staffAvatar != null ? String(a.staffAvatar) : undefined,
+            status: (a.status ?? "pending") as "pending" | "accepted" | "refused",
+            checkedInAt: a.checkedInAt != null ? String(a.checkedInAt) : undefined,
+            checkedOutAt: a.checkedOutAt != null ? String(a.checkedOutAt) : undefined,
+            businessConfirmedAt: a.businessConfirmedAt != null ? String(a.businessConfirmedAt) : undefined,
+            isBusinessConfirmed: !!(a.isBusinessConfirmed ?? (a.businessConfirmedAt != null && String(a.businessConfirmedAt).trim() !== "")),
+            workSessions: Array.isArray(a.workSessions) ? (a.workSessions as { workDate: string; checkedInAt?: string; checkedOutAt?: string }[]) : undefined,
+            ratingScore: a.ratingScore != null ? Number(a.ratingScore) : undefined,
+          }));
+        });
+        setCustomerApplicationsByJob(byJob);
+      });
+  }, [isCustomer]);
+  useEffect(() => {
+    if (!isCustomer) return;
+    loadCustomerApplications();
+  }, [isCustomer, loadCustomerApplications]);
+
+  /** Customer: derive "in_process" | "finished" and first check-in time for a job. */
+  const getCustomerJobStatus = (jobId: string): { status: "in_process" | "finished" | null; firstCheckedInAt?: string } => {
+    const apps = customerApplicationsByJob[String(jobId)] ?? [];
+    const accepted = apps.filter((a) => a.status === "accepted");
+    const anyCheckedOut = accepted.some((a) => a.checkedOutAt);
+    const anyCheckedIn = accepted.some((a) => a.checkedInAt);
+    const firstCheckedInAt = accepted.map((a) => a.checkedInAt).filter(Boolean)[0] as string | undefined;
+    if (anyCheckedOut) return { status: "finished", firstCheckedInAt };
+    if (anyCheckedIn) return { status: "in_process", firstCheckedInAt };
+    return { status: null };
+  };
 
   type MyAppInfo = { status: string; applicationId: string; checkedInAt?: string; checkedOutAt?: string; workSessions?: { workDate: string; checkedInAt?: string; checkedOutAt?: string }[] };
   const [publicJobs, setPublicJobs] = useState<JobRow[]>([]);
@@ -1022,6 +1070,24 @@ export default function DashboardJoburi() {
                 <span className="absolute top-3 right-3 px-3 py-1 rounded-full text-xs font-medium bg-white/25 text-white backdrop-blur-sm">
                   {getJobSlotBadge(row)}
                 </span>
+                {row.id && (() => {
+                  const { status } = getCustomerJobStatus(row.id);
+                  if (status === "in_process") {
+                    return (
+                      <span className="absolute bottom-3 left-3 right-3 sm:left-auto sm:right-3 sm:bottom-3 sm:w-auto px-3 py-1.5 rounded-full text-xs font-medium bg-amber-500/90 text-white backdrop-blur-sm">
+                        {t("dashboard.inProcess")}
+                      </span>
+                    );
+                  }
+                  if (status === "finished") {
+                    return (
+                      <span className="absolute bottom-3 left-3 right-3 sm:left-auto sm:right-3 sm:bottom-3 sm:w-auto px-3 py-1.5 rounded-full text-xs font-medium bg-green-600/90 text-white backdrop-blur-sm">
+                        {t("dashboard.finished")}
+                      </span>
+                    );
+                  }
+                  return null;
+                })()}
               </div>
 
               {/* Body: titlu + rânduri cu icoane */}
@@ -1136,6 +1202,7 @@ export default function DashboardJoburi() {
         onClose={() => setScheduleJob(null)}
         job={scheduleJob}
         viewerIsStaff={false}
+        jobApplications={scheduleJob?.id ? (customerApplicationsByJob[String(scheduleJob.id)] ?? []) : []}
       />
     </>
   );

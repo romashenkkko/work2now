@@ -71,9 +71,12 @@ export type Application = {
   staffEmail?: string;
   staffAvatar?: string;
   status: "pending" | "accepted" | "refused";
-  completedAt?: string;
   checkedInAt?: string;
   checkedOutAt?: string;
+  /** When set, business confirmed job finished; application moves to history (hidden from active list). */
+  businessConfirmedAt?: string;
+  /** Explicit boolean for business confirmation (true = confirmed by business). */
+  isBusinessConfirmed?: boolean;
   workSessions?: { workDate: string; checkedInAt?: string; checkedOutAt?: string }[];
   ratingScore?: number;
 };
