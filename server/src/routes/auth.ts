@@ -382,7 +382,7 @@ router.get("/me", authMiddleware, async (req: Request, res: Response): Promise<v
                 ELSE 'User'
               END as name,
               COALESCE(ep.Surname, '') as surname,
-              COALESCE(ep.ProfilePictureFileId, NULL) as avatar,
+              COALESCE(ep.ProfilePictureFileId, u.Avatar, NULL) as avatar,
               CASE
                 WHEN u.Role = 3 THEN 'admin'
                 WHEN bp.UserId IS NOT NULL THEN 'customer'
@@ -477,12 +477,15 @@ router.patch("/me", authMiddleware, async (req: Request, res: Response): Promise
           }
         }
         
-        if (avatar !== undefined && userRole === UserRole.Employee) {
-          // Only EmployeeProfiles has ProfilePictureFileId
-          await conn.query(
-            "UPDATE employee_profiles SET ProfilePictureFileId = ? WHERE UserId = ?",
-            [avatar, user.userId]
-          );
+        if (avatar !== undefined) {
+          if (userRole === UserRole.Employee) {
+            await conn.query(
+              "UPDATE employee_profiles SET ProfilePictureFileId = ? WHERE UserId = ?",
+              [avatar, user.userId]
+            );
+          } else if (userRole === UserRole.Business) {
+            await conn.query("UPDATE users SET Avatar = ? WHERE Id = ?", [avatar, user.userId]);
+          }
         }
       }
       
@@ -497,7 +500,7 @@ router.patch("/me", authMiddleware, async (req: Request, res: Response): Promise
                   ELSE 'User'
                 END as name,
                 COALESCE(ep.Surname, '') as surname,
-                COALESCE(ep.ProfilePictureFileId, NULL) as avatar,
+                COALESCE(ep.ProfilePictureFileId, u.Avatar, NULL) as avatar,
                 CASE
                   WHEN u.Role = 3 THEN 'admin'
                   WHEN bp.UserId IS NOT NULL THEN 'customer'

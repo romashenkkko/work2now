@@ -137,8 +137,6 @@ const NAV_CUSTOMER = [
   { to: "/dashboard/joburi", labelKey: "dashboard.joburi", end: false, icon: "briefcase" },
   { to: "/dashboard/aplicatii", labelKey: "dashboard.aplicatii", end: false, icon: "fileText" },
   { to: "/dashboard/rapoarte", labelKey: "dashboard.rapoarte", end: false, icon: "barChart" },
-  { to: "/dashboard/calendar", labelKey: "dashboard.calendar", end: false, icon: "calendar" },
-  { to: "/dashboard/recenzii", labelKey: "dashboard.review", end: false, icon: "review" },
   { to: "/dashboard/mesaje", labelKey: "dashboard.mesaje", end: false, icon: "messageCircle" },
 ];
 
@@ -146,8 +144,6 @@ const NAV_STAFF = [
   { to: "/dashboard", labelKey: "dashboard.home", end: true, icon: "home" },
   { to: "/dashboard/joburi", labelKey: "dashboard.joburi", end: false, icon: "briefcase" },
   { to: "/dashboard/aplicatii", labelKey: "dashboard.myApplications", end: false, icon: "fileText" },
-  { to: "/dashboard/calendar", labelKey: "dashboard.calendar", end: false, icon: "calendar" },
-  { to: "/dashboard/recenzii", labelKey: "dashboard.review", end: false, icon: "review" },
   { to: "/dashboard/mesaje", labelKey: "dashboard.mesaje", end: false, icon: "messageCircle" },
 ];
 
@@ -323,6 +319,9 @@ export default function DashboardLayout() {
           estimatedSalary: j.estimatedSalary,
           imageUrl: j.imageUrl,
           postedBy: j.postedBy,
+          postedById: j.postedById,
+          postedByRole: j.postedByRole,
+          postedByAvatar: j.postedByAvatar,
           jobCategoryCode: (j as any).jobCategoryCode,
           hourlyRateBase: (j as any).hourlyRateBase,
         }));

@@ -6,6 +6,7 @@ import { DashboardContext, getApplications, setApplications, JobTitleIcon, type 
 import { jobsApi, ratingsApi } from "../api/client";
 import { Briefcase, MapPin, Calendar, User, Mail, Clock, CheckCircle2, XCircle, Hourglass } from "lucide-react";
 import StarRating from "../components/StarRating";
+import StaffProfileModal from "../components/StaffProfileModal";
 
 const DEFAULT_AVATAR = "/Illustration/AvatarWhiteGuy.png";
 
@@ -106,6 +107,14 @@ export default function DashboardAplicatii() {
 
   /** Accept confirmation: show "Are you sure you want to accept [Name]?" before calling setStatus(accepted). */
   const [acceptConfirm, setAcceptConfirm] = useState<{ jobId: string; applicationId: string; staffName: string } | null>(null);
+
+  /** Staff profile modal (reviews + experiences) when customer clicks avatar/name on an applicant. */
+  const [staffProfileModal, setStaffProfileModal] = useState<{
+    staffId: string;
+    staffName?: string;
+    staffEmail?: string;
+    staffAvatar?: string;
+  } | null>(null);
 
   // Staff view: flat list of my applications
   const [myApps, setMyApps] = useState<StaffApplication[]>([]);
@@ -331,26 +340,6 @@ export default function DashboardAplicatii() {
 
                     {statusBadge(t, a.status)}
 
-                    {a.status === "accepted" && (() => {
-                      const sessions =
-                        a.workSessions && a.workSessions.length > 0
-                          ? a.workSessions
-                          : (a.checkedInAt ? [{ workDate: "", checkedInAt: a.checkedInAt, checkedOutAt: a.checkedOutAt }] : []);
-                      if (sessions.length === 0) return null;
-                      return (
-                        <div className="text-xs text-gray-500 mt-2 space-y-0.5">
-                          {sessions.map((s) => (
-                            <p key={s.workDate || "single"}>
-                              {s.workDate && <span className="font-medium">{formatAppDate(s.workDate)}: </span>}
-                              {s.checkedInAt && <span>{t("dashboard.checkedInAt")} {formatAppTime(s.checkedInAt)}</span>}
-                              {s.checkedInAt && s.checkedOutAt && " · "}
-                              {s.checkedOutAt && <span>{t("dashboard.checkedOutAt")} {formatAppTime(s.checkedOutAt)}</span>}
-                            </p>
-                          ))}
-                        </div>
-                      );
-                    })()}
-
                     {a.status === "accepted" && a.checkedOutAt && (
                       <div className="mt-2 flex items-center gap-2 flex-wrap">
                         {a.ratingScore != null ? (
@@ -493,9 +482,30 @@ export default function DashboardAplicatii() {
                       className="flex flex-wrap items-center justify-between gap-3 py-3 px-4 rounded-xl bg-gray-50 border border-gray-100"
                     >
                       <div className="flex items-center gap-3 min-w-0">
-                        <ApplicantAvatar staffAvatar={a.staffAvatar} />
+                        {a.staffId ? (
+                          <button
+                            type="button"
+                            onClick={() => setStaffProfileModal({ staffId: a.staffId!, staffName: a.staffName, staffEmail: a.staffEmail, staffAvatar: a.staffAvatar })}
+                            className="flex-shrink-0 rounded-full focus:outline-none focus:ring-2 focus:ring-primary/40"
+                            aria-label={t("dashboard.viewProfile", "Vezi profil")}
+                          >
+                            <ApplicantAvatar staffAvatar={a.staffAvatar} />
+                          </button>
+                        ) : (
+                          <ApplicantAvatar staffAvatar={a.staffAvatar} />
+                        )}
                         <div className="min-w-0">
-                          <p className="font-medium text-gray-900">{a.staffName}</p>
+                          {a.staffId ? (
+                            <button
+                              type="button"
+                              onClick={() => setStaffProfileModal({ staffId: a.staffId!, staffName: a.staffName, staffEmail: a.staffEmail, staffAvatar: a.staffAvatar })}
+                              className="text-left font-medium text-gray-900 hover:text-primary focus:outline-none focus:ring-0"
+                            >
+                              {a.staffName}
+                            </button>
+                          ) : (
+                            <p className="font-medium text-gray-900">{a.staffName}</p>
+                          )}
                           {a.staffEmail && (
                             <p className="text-sm text-gray-600 flex items-center gap-1">
                               <Mail className="w-3.5 h-3.5 shrink-0" />
@@ -517,37 +527,6 @@ export default function DashboardAplicatii() {
                                 ? t("dashboard.refused")
                                 : t("dashboard.pending")}
                           </span>
-
-                          {a.status === "accepted" &&
-                            (() => {
-                              const sessions =
-                                a.workSessions && a.workSessions.length > 0
-                                  ? a.workSessions
-                                  : a.checkedInAt
-                                    ? [{ workDate: "", checkedInAt: a.checkedInAt, checkedOutAt: a.checkedOutAt }]
-                                    : [];
-                              if (sessions.length === 0) return null;
-                              return (
-                                <div className="text-xs text-gray-500 mt-1 space-y-0.5">
-                                  {sessions.map((s) => (
-                                    <p key={s.workDate || "single"}>
-                                      {s.workDate && <span className="font-medium">{formatAppDate(s.workDate)}: </span>}
-                                      {s.checkedInAt && (
-                                        <span>
-                                          {t("dashboard.checkedInAt")} {formatAppTime(s.checkedInAt)}
-                                        </span>
-                                      )}
-                                      {s.checkedInAt && s.checkedOutAt && " · "}
-                                      {s.checkedOutAt && (
-                                        <span>
-                                          {t("dashboard.checkedOutAt")} {formatAppTime(s.checkedOutAt)}
-                                        </span>
-                                      )}
-                                    </p>
-                                  ))}
-                                </div>
-                              );
-                            })()}
 
                           {a.status === "accepted" && a.checkedOutAt && (
                             <div className="mt-2 space-y-2">
@@ -633,6 +612,17 @@ export default function DashboardAplicatii() {
           );
           })}
         </div>
+      )}
+
+      {staffProfileModal && (
+        <StaffProfileModal
+          open={!!staffProfileModal}
+          onClose={() => setStaffProfileModal(null)}
+          staffId={staffProfileModal.staffId}
+          staffName={staffProfileModal.staffName}
+          staffEmail={staffProfileModal.staffEmail}
+          staffAvatar={staffProfileModal.staffAvatar}
+        />
       )}
     </>
   );

@@ -299,6 +299,7 @@ export async function initDatabase(): Promise<void> {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
     `);
     await ensureInnoDB(conn, "users");
+    await ensureColumn(conn, "users", "Avatar", "VARCHAR(500) NULL");
 
     await conn.query(`
       CREATE TABLE IF NOT EXISTS \`employee_profiles\` (

@@ -5,6 +5,7 @@ import { DashboardContext, getApplications, setApplications, type JobRow, type A
 import { jobsApi } from "../api/client";
 import JobsMapModal from "../components/JobsMapModal";
 import JobScheduleModal from "../components/JobScheduleModal";
+import CustomerProfileModal from "../components/CustomerProfileModal";
 import { MapPin, Clock, Users, Banknote, Calendar, Briefcase, Map, Search } from "lucide-react";
 import { getBusinessTotal, getStaffNet, roundMoney } from "../utils/salary";
 
@@ -49,6 +50,11 @@ export default function DashboardJoburi() {
   const { jobsAdded, openPostJobModal, removeJob } = useContext(DashboardContext);
   const [showMapModal, setShowMapModal] = useState(false);
   const [scheduleJob, setScheduleJob] = useState<JobRow | null>(null);
+  const [customerProfileModal, setCustomerProfileModal] = useState<{
+    customerId: string;
+    customerName?: string;
+    customerAvatar?: string;
+  } | null>(null);
 
   const roleLower = user?.role?.toLowerCase?.();
   const isCustomer = roleLower === "customer";
@@ -881,25 +887,52 @@ export default function DashboardJoburi() {
                       })()}
                     </ul>
                     {row.postedBy && (
-                      <div className="flex items-center gap-3 mt-3 pt-3 border-t border-gray-100">
-                        <div className="relative flex-shrink-0 w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center overflow-hidden">
-                          <span className="text-primary font-semibold text-sm">{row.postedBy.charAt(0).toUpperCase()}</span>
-                          {row.postedByAvatar && (
-                            <img
-                              src={row.postedByAvatar}
-                              alt=""
-                              className="absolute inset-0 w-full h-full object-cover"
-                              onError={(e) => { e.currentTarget.style.display = "none"; }}
-                            />
-                          )}
+                      row.postedById ? (
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); setCustomerProfileModal({ customerId: row.postedById!, customerName: row.postedBy, customerAvatar: row.postedByAvatar }); }}
+                          className="w-full flex items-center gap-3 mt-3 pt-3 border-t border-gray-100 text-left rounded-xl px-3 py-2.5 -mx-0.5 bg-primary/5 border border-primary/10 hover:bg-primary/10 hover:border-primary/20 transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:ring-inset"
+                          aria-label={t("dashboard.viewProfile", "Vezi profil")}
+                        >
+                          <div className="relative flex-shrink-0 w-10 h-10 rounded-full bg-white border-2 border-primary/20 flex items-center justify-center overflow-hidden shadow-sm">
+                            <span className="text-primary font-semibold text-sm">{row.postedBy.charAt(0).toUpperCase()}</span>
+                            {row.postedByAvatar && (
+                              <img
+                                src={row.postedByAvatar}
+                                alt=""
+                                className="absolute inset-0 w-full h-full object-cover"
+                                onError={(e) => { e.currentTarget.style.display = "none"; }}
+                              />
+                            )}
+                          </div>
+                          <div className="min-w-0 flex-1 flex flex-col gap-1">
+                            <p className="text-sm font-semibold text-gray-900 truncate">{row.postedBy}</p>
+                            <span className="inline-flex w-fit px-2 py-0.5 rounded-full text-xs font-medium bg-primary/15 text-primary border border-primary/25">
+                              {(() => { const r = (row.postedByRole ?? "").toLowerCase(); return r === "staff" ? t("dashboard.roleStaff") : r === "admin" ? t("dashboard.roleAdmin") : t("dashboard.roleCustomer"); })()}
+                            </span>
+                          </div>
+                        </button>
+                      ) : (
+                        <div className="flex items-center gap-3 mt-3 pt-3 border-t border-gray-100 px-3 py-2.5 -mx-0.5 rounded-xl bg-gray-50/80 border border-gray-100">
+                          <div className="relative flex-shrink-0 w-10 h-10 rounded-full bg-white border border-gray-200 flex items-center justify-center overflow-hidden">
+                            <span className="text-primary font-semibold text-sm">{row.postedBy.charAt(0).toUpperCase()}</span>
+                            {row.postedByAvatar && (
+                              <img
+                                src={row.postedByAvatar}
+                                alt=""
+                                className="absolute inset-0 w-full h-full object-cover"
+                                onError={(e) => { e.currentTarget.style.display = "none"; }}
+                              />
+                            )}
+                          </div>
+                          <div className="min-w-0 flex-1 flex flex-col gap-1">
+                            <p className="text-sm font-semibold text-gray-900 truncate">{row.postedBy}</p>
+                            <span className="inline-flex w-fit px-2 py-0.5 rounded-full text-xs font-medium bg-primary/15 text-primary border border-primary/25">
+                              {(() => { const r = (row.postedByRole ?? "").toLowerCase(); return r === "staff" ? t("dashboard.roleStaff") : r === "admin" ? t("dashboard.roleAdmin") : t("dashboard.roleCustomer"); })()}
+                            </span>
+                          </div>
                         </div>
-                        <div className="min-w-0 flex-1">
-                          <p className="text-sm font-medium text-gray-900 truncate">{row.postedBy}</p>
-                          <span className="inline-block mt-0.5 px-2 py-0.5 rounded-md text-xs font-medium bg-primary/10 text-primary border border-primary/20">
-                            {(() => { const r = (row.postedByRole ?? "").toLowerCase(); return r === "staff" ? t("dashboard.roleStaff") : r === "admin" ? t("dashboard.roleAdmin") : t("dashboard.roleCustomer"); })()}
-                          </span>
-                        </div>
-                      </div>
+                      )
                     )}
                     <div className="mt-4 pt-4 border-t border-gray-100 space-y-2">
                       {!app ? (
@@ -1001,6 +1034,15 @@ export default function DashboardJoburi() {
           }}
           checkInOutLoading={checkInOutLoading}
         />
+        {customerProfileModal && (
+          <CustomerProfileModal
+            open={!!customerProfileModal}
+            onClose={() => setCustomerProfileModal(null)}
+            customerId={customerProfileModal.customerId}
+            customerName={customerProfileModal.customerName}
+            customerAvatar={customerProfileModal.customerAvatar}
+          />
+        )}
       </>
     );
   }
@@ -1138,25 +1180,52 @@ export default function DashboardJoburi() {
                 </ul>
 
                 {row.postedBy && (
-                  <div className="flex items-center gap-3 mt-3 pt-3 border-t border-gray-100">
-                    <div className="relative flex-shrink-0 w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center overflow-hidden">
-                      <span className="text-primary font-semibold text-sm">{row.postedBy.charAt(0).toUpperCase()}</span>
-                      {row.postedByAvatar && (
-                        <img
-                          src={row.postedByAvatar}
-                          alt=""
-                          className="absolute inset-0 w-full h-full object-cover"
-                          onError={(e) => { e.currentTarget.style.display = "none"; }}
-                        />
-                      )}
+                  row.postedById ? (
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); setCustomerProfileModal({ customerId: row.postedById!, customerName: row.postedBy, customerAvatar: row.postedByAvatar }); }}
+                      className="w-full flex items-center gap-3 mt-3 pt-3 border-t border-gray-100 text-left rounded-xl px-3 py-2.5 -mx-0.5 bg-primary/5 border border-primary/10 hover:bg-primary/10 hover:border-primary/20 transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:ring-inset"
+                      aria-label={t("dashboard.viewProfile", "Vezi profil")}
+                    >
+                      <div className="relative flex-shrink-0 w-10 h-10 rounded-full bg-white border-2 border-primary/20 flex items-center justify-center overflow-hidden shadow-sm">
+                        <span className="text-primary font-semibold text-sm">{row.postedBy.charAt(0).toUpperCase()}</span>
+                        {row.postedByAvatar && (
+                          <img
+                            src={row.postedByAvatar}
+                            alt=""
+                            className="absolute inset-0 w-full h-full object-cover"
+                            onError={(e) => { e.currentTarget.style.display = "none"; }}
+                          />
+                        )}
+                      </div>
+                      <div className="min-w-0 flex-1 flex flex-col gap-1">
+                        <p className="text-sm font-semibold text-gray-900 truncate">{row.postedBy}</p>
+                        <span className="inline-flex w-fit px-2 py-0.5 rounded-full text-xs font-medium bg-primary/15 text-primary border border-primary/25">
+                          {(() => { const r = (row.postedByRole ?? "").toLowerCase(); return r === "staff" ? t("dashboard.roleStaff") : r === "admin" ? t("dashboard.roleAdmin") : t("dashboard.roleCustomer"); })()}
+                        </span>
+                      </div>
+                    </button>
+                  ) : (
+                    <div className="flex items-center gap-3 mt-3 pt-3 border-t border-gray-100 px-3 py-2.5 -mx-0.5 rounded-xl bg-gray-50/80 border border-gray-100">
+                      <div className="relative flex-shrink-0 w-10 h-10 rounded-full bg-white border border-gray-200 flex items-center justify-center overflow-hidden">
+                        <span className="text-primary font-semibold text-sm">{row.postedBy.charAt(0).toUpperCase()}</span>
+                        {row.postedByAvatar && (
+                          <img
+                            src={row.postedByAvatar}
+                            alt=""
+                            className="absolute inset-0 w-full h-full object-cover"
+                            onError={(e) => { e.currentTarget.style.display = "none"; }}
+                          />
+                        )}
+                      </div>
+                      <div className="min-w-0 flex-1 flex flex-col gap-1">
+                        <p className="text-sm font-semibold text-gray-900 truncate">{row.postedBy}</p>
+                        <span className="inline-flex w-fit px-2 py-0.5 rounded-full text-xs font-medium bg-primary/15 text-primary border border-primary/25">
+                          {(() => { const r = (row.postedByRole ?? "").toLowerCase(); return r === "staff" ? t("dashboard.roleStaff") : r === "admin" ? t("dashboard.roleAdmin") : t("dashboard.roleCustomer"); })()}
+                        </span>
+                      </div>
                     </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium text-gray-900 truncate">{row.postedBy}</p>
-                      <span className="inline-block mt-0.5 px-2 py-0.5 rounded-md text-xs font-medium bg-primary/10 text-primary border border-primary/20">
-                        {(() => { const r = (row.postedByRole ?? "").toLowerCase(); return r === "staff" ? t("dashboard.roleStaff") : r === "admin" ? t("dashboard.roleAdmin") : t("dashboard.roleCustomer"); })()}
-                      </span>
-                    </div>
-                  </div>
+                  )
                 )}
 
                 {/* Footer: dată + acțiuni */}
@@ -1204,6 +1273,15 @@ export default function DashboardJoburi() {
         viewerIsStaff={false}
         jobApplications={scheduleJob?.id ? (customerApplicationsByJob[String(scheduleJob.id)] ?? []) : []}
       />
+      {customerProfileModal && (
+        <CustomerProfileModal
+          open={!!customerProfileModal}
+          onClose={() => setCustomerProfileModal(null)}
+          customerId={customerProfileModal.customerId}
+          customerName={customerProfileModal.customerName}
+          customerAvatar={customerProfileModal.customerAvatar}
+        />
+      )}
     </>
   );
 }

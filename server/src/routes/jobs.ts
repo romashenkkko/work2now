@@ -257,6 +257,9 @@ router.get("/", authMiddleware, async (req: ReqWithUser, res: Response): Promise
                 TRIM(CONCAT(ep.Name, ' ', ep.Surname)),
                 u.Email
               ) AS posted_by_name,
+              u.Id AS posted_by_user_id,
+              u.Role AS posted_by_role,
+              COALESCE(ep.ProfilePictureFileId, u.Avatar, NULL) AS posted_by_avatar,
               (SELECT COUNT(*) FROM applications a WHERE a.job_id = j.id AND LOWER(TRIM(COALESCE(a.status,''))) = 'accepted') AS accepted_count
          FROM jobs j
          LEFT JOIN job_categories jc ON jc.Code = j.job_category_code
@@ -278,6 +281,9 @@ router.get("/", authMiddleware, async (req: ReqWithUser, res: Response): Promise
                 TRIM(CONCAT(ep.Name, ' ', ep.Surname)),
                 u.Email
               ) AS posted_by_name,
+              u.Id AS posted_by_user_id,
+              u.Role AS posted_by_role,
+              COALESCE(ep.ProfilePictureFileId, u.Avatar, NULL) AS posted_by_avatar,
               (SELECT COUNT(*) FROM applications a WHERE a.job_id = j.id AND LOWER(TRIM(COALESCE(a.status,''))) = 'accepted') AS accepted_count
          FROM jobs j
          LEFT JOIN job_categories jc ON jc.Code = j.job_category_code

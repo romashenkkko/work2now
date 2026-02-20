@@ -97,14 +97,15 @@ export default function StaffProfileModal({
       : reviews;
 
   const uniqueExperiences = useMemo(() => {
-    const byCategory = new Map<number, Experience>();
+    const byIconId = new Map<string, Experience>();
     for (const exp of experiences) {
-      const existing = byCategory.get(exp.jobCategory);
+      const iconId = JOB_CATEGORY_TO_ICON_ID[exp.jobCategory] ?? String(exp.jobCategory);
+      const existing = byIconId.get(iconId);
       if (!existing || exp.duration > existing.duration) {
-        byCategory.set(exp.jobCategory, exp);
+        byIconId.set(iconId, exp);
       }
     }
-    return Array.from(byCategory.values());
+    return Array.from(byIconId.values());
   }, [experiences]);
 
   useEffect(() => {
@@ -141,14 +142,14 @@ export default function StaffProfileModal({
 
   const content = (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50"
+      className="modal-backdrop-anim fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50"
       onClick={onClose}
       role="dialog"
       aria-modal="true"
       aria-labelledby="staff-profile-title"
     >
       <div
-        className="bg-white rounded-2xl shadow-xl max-w-4xl max-h-[95vh] w-full overflow-y-auto"
+        className="modal-panel-anim bg-white rounded-2xl shadow-xl max-w-4xl max-h-[95vh] w-full overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="sticky top-0 bg-white border-b border-gray-100 px-4 py-3 flex items-center justify-between z-10">
@@ -165,7 +166,7 @@ export default function StaffProfileModal({
           </button>
         </div>
         <div className="p-4 sm:p-6 space-y-6">
-          <div className="flex flex-wrap items-center gap-4">
+          <div className="modal-element-anim flex flex-wrap items-center gap-4" style={{ animationDelay: "0.05s" }}>
             <div className="flex-shrink-0 w-16 h-16 rounded-full overflow-hidden bg-primary/10 border-2 border-primary/20">
               <img
                 src={staffAvatar}
@@ -197,7 +198,7 @@ export default function StaffProfileModal({
           </div>
 
           {error && (
-            <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-sm">
+            <div className="modal-element-anim p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-sm" style={{ animationDelay: "0.08s" }}>
               {error}
             </div>
           )}
@@ -207,7 +208,7 @@ export default function StaffProfileModal({
               {t("dashboard.loading")}
             </div>
           ) : (
-            <div>
+            <div className="modal-element-anim" style={{ animationDelay: "0.1s" }}>
               <h3 className="text-sm font-semibold text-gray-600 mb-3">
                 {t("dashboard.professionalExperiencesAll", "Experiențe profesionale (toate)")}
               </h3>
@@ -281,7 +282,7 @@ export default function StaffProfileModal({
                 </div>
               )}
 
-              <h3 className="text-sm font-semibold text-gray-600 mb-3 mt-6">
+              <h3 className="modal-element-anim text-sm font-semibold text-gray-600 mb-3 mt-6" style={{ animationDelay: "0.18s" }}>
                 {selectedExperienceJobLabel
                   ? t("dashboard.reviewsForJob", "Recenziile primite") + ` (${selectedExperienceJobLabel})`
                   : t("dashboard.reviewsReceived", "Recenziile primite")}
