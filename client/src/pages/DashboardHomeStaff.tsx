@@ -78,13 +78,13 @@ export default function DashboardHomeStaff() {
         </div>
       )}
       <div className="page-enter-stagger">
-        <header className="mb-6 md:mb-8 w-full flex items-center justify-between gap-4 p-4 sm:p-6 rounded-2xl bg-white border border-gray-200 shadow-sm">
+        <header className="mb-6 md:mb-8 w-full flex items-center justify-between gap-4 p-5 md:p-6 rounded-2xl bg-gradient-to-br from-white via-[#faf8ff] to-[#f3efff] border border-[rgba(122,99,241,0.12)] shadow-[0_4px_20px_rgba(122,99,241,0.08)]">
           <div className="min-w-0">
-            <h1 className="text-xl sm:text-2xl font-bold text-gray-900 truncate">{t("dashboard.hello", { name: user?.name ?? "" })}</h1>
-            <p className="text-sm sm:text-base text-gray-600 mt-0.5">{t("dashboard.staffSubtitle")}</p>
+            <h1 className="text-xl sm:text-2xl md:text-3xl font-bold tracking-tight text-[#1e1c2f] truncate">{t("dashboard.hello", { name: user?.name ?? "" })}</h1>
+            <p className="text-sm text-gray-500 mt-1.5 max-w-md">{t("dashboard.staffSubtitle")}</p>
           </div>
-          <div className="hidden sm:flex flex-shrink-0 w-12 h-12 rounded-xl bg-primary/10 items-center justify-center">
-            <svg className="w-6 h-6 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+          <div className="hidden sm:flex flex-shrink-0 w-12 h-12 rounded-2xl bg-gradient-to-br from-primary to-[#9d7bff] text-white shadow-[0_8px_20px_rgba(122,99,241,0.3)] items-center justify-center">
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
             </svg>
           </div>

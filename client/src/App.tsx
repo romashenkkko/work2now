@@ -12,7 +12,6 @@ import DashboardHome from "./pages/DashboardHome";
 import DashboardJoburi from "./pages/DashboardJoburi";
 import DashboardAplicatii from "./pages/DashboardAplicatii";
 import DashboardRapoarte from "./pages/DashboardRapoarte";
-import DashboardCalendar from "./pages/DashboardCalendar";
 import DashboardMesaje from "./pages/DashboardMesaje";
 import DashboardSettings from "./pages/DashboardSettings";
 import EmployeeOnboarding from "./pages/EmployeeOnboarding";
@@ -31,7 +30,7 @@ export default function App() {
         <Route path="joburi" element={<DashboardJoburi />} />
         <Route path="aplicatii" element={<DashboardAplicatii />} />
         <Route path="rapoarte" element={<DashboardRapoarte />} />
-        <Route path="calendar" element={<DashboardCalendar />} />
+        <Route path="calendar" element={<Navigate to="/dashboard" replace />} />
         <Route path="mesaje" element={<DashboardMesaje />} />
         <Route path="settings" element={<DashboardSettings />} />
         <Route path="*" element={<Navigate to="/dashboard" replace />} />

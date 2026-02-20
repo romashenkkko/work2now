@@ -1,27 +1,26 @@
 import { useContext, useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "../hooks/useAuth";
-import { DashboardContext, getApplications, setApplications, type Application } from "./DashboardLayout";
+import { DashboardContext, getApplications, setApplications, JobTitleIcon, JOB_TITLE_OPTIONS, type Application } from "./DashboardLayout";
 import { jobsApi, ratingsApi } from "../api/client";
-import { Briefcase, MapPin, Calendar, User, Mail, Clock, CheckCircle2, XCircle, Hourglass } from "lucide-react";
+import { Briefcase, User,  Clock, CheckCircle2, XCircle, Hourglass } from "lucide-react";
+import { MapPin, Calendar, Mail } from "lucide-react";
 import StarRating from "../components/StarRating";
+
+const DEFAULT_AVATAR = "/Illustration/AvatarWhiteGuy.png";
 
 function ApplicantAvatar({ staffAvatar }: { staffAvatar?: string }) {
   const [imgFailed, setImgFailed] = useState(false);
-  const showImg = staffAvatar && !imgFailed;
+  const src = staffAvatar && !imgFailed ? staffAvatar : DEFAULT_AVATAR;
   useEffect(() => setImgFailed(false), [staffAvatar]);
   return (
-    <div className="flex-shrink-0 w-10 h-10 rounded-full overflow-hidden bg-primary/10 flex items-center justify-center border border-gray-200">
-      {showImg ? (
-        <img
-          src={staffAvatar}
-          alt=""
-          className="w-full h-full object-cover"
-          onError={() => setImgFailed(true)}
-        />
-      ) : (
-        <User className="w-5 h-5 text-primary" />
-      )}
+    <div className="flex-shrink-0 w-10 h-10 rounded-full overflow-hidden bg-primary/10 border border-gray-200">
+      <img
+        src={src}
+        alt=""
+        className="w-full h-full object-cover"
+        onError={() => setImgFailed(true)}
+      />
     </div>
   );
 }
@@ -101,9 +100,9 @@ function statusBadge(t: (k: string) => string, status: "pending" | "accepted" | 
 export default function DashboardAplicatii() {
   const { t } = useTranslation();
   const { user } = useAuth();
-  const { jobsAdded } = useContext(DashboardContext);
-
-  // Customer view: map jobId -> applications[]
+  const ctx = useContext(DashboardContext);
+  const jobsAdded = ctx?.jobsAdded ?? [];
+  const refreshJobs = ctx?.refreshJobs ?? (() => {});
   const [applications, setApplicationsState] = useState<Record<string, Application[]>>({});
 
   // Staff view: flat list of my applications
@@ -194,6 +193,7 @@ export default function DashboardAplicatii() {
 
   const [completingId, setCompletingId] = useState<string | null>(null);
   const [ratingSubmitting, setRatingSubmitting] = useState<string | null>(null);
+  const [ratingDraft, setRatingDraft] = useState<Record<string, { score: number; comment: string }>>({});
 
   const markComplete = (applicationId: string) => {
     setCompletingId(applicationId);
@@ -203,18 +203,34 @@ export default function DashboardAplicatii() {
       .finally(() => setCompletingId(null));
   };
 
-  const submitRating = (applicationId: string, score: number) => {
+  const submitRating = (applicationId: string, score: number, comment?: string) => {
     setRatingSubmitting(applicationId);
     ratingsApi
-      .submit(applicationId, score)
-      .then(() => refreshCustomerApplications())
+      .submit(applicationId, score, comment)
+      .then(() => {
+        setRatingDraft((prev) => {
+          const next = { ...prev };
+          delete next[applicationId];
+          return next;
+        });
+        if (user?.role === "customer") {
+          refreshCustomerApplications();
+        } else if (user?.role === "staff") {
+          refreshStaffApplications();
+        }
+      })
       .finally(() => setRatingSubmitting(null));
   };
 
   const setStatus = (jobId: string, applicationId: string, status: "accepted" | "refused") => {
     jobsApi
       .setApplicationStatus(applicationId, status)
-      .then(() => refreshCustomerApplications())
+      .then(() => {
+        if (user?.role === "customer") {
+          refreshCustomerApplications();
+        }
+        refreshJobs();
+      })
       .catch(() => {
         const app = getApplications();
         const list = app[jobId] || [];
@@ -228,6 +244,13 @@ export default function DashboardAplicatii() {
   const isCustomer = user?.role === "customer";
   const isStaff = user?.role === "staff";
   const myJobs = isCustomer ? jobsAdded : [];
+
+  /** Iconița jobului după titlu (Ospătar -> waiter, Barman -> bartender, etc.) */
+  const getJobIconId = (jobTitle: string | undefined): string => {
+    if (!jobTitle) return "";
+    const opt = JOB_TITLE_OPTIONS.find((o) => t(o.labelKey) === jobTitle);
+    return opt?.id ?? "";
+  };
 
   // -----------------------------
   // STAFF VIEW (MY APPLICATIONS)
@@ -356,12 +379,12 @@ export default function DashboardAplicatii() {
   // -----------------------------
   // CUSTOMER VIEW (APPLICANTS)
   // -----------------------------
-  if (!isCustomer) {
+  if (!isCustomer && !isStaff) {
     return (
       <>
-        <header className="mb-8">
-          <h1 className="text-2xl font-bold text-gray-900">{t("dashboard.aplicatii")}</h1>
-          <p className="text-gray-600">{t("dashboard.myApplications")}</p>
+        <header className="mb-6 md:mb-8 p-5 md:p-6 rounded-2xl bg-gradient-to-br from-white via-[#faf8ff] to-[#f3efff] border border-[rgba(122,99,241,0.12)] shadow-[0_4px_20px_rgba(122,99,241,0.08)]">
+          <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-[#1e1c2f]">{t("dashboard.aplicatii")}</h1>
+          <p className="text-gray-500 text-sm mt-1.5 max-w-md">{t("dashboard.myApplications")}</p>
         </header>
         <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-8 text-center">
           <p className="text-gray-500">Aici vor apărea aplicațiile tale la joburi.</p>
@@ -379,9 +402,9 @@ export default function DashboardAplicatii() {
 
   return (
     <>
-      <header className="mb-6 md:mb-8">
-        <h1 className="text-2xl font-bold text-gray-900">{t("dashboard.aplicatii")}</h1>
-        <p className="text-gray-600">Vezi aplicațiile candidaților la joburile tale.</p>
+      <header className="mb-6 md:mb-8 p-5 md:p-6 rounded-2xl bg-gradient-to-br from-white via-[#faf8ff] to-[#f3efff] border border-[rgba(122,99,241,0.12)] shadow-[0_4px_20px_rgba(122,99,241,0.08)]">
+        <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-[#1e1c2f]">{t("dashboard.aplicatii")}</h1>
+        <p className="text-gray-500 text-sm mt-1.5 max-w-md">Vezi aplicațiile candidaților la joburile tale.</p>
       </header>
 
       {jobsWithApplicants.length === 0 ? (
@@ -397,7 +420,7 @@ export default function DashboardAplicatii() {
             >
               <div className="p-4 sm:p-5 border-b border-gray-100">
                 <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-                  <Briefcase className="w-5 h-5 text-primary" />
+                  <JobTitleIcon jobId={getJobIconId(job.job)} className="w-5 h-5 text-primary shrink-0" size={20} />
                   {job.job}
                 </h2>
                 {job.location && (
@@ -495,7 +518,7 @@ export default function DashboardAplicatii() {
                           )}
 
                           {a.status === "accepted" && a.completedAt && (
-                            <div className="mt-2 flex items-center gap-2 flex-wrap">
+                            <div className="mt-2 space-y-2">
                               {a.ratingScore != null ? (
                                 <span className="text-sm text-gray-600 flex items-center gap-1">
                                   {t("dashboard.rated")}:
@@ -503,9 +526,35 @@ export default function DashboardAplicatii() {
                                 </span>
                               ) : (
                                 <>
-                                  <span className="text-sm text-gray-600">{t("dashboard.rateWork")}:</span>
-                                  <StarRating value={0} editable onSelect={(score) => submitRating(a.id, score)} />
-                                  {ratingSubmitting === a.id && <span className="text-xs text-gray-500">...</span>}
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <span className="text-sm text-gray-600">{t("dashboard.rateWork")}:</span>
+                                    <StarRating
+                                      value={ratingDraft[a.id]?.score ?? 0}
+                                      editable
+                                      onSelect={(score) => setRatingDraft((prev) => ({ ...prev, [a.id]: { ...prev[a.id], score } }))}
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="block text-xs font-medium text-gray-500 mt-1">{t("dashboard.commentOptional")}</label>
+                                    <textarea
+                                      rows={2}
+                                      value={ratingDraft[a.id]?.comment ?? ""}
+                                      onChange={(e) => setRatingDraft((prev) => ({ ...prev, [a.id]: { ...(prev[a.id] ?? { score: 0 }), comment: e.target.value.slice(0, 2000) } }))}
+                                      className="mt-0.5 w-full rounded-lg border border-gray-200 px-2 py-1.5 text-sm"
+                                      placeholder={t("dashboard.commentOptional")}
+                                    />
+                                  </div>
+                                  <p className="text-xs text-gray-500">{t("dashboard.photoOptional")}</p>
+                                  <div className="flex gap-2">
+                                    <button
+                                      type="button"
+                                      disabled={!((ratingDraft[a.id]?.score ?? 0) >= 0.5) || ratingSubmitting === a.id}
+                                      onClick={() => submitRating(a.id, ratingDraft[a.id]?.score ?? 1, ratingDraft[a.id]?.comment?.trim() || undefined)}
+                                      className="px-3 py-1.5 rounded-lg bg-primary text-white text-sm font-medium hover:bg-primary-dark disabled:opacity-50 disabled:pointer-events-none"
+                                    >
+                                      {ratingSubmitting === a.id ? "..." : t("dashboard.submitReview", "Trimite review")}
+                                    </button>
+                                  </div>
                                 </>
                               )}
                             </div>

@@ -65,11 +65,70 @@ function toNumber(v: unknown): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+/** Distanță în metri între două puncte (Haversine formula). */
+function haversineMeters(
+  lat1: number,
+  lon1: number,
+  lat2: number,
+  lon2: number
+): number {
+  const R = 6371000; // Earth radius in meters
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
+/** Standard error when user is outside allowed radius (prevents frontend manipulation). */
+const LOCATION_RADIUS_ERROR = "You are not within the allowed location radius.";
+
+/** Default workplace radius in meters (check-in/check-out allowed only within this distance). */
+const DEFAULT_GEO_RADIUS_M = 200;
+
+/**
+ * Validates user coordinates against job workplace (backend authority – prevents faked coordinates).
+ * Returns { valid: true } or { valid: false, statusCode, error }.
+ */
+async function validateGeoForJob(
+  jobId: number,
+  body: { lat?: unknown; lng?: unknown }
+): Promise<{ valid: true } | { valid: false; statusCode: number; error: string }> {
+  const [jobRows] = await db.query(
+    "SELECT check_in_lat, check_in_lng, check_in_radius_m FROM jobs WHERE id = ?",
+    [jobId]
+  ) as [Record<string, unknown>[], unknown];
+  const jobRow = Array.isArray(jobRows) ? jobRows[0] : null;
+  const jLat = jobRow?.check_in_lat != null ? Number(jobRow.check_in_lat) : NaN;
+  const jLng = jobRow?.check_in_lng != null ? Number(jobRow.check_in_lng) : NaN;
+  const jRadius = jobRow?.check_in_radius_m != null ? Number(jobRow.check_in_radius_m) : DEFAULT_GEO_RADIUS_M;
+  if (!Number.isFinite(jLat) || !Number.isFinite(jLng) || jRadius <= 0) {
+    return { valid: true }; // No geo-fence for this job
+  }
+  const lat = body.lat != null ? Number(body.lat) : NaN;
+  const lng = body.lng != null ? Number(body.lng) : NaN;
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+    return { valid: false, statusCode: 400, error: "Location permission is required for check-in/check-out at this workplace." };
+  }
+  const distM = haversineMeters(jLat, jLng, lat, lng);
+  if (distM > jRadius) {
+    return { valid: false, statusCode: 400, error: LOCATION_RADIUS_ERROR };
+  }
+  return { valid: true };
+}
 
 function rowToJob(r: Record<string, unknown>): Record<string, unknown> {
   const postedByName = r.posted_by_name ?? (r as Record<string, unknown>).postedByName;
   const name = typeof postedByName === "string" && postedByName.trim() ? postedByName.trim() : undefined;
-
+  const postedByUserId = r.posted_by_user_id ?? r.user_id;
+  const postedByRole = r.posted_by_role;
+  const postedByAvatar = r.posted_by_avatar;
+  const checkInLat = r.check_in_lat != null ? Number(r.check_in_lat) : undefined;
+  const checkInLng = r.check_in_lng != null ? Number(r.check_in_lng) : undefined;
+  const checkInRadiusM = r.check_in_radius_m != null ? Number(r.check_in_radius_m) : undefined;
+  const acceptedCount = r.accepted_count != null ? Number(r.accepted_count) : 0;
   return {
     id: String(r.id),
     job: r.job,
@@ -80,6 +139,7 @@ function rowToJob(r: Record<string, unknown>): Record<string, unknown> {
     endDate: r.end_date ?? undefined,
     jobType: r.job_type ?? undefined,
     applicationsCount: r.applications_count ?? 0,
+    acceptedCount,
     startTime: r.start_time ?? undefined,
     endTime: r.end_time ?? undefined,
     peopleNeeded: r.people_needed ?? undefined,
@@ -91,6 +151,12 @@ function rowToJob(r: Record<string, unknown>): Record<string, unknown> {
     // ✅ NEW (so frontend can see/store them)
     jobCategoryCode: r.job_category_code ?? undefined,
     hourlyRateBase: r.hourly_rate_base ?? undefined,
+    postedById: postedByUserId != null ? String(postedByUserId) : undefined,
+    postedByRole: typeof postedByRole === "string" && postedByRole.trim() ? postedByRole.trim() : undefined,
+    postedByAvatar: typeof postedByAvatar === "string" && postedByAvatar.trim() ? postedByAvatar.trim() : undefined,
+    ...(Number.isFinite(checkInLat) && Number.isFinite(checkInLng) && Number.isFinite(checkInRadiusM) && checkInRadiusM! > 0
+      ? { checkInLat, checkInLng, checkInRadiusM }
+      : {}),
   };
 }
 
@@ -103,7 +169,7 @@ router.get("/", authMiddleware, async (req: ReqWithUser, res: Response): Promise
     return;
   }
   const [rows] = await db.query(
-    "SELECT role FROM users WHERE id = ?",
+    "SELECT Role FROM users WHERE Id = ?",
     [userId]
   ) as [unknown[], unknown];
   const roleRaw = getRoleFromRow((rows as unknown[] | undefined)?.[0]);
@@ -113,6 +179,10 @@ router.get("/", authMiddleware, async (req: ReqWithUser, res: Response): Promise
   if (customerLike) {
     const [r] = await db.query(
       `SELECT j.*,
+              (SELECT COUNT(*) FROM applications a WHERE a.job_id = j.id AND LOWER(TRIM(COALESCE(a.status,''))) = 'accepted') AS accepted_count,
+              u.Id AS posted_by_user_id,
+              u.Role AS posted_by_role,
+              COALESCE(ep.ProfilePictureFileId, NULL) AS posted_by_avatar,
               COALESCE(
                 bp.CompanyName,
                 TRIM(CONCAT(ep.Name, ' ', ep.Surname)),
@@ -130,6 +200,10 @@ router.get("/", authMiddleware, async (req: ReqWithUser, res: Response): Promise
   } else {
     const [r] = await db.query(
       `SELECT j.*,
+              (SELECT COUNT(*) FROM applications a WHERE a.job_id = j.id AND LOWER(TRIM(COALESCE(a.status,''))) = 'accepted') AS accepted_count,
+              u.Id AS posted_by_user_id,
+              u.Role AS posted_by_role,
+              COALESCE(ep.ProfilePictureFileId, NULL) AS posted_by_avatar,
               COALESCE(
                 bp.CompanyName,
                 TRIM(CONCAT(ep.Name, ' ', ep.Surname)),
@@ -154,7 +228,7 @@ router.post("/", authMiddleware, async (req: ReqWithUser, res: Response): Promis
     return;
   }
   const [rows] = await db.query(
-    "SELECT role FROM users WHERE id = ?",
+    "SELECT Role FROM users WHERE Id = ?",
     [userId]
   ) as [unknown[], unknown];
   const roleRaw = getRoleFromRow((rows as unknown[] | undefined)?.[0]);
@@ -184,6 +258,12 @@ router.post("/", authMiddleware, async (req: ReqWithUser, res: Response): Promis
       return;
     }
   
+  const checkInLat = b.checkInLat != null ? Number(b.checkInLat) : null;
+  const checkInLng = b.checkInLng != null ? Number(b.checkInLng) : null;
+  const checkInRadiusM =
+    b.checkInRadiusM != null
+      ? Math.max(1, Math.min(500, Number(b.checkInRadiusM)))
+      : (checkInLat != null && checkInLng != null ? DEFAULT_GEO_RADIUS_M : null);
   if (!job || !location) {
     res.status(400).json({ error: "job și location sunt obligatorii." });
     return;
@@ -256,6 +336,9 @@ router.post("/", authMiddleware, async (req: ReqWithUser, res: Response): Promis
     // Fetch created job for response
     const [r] = await conn.query(
       `SELECT j.*,
+              u.Id AS posted_by_user_id,
+              u.Role AS posted_by_role,
+              COALESCE(ep.ProfilePictureFileId, NULL) AS posted_by_avatar,
               COALESCE(
                 bp.CompanyName,
                 TRIM(CONCAT(ep.Name, ' ', ep.Surname)),
@@ -315,7 +398,7 @@ router.get("/my-applications", authMiddleware, async (req: ReqWithUser, res: Res
     return;
   }
   const [rows] = await db.query(
-    "SELECT role FROM users WHERE id = ?",
+    "SELECT Role FROM users WHERE Id = ?",
     [userId]
   ) as [unknown[], unknown];
   const roleRaw = getRoleFromRow((rows as unknown[] | undefined)?.[0]);
@@ -578,7 +661,7 @@ router.get("/applications", authMiddleware, async (req: ReqWithUser, res: Respon
     return;
   }
   const [rows] = await db.query(
-    "SELECT role FROM users WHERE id = ?",
+    "SELECT Role FROM users WHERE Id = ?",
     [userId]
   ) as [unknown[], unknown];
   const roleRaw = getRoleFromRow((rows as unknown[] | undefined)?.[0]);
@@ -599,21 +682,24 @@ router.get("/applications", authMiddleware, async (req: ReqWithUser, res: Respon
     `SELECT a.id, a.job_id, a.staff_id, a.staff_name, a.staff_email, a.status, a.completed_at, a.checked_in_at, a.checked_out_at, a.created_at,
      r.score AS rating_score
      FROM applications a
-     LEFT JOIN ratings r ON r.application_id = a.id
+     LEFT JOIN ratings r ON r.application_id = a.id AND r.rater_id = ?
      WHERE a.job_id IN (${placeholders}) ORDER BY a.created_at DESC`,
-    jobIds
+    [userId, ...jobIds]
   ) as [Record<string, unknown>[], unknown];
   const list = Array.isArray(appRows) ? appRows : [];
-  const staffIds = [...new Set(list.map((a) => Number(a.staff_id)).filter(Boolean))];
-  const avatarByStaffId: Record<number, string> = {};
-  if (staffIds.length > 0) {
-    const ph = staffIds.map(() => "?").join(",");
+  const staffIdStrings = [...new Set(list.map((a) => (a.staff_id != null ? String(a.staff_id).trim() : "")).filter(Boolean))];
+  const avatarByStaffId: Record<string, string> = {};
+  if (staffIdStrings.length > 0) {
+    const ph = staffIdStrings.map(() => "?").join(",");
     const [userRows] = await db.query(
-      `SELECT id, avatar FROM users WHERE id IN (${ph})`,
-      staffIds
+      `SELECT u.Id AS id, COALESCE(ep.ProfilePictureFileId, NULL) AS avatar
+       FROM users u
+       LEFT JOIN employee_profiles ep ON u.Id = ep.UserId
+       WHERE u.Id IN (${ph})`,
+      staffIdStrings
     ) as [Record<string, unknown>[], unknown];
     (Array.isArray(userRows) ? userRows : []).forEach((u) => {
-      const id = Number(u.id);
+      const id = u.id != null ? String(u.id).trim() : "";
       if (!id) return;
       let av = u.avatar;
       if (Buffer.isBuffer(av)) av = av.toString("utf8");
@@ -650,8 +736,8 @@ router.get("/applications", authMiddleware, async (req: ReqWithUser, res: Respon
     const jid = String(a.job_id);
     const aid = String(a.id);
     if (!byJob[jid]) byJob[jid] = [];
-    const sid = Number(a.staff_id);
-    const staffAvatar = sid ? avatarByStaffId[sid] : undefined;
+    const sidStr = a.staff_id != null ? String(a.staff_id).trim() : "";
+    const staffAvatar = sidStr ? avatarByStaffId[sidStr] : undefined;
     byJob[jid].push({
       id: aid,
       jobId: jid,
@@ -670,7 +756,7 @@ router.get("/applications", authMiddleware, async (req: ReqWithUser, res: Respon
   res.json({ applications: byJob });
 });
 
-/** PATCH /api/jobs/applications/:id/check-in - staff: înregistrează începutul lucrului (per zi, workDate în body) */
+/** PATCH /api/jobs/applications/:id/check-in - staff: înregistrează începutul lucrului (per zi, workDate în body; opțional lat, lng pentru geo-fencing) */
 router.patch("/applications/:id/check-in", authMiddleware, async (req: ReqWithUser, res: Response): Promise<void> => {
   const userId = req.user?.userId;
   const appIdRaw = req.params.id;
@@ -679,13 +765,14 @@ router.patch("/applications/:id/check-in", authMiddleware, async (req: ReqWithUs
     res.status(401).json({ error: "Unauthorized" });
     return;
   }
-  let workDate = typeof (req.body ?? {}).workDate === "string" ? (req.body as { workDate: string }).workDate.trim().slice(0, 10) : "";
+  const body = req.body ?? {};
+  let workDate = typeof body.workDate === "string" ? body.workDate.trim().slice(0, 10) : "";
   if (!workDate || !/^\d{4}-\d{2}-\d{2}$/.test(workDate)) {
     const now = new Date();
     workDate = now.getFullYear() + "-" + String(now.getMonth() + 1).padStart(2, "0") + "-" + String(now.getDate()).padStart(2, "0");
   }
   const [rows] = await db.query(
-    "SELECT id, staff_id, status FROM applications WHERE id = ? AND staff_id = ?",
+    "SELECT a.id, a.staff_id, a.status, a.job_id FROM applications a WHERE a.id = ? AND a.staff_id = ?",
     [appId, userId]
   ) as [Record<string, unknown>[], unknown];
   const row = Array.isArray(rows) ? rows[0] : null;
@@ -696,6 +783,14 @@ router.patch("/applications/:id/check-in", authMiddleware, async (req: ReqWithUs
   if (String(row.status) !== "accepted") {
     res.status(400).json({ error: "Doar aplicațiile acceptate pot fi check-in." });
     return;
+  }
+  const jobId = row.job_id != null ? Number(row.job_id) : NaN;
+  if (Number.isFinite(jobId) && jobId > 0) {
+    const geoResult = await validateGeoForJob(jobId, body);
+    if (!geoResult.valid) {
+      res.status(geoResult.statusCode).json({ error: geoResult.error });
+      return;
+    }
   }
   const [existing] = await db.query(
     "SELECT id, checked_in_at FROM application_work_sessions WHERE application_id = ? AND work_date = ?",
@@ -717,7 +812,7 @@ router.patch("/applications/:id/check-in", authMiddleware, async (req: ReqWithUs
   res.json({ ok: true });
 });
 
-/** PATCH /api/jobs/applications/:id/check-out - staff: înregistrează sfârșitul lucrului (per zi, workDate în body) */
+/** PATCH /api/jobs/applications/:id/check-out - staff: înregistrează sfârșitul lucrului (per zi, workDate în body; opțional lat, lng pentru geo) */
 router.patch("/applications/:id/check-out", authMiddleware, async (req: ReqWithUser, res: Response): Promise<void> => {
   const userId = req.user?.userId;
   const appIdRaw = req.params.id;
@@ -726,13 +821,14 @@ router.patch("/applications/:id/check-out", authMiddleware, async (req: ReqWithU
     res.status(401).json({ error: "Unauthorized" });
     return;
   }
-  let workDate = typeof (req.body ?? {}).workDate === "string" ? (req.body as { workDate: string }).workDate.trim().slice(0, 10) : "";
+  const body = req.body ?? {};
+  let workDate = typeof body.workDate === "string" ? body.workDate.trim().slice(0, 10) : "";
   if (!workDate || !/^\d{4}-\d{2}-\d{2}$/.test(workDate)) {
     const now = new Date();
     workDate = now.getFullYear() + "-" + String(now.getMonth() + 1).padStart(2, "0") + "-" + String(now.getDate()).padStart(2, "0");
   }
   const [rows] = await db.query(
-    "SELECT id, staff_id, status FROM applications WHERE id = ? AND staff_id = ?",
+    "SELECT id, staff_id, status, job_id FROM applications WHERE id = ? AND staff_id = ?",
     [appId, userId]
   ) as [Record<string, unknown>[], unknown];
   const row = Array.isArray(rows) ? rows[0] : null;
@@ -743,6 +839,14 @@ router.patch("/applications/:id/check-out", authMiddleware, async (req: ReqWithU
   if (String(row.status) !== "accepted") {
     res.status(400).json({ error: "Doar aplicațiile acceptate pot fi check-out." });
     return;
+  }
+  const jobId = row.job_id != null ? Number(row.job_id) : NaN;
+  if (Number.isFinite(jobId) && jobId > 0) {
+    const geoResult = await validateGeoForJob(jobId, body);
+    if (!geoResult.valid) {
+      res.status(geoResult.statusCode).json({ error: geoResult.error });
+      return;
+    }
   }
   const [existing] = await db.query(
     "SELECT id, checked_in_at, checked_out_at FROM application_work_sessions WHERE application_id = ? AND work_date = ?",
@@ -812,8 +916,8 @@ router.patch("/applications/:id", authMiddleware, async (req: ReqWithUser, res: 
   await db.query("UPDATE applications SET status = ? WHERE id = ?", [status, appId]);
   let staffEmail = row.staff_email != null ? String(row.staff_email).trim() : "";
   if (!staffEmail && row.staff_id) {
-    const [u] = await db.query("SELECT email FROM users WHERE id = ?", [row.staff_id]) as [Record<string, unknown>[], unknown];
-    staffEmail = (Array.isArray(u) && u[0] && u[0].email != null) ? String(u[0].email).trim() : "";
+    const [u] = await db.query("SELECT Email FROM users WHERE Id = ?", [row.staff_id]) as [Record<string, unknown>[], unknown];
+    staffEmail = (Array.isArray(u) && u[0] && (u[0].Email ?? u[0].email) != null) ? String((u[0].Email ?? u[0].email)).trim() : "";
   }
   const staffName = String(row.staff_name ?? "").trim() || "Angajat";
   const jobTitle = String(row.job_title ?? "").trim() || "Job";
