@@ -1110,6 +1110,12 @@ router.patch("/applications/:id", authMiddleware, async (req: ReqWithUser, res: 
   const [rows] = await db.query(
     `SELECT a.id, a.job_id, a.staff_id, a.staff_email, a.staff_name, j.user_id, 
             j.Title AS job_title,
+            j.location AS job_location,
+            j.date AS job_date,
+            j.end_date AS job_end_date,
+            j.start_time AS job_start_time,
+            j.end_time AS job_end_time,
+            j.hourly_rate_base AS job_hourly_rate,
             jc.Title AS job_category_title
      FROM applications a 
      JOIN jobs j ON j.id = a.job_id 
@@ -1131,9 +1137,22 @@ router.patch("/applications/:id", authMiddleware, async (req: ReqWithUser, res: 
   }
   const staffName = String(row.staff_name ?? "").trim() || "Angajat";
   const jobTitle = String(row.job_title ?? "").trim() || "Job";
-  if (staffEmail) {
-    if (status === "accepted") notifyStaffAccepted(staffEmail, staffName, jobTitle).catch(() => {});
-    if (status === "refused") notifyStaffRefused(staffEmail, staffName, jobTitle).catch(() => {});
+  
+  if (staffEmail && status === "accepted") {
+    const jobDetails = {
+      title: jobTitle,
+      category: String(row.job_category_title ?? "").trim() || "",
+      location: String(row.job_location ?? "").trim() || "",
+      date: row.job_date ? String(row.job_date).trim() : "",
+      endDate: row.job_end_date ? String(row.job_end_date).trim() : "",
+      startTime: row.job_start_time ? String(row.job_start_time).trim() : "",
+      endTime: row.job_end_time ? String(row.job_end_time).trim() : "",
+      hourlyRate: row.job_hourly_rate != null ? Number(row.job_hourly_rate) : null,
+    };
+    notifyStaffAccepted(staffEmail, staffName, jobDetails).catch(() => {});
+  }
+  if (staffEmail && status === "refused") {
+    notifyStaffRefused(staffEmail, staffName, jobTitle).catch(() => {});
   }
   res.json({ ok: true });
 });

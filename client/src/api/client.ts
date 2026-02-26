@@ -57,6 +57,16 @@ export const authApi = {
       method: "POST",
       body: JSON.stringify({ email, password }),
     }),
+  sendOTP: (phoneNumber: string) =>
+    api<{ message: string }>("/auth/send-otp", {
+      method: "POST",
+      body: JSON.stringify({ phoneNumber }),
+    }),
+  verifyOTP: (phoneNumber: string, code: string) =>
+    api<{ verified: boolean; message?: string }>("/auth/verify-otp", {
+      method: "POST",
+      body: JSON.stringify({ phoneNumber, code }),
+    }),
   register: (body: {
     name: string;
     email: string;

@@ -31,11 +31,13 @@ export default function Register() {
   const [lastName, setLastName] = useState("");
   const [dateOfBirth, setDateOfBirth] = useState("");
   const [aboutMe, setAboutMe] = useState("");
+  const [phoneNumber, setPhoneNumber] = useState(""); // Staff phone number
   
   // Business/Customer fields
   const [companyName, setCompanyName] = useState("");
   const [contactFirstName, setContactFirstName] = useState("");
   const [contactLastName, setContactLastName] = useState("");
+  const [contactPhoneNumber, setContactPhoneNumber] = useState(""); // Customer contact phone number
   const [companyCategory, setCompanyCategory] = useState("1");
   const [companyCategoryOpen, setCompanyCategoryOpen] = useState(false);
   const companyCategoryRef = useRef<HTMLDivElement>(null);
@@ -46,6 +48,13 @@ export default function Register() {
   const [branchCity, setBranchCity] = useState("");
   const [branchCountry, setBranchCountry] = useState("Moldova");
   const [branchPhone, setBranchPhone] = useState("");
+
+  // OTP verification state
+  const [otpStep, setOtpStep] = useState<"form" | "otp">("form");
+  const [otpCode, setOtpCode] = useState("");
+  const [otpLoading, setOtpLoading] = useState(false);
+  const [otpError, setOtpError] = useState("");
+  const [verifiedPhone, setVerifiedPhone] = useState("");
 
   useEffect(() => {
     const onOutsideClick = (e: MouseEvent) => {
@@ -61,6 +70,8 @@ export default function Register() {
     e.preventDefault();
     setError("");
     setSuccess("");
+    setOtpError("");
+    
     if (password !== confirm) {
       setError(t("auth.passwordMismatch"));
       return;
@@ -76,6 +87,10 @@ export default function Register() {
         setError(t("auth.dateOfBirthRequired"));
         return;
       }
+      if (!phoneNumber.trim()) {
+        setError(t("auth.phoneNumberRequired"));
+        return;
+      }
     } else if (role === "customer") {
       if (!companyName.trim()) {
         setError(t("auth.companyNameRequired"));
@@ -85,12 +100,60 @@ export default function Register() {
         setError(t("auth.contactNameRequired"));
         return;
       }
+      if (!contactPhoneNumber.trim()) {
+        setError(t("auth.contactPhoneNumberRequired"));
+        return;
+      }
       if (!branchName.trim() || !branchAddress.trim() || !branchCity.trim() || !branchPhone.trim()) {
         setError(t("auth.branchFieldsRequired"));
         return;
       }
     }
+
+    // If OTP is not verified yet, send OTP and show OTP screen
+    if (otpStep === "form") {
+      const phoneToVerify = role === "staff" ? phoneNumber.trim() : contactPhoneNumber.trim();
+      
+      setOtpLoading(true);
+      setOtpError("");
+      try {
+        await authApi.sendOTP(phoneToVerify);
+        setVerifiedPhone(phoneToVerify);
+        setOtpStep("otp");
+      } catch (err) {
+        setOtpError(err instanceof Error ? err.message : t("auth.otpSendError"));
+      } finally {
+        setOtpLoading(false);
+      }
+      return;
+    }
+
+    // If OTP step, verify OTP first
+    if (otpStep === "otp") {
+      if (!otpCode.trim() || otpCode.trim().length < 4) {
+        setOtpError(t("auth.otpCodeRequired"));
+        return;
+      }
+
+      setOtpLoading(true);
+      setOtpError("");
+      try {
+        const verifyResult = await authApi.verifyOTP(verifiedPhone, otpCode.trim());
+        if (!verifyResult.verified) {
+          setOtpError(t("auth.otpInvalid"));
+          return;
+        }
+        // OTP verified, proceed with registration
+      } catch (err) {
+        setOtpError(err instanceof Error ? err.message : t("auth.otpVerifyError"));
+        setOtpLoading(false);
+        return;
+      } finally {
+        setOtpLoading(false);
+      }
+    }
     
+    // Complete registration after OTP is verified
     setLoading(true);
     try {
       // MIGRATION FIX: Build registration data with profile information
@@ -98,7 +161,8 @@ export default function Register() {
         name: role === "staff" ? `${firstName.trim()} ${lastName.trim()}` : companyName.trim(), // For backward compatibility
         email, 
         password, 
-        role 
+        role,
+        phoneNumber: verifiedPhone, // Include verified phone number
       };
       
       if (role === "staff") {
@@ -133,6 +197,20 @@ export default function Register() {
       setError(err instanceof Error ? err.message : t("auth.registerError"));
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleResendOTP() {
+    setOtpLoading(true);
+    setOtpError("");
+    try {
+      await authApi.sendOTP(verifiedPhone);
+      setOtpCode("");
+      setOtpError("");
+    } catch (err) {
+      setOtpError(err instanceof Error ? err.message : t("auth.otpSendError"));
+    } finally {
+      setOtpLoading(false);
     }
   }
 
@@ -262,6 +340,17 @@ export default function Register() {
                 disablePastDates={false}
               />
               <label>
+                {t("auth.phoneNumber")} <span className="text-red-500">*</span>
+                <input
+                  type="tel"
+                  value={phoneNumber}
+                  onChange={(e) => setPhoneNumber(e.target.value)}
+                  required
+                  placeholder={t("auth.phoneNumberPlaceholder") || "+37312345678"}
+                />
+                <small className="text-gray-500 text-xs mt-1 block">{t("auth.phoneNumberHint") || "Folosește formatul internațional (ex: +37312345678)"}</small>
+              </label>
+              <label>
                 {t("auth.aboutMe")}
                 <textarea
                   value={aboutMe}
@@ -309,6 +398,17 @@ export default function Register() {
                   />
                 </label>
               </div>
+              <label>
+                {t("auth.contactPhoneNumber")} <span className="text-red-500">*</span>
+                <input
+                  type="tel"
+                  value={contactPhoneNumber}
+                  onChange={(e) => setContactPhoneNumber(e.target.value)}
+                  required
+                  placeholder={t("auth.phoneNumberPlaceholder") || "+37312345678"}
+                />
+                <small className="text-gray-500 text-xs mt-1 block">{t("auth.phoneNumberHint") || "Folosește formatul internațional (ex: +37312345678)"}</small>
+              </label>
               <label>
                 {t("auth.companyCategory")}
                 <div className="auth-custom-dropdown" ref={companyCategoryRef}>
@@ -414,10 +514,79 @@ export default function Register() {
             </>
           )}
           
-          <button type="submit" disabled={loading} className="btn-primary w-full py-3.5 disabled:opacity-50" style={{ marginTop: "24px" }}>
-            {loading ? "..." : t("auth.submitRegister")}
-          </button>
+          {otpStep === "form" && (
+            <button type="submit" disabled={loading || otpLoading} className="btn-primary w-full py-3.5 disabled:opacity-50" style={{ marginTop: "24px" }}>
+              {otpLoading ? t("auth.sendingOTP") || "Se trimite codul..." : t("auth.continueToOTP") || "Continuă cu verificarea"}
+            </button>
+          )}
         </form>
+
+        {/* OTP Verification Screen */}
+        {otpStep === "otp" && (
+          <div className="auth-otp-section">
+            <div className="auth-otp-header">
+              <h3>{t("auth.verifyPhoneNumber") || "Verifică numărul de telefon"}</h3>
+              <p className="auth-muted">
+                {t("auth.otpSentTo") || "Am trimis un cod de verificare la"} <strong>{verifiedPhone}</strong>
+              </p>
+            </div>
+            
+            {otpError && (
+              <div className="auth-alert error">{otpError}</div>
+            )}
+            
+            <form onSubmit={(e) => { e.preventDefault(); handleSubmit(e); }} className="auth-form">
+              <label>
+                {t("auth.otpCode") || "Cod OTP"}
+                <input
+                  type="text"
+                  value={otpCode}
+                  onChange={(e) => {
+                    const value = e.target.value.replace(/\D/g, "").slice(0, 6);
+                    setOtpCode(value);
+                    setOtpError("");
+                  }}
+                  required
+                  maxLength={6}
+                  placeholder="000000"
+                  className="text-center text-2xl tracking-widest font-mono"
+                  autoFocus
+                />
+              </label>
+              
+              <button 
+                type="submit" 
+                disabled={loading || otpLoading || otpCode.length < 4} 
+                className="btn-primary w-full py-3.5 disabled:opacity-50" 
+                style={{ marginTop: "24px" }}
+              >
+                {loading ? t("auth.registering") || "Se înregistrează..." : otpLoading ? "..." : t("auth.verifyAndRegister") || "Verifică și înregistrează"}
+              </button>
+              
+              <button
+                type="button"
+                onClick={handleResendOTP}
+                disabled={otpLoading}
+                className="btn-secondary w-full py-2.5 mt-3 disabled:opacity-50"
+              >
+                {otpLoading ? "..." : t("auth.resendOTP") || "Retrimite codul"}
+              </button>
+              
+              <button
+                type="button"
+                onClick={() => {
+                  setOtpStep("form");
+                  setOtpCode("");
+                  setOtpError("");
+                  setVerifiedPhone("");
+                }}
+                className="btn-text w-full py-2 mt-2"
+              >
+                {t("auth.backToForm") || "Înapoi la formular"}
+              </button>
+            </form>
+          </div>
+        )}
         <p className="auth-link">
           {t("auth.hasAccount")} <Link to="/login">{t("auth.submitLogin")}</Link>
         </p>
