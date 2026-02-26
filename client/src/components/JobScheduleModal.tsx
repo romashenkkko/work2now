@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import type { JobRow } from "../pages/DashboardLayout";
 import { Briefcase, Clock, MapPin, List, Calendar, Banknote, Users, AlertTriangle, Share2 } from "lucide-react";
@@ -119,7 +120,7 @@ type Props = {
   open: boolean;
   onClose: () => void;
   job: JobRow | null;
-  /** When true, show staff net (base - 22.5%). When false, show business total (base + 22.5% + 10%). */
+  /** When true, show staff net (base - 9% - 12%). When false, show business total (base + 24% + 10%). */
   viewerIsStaff?: boolean;
   myAppInfo?: MyAppInfoForModal | null;
   onCheckIn?: (applicationId: string, workDate: string) => void;
@@ -182,6 +183,21 @@ function formatTimeFromIso(iso: string): string {
 export default function JobScheduleModal({ open, onClose, job, viewerIsStaff = false, myAppInfo, onCheckIn, onCheckOut, checkInOutLoading, jobApplications = [] }: Props) {
   const { t } = useTranslation();
 
+  // Lock body scroll when modal is open
+  useEffect(() => {
+    if (open) {
+      // Save previous overflow value
+      const previousOverflow = document.body.style.overflow;
+      // Lock body scroll
+      document.body.style.overflow = "hidden";
+      
+      return () => {
+        // Restore previous overflow value
+        document.body.style.overflow = previousOverflow;
+      };
+    }
+  }, [open]);
+
   const dates = useMemo(() => {
     if (!open || !job?.date) return [];
     const range = getDatesInRange(job.date, job.endDate ?? job.date);
@@ -202,32 +218,37 @@ export default function JobScheduleModal({ open, onClose, job, viewerIsStaff = f
 
   if (!open) return null;
 
-  return (
+  const modalContent = (
     <div
-      className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50 modal-overlay-enter"
+      className="fixed inset-0 z-[70] flex items-center justify-center p-4 sm:p-6 bg-black/50 modal-overlay-enter"
       onClick={onClose}
     >
       <div
-        className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] flex flex-col overflow-hidden modal-content-enter"
+        className="w-full max-w-2xl bg-white rounded-2xl shadow-2xl overflow-hidden max-h-[calc(100vh-3rem)] flex flex-col modal-content-enter"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center gap-3 p-4 border-b border-gray-100 flex-shrink-0">
-          <button
-            type="button"
-            onClick={onClose}
-            className="p-2 -ml-2 rounded-lg text-gray-600 hover:bg-gray-100"
-            aria-label={t("dashboard.close")}
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-            </svg>
-          </button>
-          <h2 className="text-lg font-bold text-gray-900">{t("dashboard.job")}</h2>
+        {/* Header - shrink-0 */}
+        <div className="flex-shrink-0">
+          <div className="flex items-center gap-3 p-4 border-b border-gray-100">
+            <button
+              type="button"
+              onClick={onClose}
+              className="p-2 -ml-2 rounded-lg text-gray-600 hover:bg-gray-100"
+              aria-label={t("dashboard.close")}
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+            <h2 className="text-lg font-bold text-gray-900">{t("dashboard.job")}</h2>
+          </div>
         </div>
 
-        {job && (
-          <>
-            <div className="p-4 pb-2 flex-shrink-0">
+        {/* Body - flex-1 min-h-0 overflow-y-auto overscroll-contain */}
+        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
+          {job && (
+            <>
+              <div className="p-4 pb-2">
               {job.imageUrl && (
                 <div className="mb-4 rounded-xl overflow-hidden border border-gray-100 bg-gray-50">
                   <img src={job.imageUrl} alt="" className="w-full h-40 sm:h-48 object-cover" />
@@ -291,8 +312,13 @@ export default function JobScheduleModal({ open, onClose, job, viewerIsStaff = f
                   const numDays = dates.length || 1;
                   const totalHours = hoursPerDay * numDays;
                   const baseTotal = hasRate && totalHours > 0 ? hourlyRate * totalHours : null;
+                  // Staff sees base salary, business sees total with taxes
                   const displayTotal = baseTotal != null && baseTotal > 0
-                    ? roundMoney(viewerIsStaff ? getStaffNet(baseTotal) : getBusinessTotal(baseTotal))
+                    ? roundMoney(viewerIsStaff ? baseTotal : getBusinessTotal(baseTotal))
+                    : null;
+                  // For staff, calculate net amount after taxes
+                  const staffNetTotal = baseTotal != null && baseTotal > 0 && viewerIsStaff
+                    ? roundMoney(getStaffNet(baseTotal))
                     : null;
                   return (
                     <>
@@ -312,6 +338,11 @@ export default function JobScheduleModal({ open, onClose, job, viewerIsStaff = f
                         <li className="flex items-center gap-2 font-medium text-gray-900">
                           <Banknote className="w-4 h-4 text-primary shrink-0" />
                           <span>{t("dashboard.totalEstimated", "Total (estimated)")}: {displayTotal.toFixed(2)} MDL</span>
+                        </li>
+                      )}
+                      {staffNetTotal != null && staffNetTotal > 0 && (
+                        <li className="flex items-center gap-2 text-sm text-gray-600 mt-1">
+                          <span className="ml-6">{t("dashboard.afterTaxYouWillReceive", "After taxes are deducted, you will receive")} {staffNetTotal.toFixed(2)} {t("dashboard.currency", "MDL")}</span>
                         </li>
                       )}
                     </>
@@ -358,20 +389,22 @@ export default function JobScheduleModal({ open, onClose, job, viewerIsStaff = f
                   </div>
                 );
               })()}
-            </div>
+              </div>
 
-            <div className="px-4 pb-2 flex gap-2 flex-shrink-0">
-              <span className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-primary text-white text-sm font-medium">
-                <List className="w-4 h-4" />
-                {t("dashboard.listView")}
-              </span>
-              <span className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-gray-100 text-gray-500 text-sm font-medium">
-                <Calendar className="w-4 h-4" />
-                {t("dashboard.calendarView")}
-              </span>
-            </div>
+              {/* Tabs - part of scrollable body */}
+              <div className="px-4 pb-2 flex gap-2">
+                <span className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-primary text-white text-sm font-medium">
+                  <List className="w-4 h-4" />
+                  {t("dashboard.listView")}
+                </span>
+                <span className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-gray-100 text-gray-500 text-sm font-medium">
+                  <Calendar className="w-4 h-4" />
+                  {t("dashboard.calendarView")}
+                </span>
+              </div>
 
-            <div className="px-4 pb-4 flex-1 min-h-0 overflow-y-auto">
+              {/* Dates list - part of scrollable body */}
+              <div className="px-4 pb-4">
               {dates.length > 2 && (
                 <div className="flex gap-3 p-3 mb-4 rounded-xl bg-amber-50 border border-amber-200">
                   <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
@@ -443,10 +476,14 @@ export default function JobScheduleModal({ open, onClose, job, viewerIsStaff = f
                   })
                 )}
               </ul>
-            </div>
-          </>
-        )}
+              </div>
+            </>
+          )}
+        </div>
       </div>
     </div>
   );
+
+  // Render modal to document.body via portal to avoid parent container positioning issues
+  return typeof document !== 'undefined' ? createPortal(modalContent, document.body) : null;
 }

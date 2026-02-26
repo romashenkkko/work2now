@@ -363,26 +363,20 @@ router.post("/", authMiddleware, async (req: ReqWithUser, res: Response): Promis
   const conn = await db.getConnection();
   try {
     await conn.beginTransaction();
-        // ✅ NEW: validate hourlyRateBase against job_categories.HourlyMin and get category title
+        // Validate that job category exists
         const [categoryRows] = await conn.query(
-          "SELECT Title, HourlyMin FROM job_categories WHERE Code = ? LIMIT 1",
+          "SELECT Title FROM job_categories WHERE Code = ? LIMIT 1",
           [jobCategoryCode]
-        ) as [{ Title: string; HourlyMin: number }[], unknown];
+        ) as [{ Title: string }[], unknown];
         
         if (!Array.isArray(categoryRows) || categoryRows.length === 0) {
           await conn.rollback();
           res.status(400).json({ error: "Invalid jobCategoryCode (not found in job_categories)." });
           return;
         }
-        
-        const minHourly = categoryRows[0].HourlyMin;
-        
-        if (hourlyRateBase < minHourly) {
-          await conn.rollback();
-          res.status(400).json({ error: `Hourly rate is too low. Min allowed for this category: ${minHourly} MDL/hour.` });
-          return;
-        }
     
+    // Insert job
+       // Insert job (✅ now includes category + hourly base)
     // Insert job (using custom title in job field)
        const [result] = await conn.query(
         `INSERT INTO jobs (
@@ -922,7 +916,31 @@ router.patch("/applications/:id/check-in", authMiddleware, async (req: ReqWithUs
       return;
     }
   }
+  const workDate = body.workDate ? String(body.workDate).trim().slice(0, 10) : null;
   await db.query("UPDATE applications SET checked_in_at = CURRENT_TIMESTAMP WHERE id = ? AND staff_id = ?", [appId, userId]);
+  
+  // Also create/update work session entry if workDate is provided
+  if (workDate && workDate.match(/^\d{4}-\d{2}-\d{2}$/)) {
+    const [existingSession] = await db.query(
+      "SELECT id FROM application_work_sessions WHERE application_id = ? AND work_date = ?",
+      [appId, workDate]
+    ) as [Record<string, unknown>[], unknown];
+    
+    if (Array.isArray(existingSession) && existingSession.length > 0) {
+      // Update existing session
+      await db.query(
+        "UPDATE application_work_sessions SET checked_in_at = CURRENT_TIMESTAMP WHERE application_id = ? AND work_date = ?",
+        [appId, workDate]
+      );
+    } else {
+      // Create new session
+      await db.query(
+        "INSERT INTO application_work_sessions (application_id, work_date, checked_in_at) VALUES (?, ?, CURRENT_TIMESTAMP)",
+        [appId, workDate]
+      );
+    }
+  }
+  
   res.json({ ok: true });
 });
 
@@ -965,8 +983,125 @@ router.patch("/applications/:id/check-out", authMiddleware, async (req: ReqWithU
       return;
     }
   }
+  const workDate = body.workDate ? String(body.workDate).trim().slice(0, 10) : null;
   await db.query("UPDATE applications SET checked_out_at = CURRENT_TIMESTAMP WHERE id = ? AND staff_id = ?", [appId, userId]);
+  
+  // Also update work session entry if workDate is provided
+  if (workDate && workDate.match(/^\d{4}-\d{2}-\d{2}$/)) {
+    const [existingSession] = await db.query(
+      "SELECT id, checked_in_at FROM application_work_sessions WHERE application_id = ? AND work_date = ?",
+      [appId, workDate]
+    ) as [Record<string, unknown>[], unknown];
+    
+    if (Array.isArray(existingSession) && existingSession.length > 0) {
+      // Update existing session
+      await db.query(
+        "UPDATE application_work_sessions SET checked_out_at = CURRENT_TIMESTAMP WHERE application_id = ? AND work_date = ?",
+        [appId, workDate]
+      );
+    } else {
+      // Create new session with both check-in and check-out (fallback if session wasn't created during check-in)
+      const checkedInAt = row.checked_in_at;
+      await db.query(
+        "INSERT INTO application_work_sessions (application_id, work_date, checked_in_at, checked_out_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)",
+        [appId, workDate, checkedInAt]
+      );
+    }
+  }
+  
   res.json({ ok: true });
+});
+
+/** GET /api/jobs/statistics - customer/business: general statistics (employees count, job categories distribution) */
+router.get("/statistics", authMiddleware, async (req: ReqWithUser, res: Response): Promise<void> => {
+  const userId = req.user?.userId;
+  if (!userId) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+  const [rows] = await db.query(
+    "SELECT Role FROM users WHERE Id = ?",
+    [userId]
+  ) as [unknown[], unknown];
+  const roleRaw = getRoleFromRow((rows as unknown[] | undefined)?.[0]);
+  const role = normalizeRole(roleRaw);
+  const customerLike = role === "customer" || await isBusinessUser(String(userId));
+  if (!customerLike) {
+    res.status(403).json({ error: "Doar customer poate vedea statisticile." });
+    return;
+  }
+
+  // Get unique employees count (staff who have accepted applications for this business's jobs)
+  const [employeeRows] = await db.query(
+    `SELECT COUNT(DISTINCT a.staff_id) AS total_employees
+     FROM applications a
+     JOIN jobs j ON j.id = a.job_id
+     WHERE j.user_id = ? AND LOWER(TRIM(COALESCE(a.status,''))) = 'accepted'`,
+    [userId]
+  ) as [Record<string, unknown>[], unknown];
+  const totalEmployees = Array.isArray(employeeRows) && employeeRows[0] && employeeRows[0].total_employees != null
+    ? Number(employeeRows[0].total_employees)
+    : 0;
+
+  // Get job distribution by category
+  const [categoryRows] = await db.query(
+    `SELECT 
+       COALESCE(jc.Code, 0) AS category_code,
+       COALESCE(jc.Title, 'Fără categorie') AS category_title,
+       COUNT(j.id) AS job_count
+     FROM jobs j
+     LEFT JOIN job_categories jc ON jc.Code = j.job_category_code
+     WHERE j.user_id = ?
+     GROUP BY COALESCE(jc.Code, 0), COALESCE(jc.Title, 'Fără categorie')
+     ORDER BY job_count DESC`,
+    [userId]
+  ) as [Record<string, unknown>[], unknown];
+  
+  const categories = (Array.isArray(categoryRows) ? categoryRows : []).map((r) => ({
+    code: r.category_code != null ? Number(r.category_code) : 0,
+    title: String(r.category_title ?? "Fără categorie"),
+    count: r.job_count != null ? Number(r.job_count) : 0,
+  }));
+
+  // Get job distribution by branch (match jobs to branches by location)
+  // First get business profile ID
+  const [bpRows] = await db.query(
+    `SELECT Id FROM business_profiles WHERE UserId = ? LIMIT 1`,
+    [userId]
+  ) as [Record<string, unknown>[], unknown];
+  const businessProfileId = Array.isArray(bpRows) && bpRows[0] && bpRows[0].Id ? String(bpRows[0].Id) : null;
+  
+  let branchesByJobCount: Array<{ branchId: string; branchName: string; count: number }> = [];
+  if (businessProfileId) {
+    const [branchStatsRows] = await db.query(
+      `SELECT 
+         b.Id AS branch_id,
+         b.Name AS branch_name,
+         COUNT(DISTINCT j.id) AS job_count
+       FROM branches b
+       LEFT JOIN jobs j ON j.user_id = ? 
+         AND (j.location LIKE CONCAT('%', b.Address, '%') 
+              OR j.location LIKE CONCAT('%', b.City, '%')
+              OR b.Address LIKE CONCAT('%', j.location, '%')
+              OR b.City LIKE CONCAT('%', j.location, '%'))
+       WHERE b.BusinessProfileId = ? AND b.IsActive = 1
+       GROUP BY b.Id, b.Name
+       ORDER BY job_count DESC`,
+      [userId, businessProfileId]
+    ) as [Record<string, unknown>[], unknown];
+    
+    branchesByJobCount = (Array.isArray(branchStatsRows) ? branchStatsRows : []).map((r: Record<string, unknown>) => ({
+      branchId: r.branch_id != null ? String(r.branch_id) : "",
+      branchName: String(r.branch_name ?? "Fără nume"),
+      count: r.job_count != null ? Number(r.job_count) : 0,
+    }));
+  }
+
+  res.json({
+    totalEmployees,
+    categoriesByJobCount: categories,
+    branchesByJobCount: branchesByJobCount,
+  });
 });
 
 /** PATCH /api/jobs/applications/:id - customer: accept/refuse application */
@@ -981,6 +1116,12 @@ router.patch("/applications/:id", authMiddleware, async (req: ReqWithUser, res: 
   const [rows] = await db.query(
     `SELECT a.id, a.job_id, a.staff_id, a.staff_email, a.staff_name, j.user_id, 
             j.Title AS job_title,
+            j.location AS job_location,
+            j.date AS job_date,
+            j.end_date AS job_end_date,
+            j.start_time AS job_start_time,
+            j.end_time AS job_end_time,
+            j.hourly_rate_base AS job_hourly_rate,
             jc.Title AS job_category_title
      FROM applications a 
      JOIN jobs j ON j.id = a.job_id 
@@ -1002,9 +1143,22 @@ router.patch("/applications/:id", authMiddleware, async (req: ReqWithUser, res: 
   }
   const staffName = String(row.staff_name ?? "").trim() || "Angajat";
   const jobTitle = String(row.job_title ?? "").trim() || "Job";
-  if (staffEmail) {
-    if (status === "accepted") notifyStaffAccepted(staffEmail, staffName, jobTitle).catch(() => {});
-    if (status === "refused") notifyStaffRefused(staffEmail, staffName, jobTitle).catch(() => {});
+  
+  if (staffEmail && status === "accepted") {
+    const jobDetails = {
+      title: jobTitle,
+      category: String(row.job_category_title ?? "").trim() || "",
+      location: String(row.job_location ?? "").trim() || "",
+      date: row.job_date ? String(row.job_date).trim() : "",
+      endDate: row.job_end_date ? String(row.job_end_date).trim() : "",
+      startTime: row.job_start_time ? String(row.job_start_time).trim() : "",
+      endTime: row.job_end_time ? String(row.job_end_time).trim() : "",
+      hourlyRate: row.job_hourly_rate != null ? Number(row.job_hourly_rate) : null,
+    };
+    notifyStaffAccepted(staffEmail, staffName, jobDetails).catch(() => {});
+  }
+  if (staffEmail && status === "refused") {
+    notifyStaffRefused(staffEmail, staffName, jobTitle).catch(() => {});
   }
   res.json({ ok: true });
 });

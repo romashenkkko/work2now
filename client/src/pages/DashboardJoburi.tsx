@@ -7,7 +7,7 @@ import JobsMapModal from "../components/JobsMapModal";
 import JobScheduleModal from "../components/JobScheduleModal";
 import CustomerProfileModal from "../components/CustomerProfileModal";
 import { MapPin, Clock, Users, Banknote, Calendar, Briefcase, Map, Search } from "lucide-react";
-import { getBusinessTotal, getStaffNet, roundMoney } from "../utils/salary";
+import { getBusinessTotal, roundMoney } from "../utils/salary";
 
 /** Minutes from "HH:mm". Returns NaN if invalid. */
 function timeToMinutes(s: string | undefined): number {
@@ -37,11 +37,12 @@ function getCardBaseTotal(row: JobRow): number | null {
   return Math.round(rate * durationHours * 100) / 100;
 }
 
-/** Display total on card: business sees base + tax + platform, staff sees base - tax. */
+/** Display total on card: business sees base + tax + platform, staff sees base (without taxes). */
 function getCardDisplayTotal(row: JobRow, viewerIsStaff: boolean): number | null {
   const base = getCardBaseTotal(row);
   if (base == null) return null;
-  return roundMoney(viewerIsStaff ? getStaffNet(base) : getBusinessTotal(base));
+  // Staff sees base salary without taxes on the list page
+  return roundMoney(viewerIsStaff ? base : getBusinessTotal(base));
 }
 
 export default function DashboardJoburi() {

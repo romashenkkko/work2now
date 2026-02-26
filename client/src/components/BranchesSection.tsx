@@ -177,7 +177,7 @@ export default function BranchesSection({ onBack, t }: BranchesSectionProps) {
             {/* Branch name */}
             <label className="block">
               <span className="text-sm font-medium text-gray-700">
-                {t("profile.branches.branchName") || "Denumirea Filialei"} *
+                {t("profile.branches.branchName")} *
               </span>
               <input
                 type="text"
@@ -190,7 +190,7 @@ export default function BranchesSection({ onBack, t }: BranchesSectionProps) {
 
             {/* Phone */}
             <label className="block">
-              <span className="text-sm font-medium text-gray-700">{t("profile.branches.phoneNumber") || "Phone Number"} *</span>
+              <span className="text-sm font-medium text-gray-700">{t("profile.branches.phoneNumber")} *</span>
               <input
                 type="tel"
                 value={formData.phoneNumber}
@@ -203,7 +203,7 @@ export default function BranchesSection({ onBack, t }: BranchesSectionProps) {
             {/* Contact person name */}
             <label className="block">
               <span className="text-sm font-medium text-gray-700">
-                {t("profile.branches.contactName") || "Nume persoană de contact"} *
+                {t("profile.branches.contactName")} *
               </span>
               <input
                 type="text"
@@ -217,7 +217,7 @@ export default function BranchesSection({ onBack, t }: BranchesSectionProps) {
             {/* Contact person surname */}
             <label className="block">
               <span className="text-sm font-medium text-gray-700">
-                {t("profile.branches.contactSurname") || "Prenume persoană de contact"} *
+                {t("profile.branches.contactSurname")} *
               </span>
               <input
                 type="text"
@@ -230,7 +230,7 @@ export default function BranchesSection({ onBack, t }: BranchesSectionProps) {
 
             {/* Address */}
             <label className="block md:col-span-2">
-              <span className="text-sm font-medium text-gray-700">{t("profile.branches.address") || "Address"} *</span>
+              <span className="text-sm font-medium text-gray-700">{t("profile.branches.address")} *</span>
               <input
                 type="text"
                 value={formData.address}
@@ -242,7 +242,7 @@ export default function BranchesSection({ onBack, t }: BranchesSectionProps) {
 
             {/* City */}
             <label className="block">
-              <span className="text-sm font-medium text-gray-700">{t("profile.branches.city") || "City"} *</span>
+              <span className="text-sm font-medium text-gray-700">{t("profile.branches.city")} *</span>
               <input
                 type="text"
                 value={formData.city}
@@ -254,7 +254,7 @@ export default function BranchesSection({ onBack, t }: BranchesSectionProps) {
 
             {/* Country */}
             <label className="block">
-              <span className="text-sm font-medium text-gray-700">{t("profile.branches.country") || "Country"}</span>
+              <span className="text-sm font-medium text-gray-700">{t("profile.branches.country")}</span>
               <input
                 type="text"
                 value={formData.country}

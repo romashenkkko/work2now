@@ -4,6 +4,7 @@ import jwt from "jsonwebtoken";
 import db, { createUserDotNetStyle } from "../db";
 import { authMiddleware, JwtPayload } from "../middleware/auth";
 import { stringToUserRole, UserRole } from "../enums";
+import { sendOTP, verifyOTP } from "../twilio";
 
 const router = Router();
 const JWT_SECRET = process.env.JWT_SECRET || "default-secret-change-me";
@@ -602,6 +603,76 @@ router.get("/users", authMiddleware, async (req: Request, res: Response): Promis
   res.json({
     users: memoryUsers.map((u) => ({ id: u.id, name: u.name, email: u.email, role: u.role })),
   });
+});
+
+/** POST /api/auth/send-otp - Send OTP to phone number */
+router.post("/send-otp", async (req: Request, res: Response): Promise<void> => {
+  const body = req.body ?? {};
+  const phoneNumber = String(body.phoneNumber ?? "").trim();
+
+  if (!phoneNumber) {
+    res.status(400).json({ error: "Numărul de telefon este obligatoriu." });
+    return;
+  }
+
+  // Basic phone number validation (should start with + and contain digits)
+  const phoneRegex = /^\+?[1-9]\d{1,14}$/;
+  const normalizedPhone = phoneNumber.replace(/\s+/g, "");
+  if (!phoneRegex.test(normalizedPhone)) {
+    res.status(400).json({ error: "Format număr de telefon invalid. Folosește formatul internațional (ex: +37312345678)." });
+    return;
+  }
+
+  try {
+    const result = await sendOTP(normalizedPhone);
+    if (result.ok) {
+      res.json({ message: "Cod OTP trimis cu succes." });
+    } else {
+      res.status(400).json({ error: result.error || "Eroare la trimiterea codului OTP." });
+    }
+  } catch (e) {
+    const err = e as Error;
+    console.error("Send OTP error:", err);
+    res.status(500).json({ error: "Eroare la trimiterea codului OTP." });
+  }
+});
+
+/** POST /api/auth/verify-otp - Verify OTP code */
+router.post("/verify-otp", async (req: Request, res: Response): Promise<void> => {
+  const body = req.body ?? {};
+  const phoneNumber = String(body.phoneNumber ?? "").trim();
+  const code = String(body.code ?? "").trim();
+
+  if (!phoneNumber) {
+    res.status(400).json({ error: "Numărul de telefon este obligatoriu." });
+    return;
+  }
+
+  if (!code) {
+    res.status(400).json({ error: "Codul OTP este obligatoriu." });
+    return;
+  }
+
+  // Basic phone number validation
+  const phoneRegex = /^\+?[1-9]\d{1,14}$/;
+  const normalizedPhone = phoneNumber.replace(/\s+/g, "");
+  if (!phoneRegex.test(normalizedPhone)) {
+    res.status(400).json({ error: "Format număr de telefon invalid." });
+    return;
+  }
+
+  try {
+    const result = await verifyOTP(normalizedPhone, code);
+    if (result.ok && result.verified) {
+      res.json({ verified: true, message: "Număr de telefon verificat cu succes." });
+    } else {
+      res.status(400).json({ verified: false, error: result.error || "Cod OTP invalid sau expirat." });
+    }
+  } catch (e) {
+    const err = e as Error;
+    console.error("Verify OTP error:", err);
+    res.status(500).json({ error: "Eroare la verificarea codului OTP." });
+  }
 });
 
 export default router;

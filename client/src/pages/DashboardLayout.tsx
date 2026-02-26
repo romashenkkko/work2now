@@ -440,8 +440,8 @@ export default function DashboardLayout() {
       duration: job.duration,
       estimatedSalary: job.estimatedSalary,
       imageUrl: job.imageUrl ?? undefined,
-      jobCategoryCode: job.jobCategoryCode,
-      hourlyRateBase: job.hourlyRateBase,
+      jobCategoryCode: job.jobCategoryCode ?? 1,
+      hourlyRateBase: job.hourlyRateBase ?? 0,
       ...(job.checkInLat != null && job.checkInLng != null && job.checkInRadiusM != null
         ? { checkInLat: job.checkInLat, checkInLng: job.checkInLng, checkInRadiusM: job.checkInRadiusM }
         : {}),
@@ -905,16 +905,6 @@ export default function DashboardLayout() {
                       return;
                     }
 
-                    // Validate hourly rate against minimum
-                    const selectedCategory = jobCategories.find(c => c.code === jobCategoryCode);
-                    if (selectedCategory && hourlyRateBase < selectedCategory.hourlyMin) {
-                      setPostJobFieldErrors((prev) => ({
-                        ...prev,
-                        hourlyRateBase: `Hourly rate must be at least ${selectedCategory.hourlyMin} MDL/hour for this category`,
-                      }));
-                      return;
-                    }
-
                     const jobTitle = (form.elements.namedItem("job") as HTMLInputElement)?.value?.trim().slice(0, 30);
                     const address = jobAddress.trim() || (form.elements.namedItem("address") as HTMLInputElement)?.value?.trim();
                     const dateVal = jobDate || (form.elements.namedItem("jobDate") as HTMLInputElement)?.value?.trim();
@@ -1075,7 +1065,7 @@ export default function DashboardLayout() {
                             <option value="" disabled>Choose category</option>
                             {jobCategories.map((cat) => (
                               <option key={cat.code} value={cat.code}>
-                                {cat.title} (Min: {cat.hourlyMin} MDL/hour)
+                                {cat.title}
                               </option>
                             ))}
                           </select>
@@ -1089,26 +1079,14 @@ export default function DashboardLayout() {
                             name="hourlyRateBase"
                             type="number"
                             inputMode="decimal"
-                            min={selectedJobCategory ? jobCategories.find(c => c.code === selectedJobCategory)?.hourlyMin || 0 : 0}
+                            min="0"
                             step="0.01"
-                            placeholder={selectedJobCategory ? `Min: ${jobCategories.find(c => c.code === selectedJobCategory)?.hourlyMin || 0} MDL/hour` : "e.g. 65"}
+                            placeholder="e.g. 65"
                             value={hourlyRate}
                             onChange={(e) => {
                               const value = e.target.value;
                               setHourlyRate(value);
                               setPostJobFieldErrors((prev) => ({ ...prev, hourlyRateBase: undefined }));
-                              
-                              // Validate against minimum
-                              if (selectedJobCategory && value) {
-                                const category = jobCategories.find(c => c.code === selectedJobCategory);
-                                const rate = parseFloat(value);
-                                if (category && !isNaN(rate) && rate < category.hourlyMin) {
-                                  setPostJobFieldErrors((prev) => ({
-                                    ...prev,
-                                    hourlyRateBase: `Minimum hourly rate for this category is ${category.hourlyMin} MDL/hour`,
-                                  }));
-                                }
-                              }
                             }}
                             className={`mt-1 block w-full px-4 py-2.5 rounded-xl border ${
                               postJobFieldErrors.hourlyRateBase ? "border-red-400" : "border-gray-200"
@@ -1117,20 +1095,15 @@ export default function DashboardLayout() {
                           {postJobFieldErrors.hourlyRateBase && (
                             <p className="mt-1 text-sm text-red-600">{postJobFieldErrors.hourlyRateBase}</p>
                           )}
-                          {selectedJobCategory && (
-                            <p className="mt-1 text-xs text-gray-500">
-                              Minimum: {jobCategories.find(c => c.code === selectedJobCategory)?.hourlyMin || 0} MDL/hour
-                            </p>
-                          )}
                         </label>
                         {calculatedSalary !== null && (
                           <div className="col-span-1 sm:col-span-2 p-4 rounded-xl bg-primary/5 border border-primary/20">
                             <div className="flex items-center justify-between">
-                              <span className="text-sm font-medium text-gray-700">{t("dashboard.estimatedTotalCost", "Total (incl. 22.5% tax + 10% platform)")}</span>
+                              <span className="text-sm font-medium text-gray-700">{t("dashboard.estimatedTotalCost", "Total (incl. 24% tax + 10% maintenance)")}</span>
                               <span className="text-lg font-bold text-primary">{calculatedSalary.toFixed(2)} MDL</span>
                             </div>
                             <p className="mt-1 text-xs text-gray-500">
-                              Based on {formStartTime} – {formEndTime} ({((parseFloat(hourlyRate) || 0) > 0 ? (calculatedSalary / (1 + 0.225 + 0.1) / parseFloat(hourlyRate)).toFixed(2) : 0)} hours) × {hourlyRate} MDL/hour
+                              Based on {formStartTime} – {formEndTime} ({((parseFloat(hourlyRate) || 0) > 0 ? (calculatedSalary / (1 + 0.24 + 0.1) / parseFloat(hourlyRate)).toFixed(2) : 0)} hours) × {hourlyRate} MDL/hour
                             </p>
                           </div>
                         )}

@@ -48,7 +48,7 @@ router.post("/", authMiddleware, async (req: ReqWithUser, res: Response): Promis
     [applicationId]
   ) as [Record<string, unknown>[], unknown];
   const app = Array.isArray(appRows) && appRows[0] ? appRows[0] : null;
-  if (!app || !app.checked_out_at) {
+  if (!app || !app.completed_at) {
     res.status(404).json({ error: "Aplicație negăsită sau lucrul nu e finalizat." });
     return;
   }

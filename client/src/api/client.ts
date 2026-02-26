@@ -57,6 +57,16 @@ export const authApi = {
       method: "POST",
       body: JSON.stringify({ email, password }),
     }),
+  sendOTP: (phoneNumber: string) =>
+    api<{ message: string }>("/auth/send-otp", {
+      method: "POST",
+      body: JSON.stringify({ phoneNumber }),
+    }),
+  verifyOTP: (phoneNumber: string, code: string) =>
+    api<{ verified: boolean; message?: string }>("/auth/verify-otp", {
+      method: "POST",
+      body: JSON.stringify({ phoneNumber, code }),
+    }),
   register: (body: {
     name: string;
     email: string;
@@ -152,6 +162,7 @@ export type JobResponse = {
   postedById?: string;
   postedByRole?: string;
   postedByAvatar?: string;
+  /** Locație pentru check-in (geo-fencing): lat, lng, raza în m */
   checkInLat?: number;
   checkInLng?: number;
   checkInRadiusM?: number;
@@ -225,6 +236,8 @@ export const jobsApi = {
       method: "PATCH",
       body: JSON.stringify({ status }),
     }),
+  completeApplication: (applicationId: string) =>
+    api<{ ok: boolean }>(`/jobs/applications/${applicationId}/complete`, { method: "PATCH" }),
   /** Customer: confirm job finished (after staff checkout); application then moves to history. */
   confirmCompletion: (applicationId: string) =>
     api<{ ok: boolean }>(`/jobs/applications/${applicationId}/confirm-completion`, { method: "PATCH" }),
@@ -244,6 +257,13 @@ export const jobsApi = {
         ...(geo ? { lat: geo.lat, lng: geo.lng } : {}),
       }),
     }),
+  /** Customer/Business: get general statistics (employees count, job categories distribution, branches distribution) */
+  getStatistics: () =>
+    api<{
+      totalEmployees: number;
+      categoriesByJobCount: Array<{ code: number; title: string; count: number }>;
+      branchesByJobCount: Array<{ branchId: string; branchName: string; count: number }>;
+    }>("/jobs/statistics"),
 };
 
 export type ReviewItem = {
