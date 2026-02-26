@@ -132,7 +132,7 @@ export default function AddressPickerModal({ open, onClose, onConfirm, initialAd
       zoom: position ? 15 : 12,
     });
     map.addControl(new mapboxgl.NavigationControl(), "top-right");
-    map.on("click", (e) => {
+    map.on("click", (e: { lngLat: { lat: number; lng: number } }) => {
       const lat = e.lngLat.lat;
       const lng = e.lngLat.lng;
       onMapClickRef.current(lat, lng);

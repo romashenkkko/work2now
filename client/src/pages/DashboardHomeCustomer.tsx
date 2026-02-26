@@ -7,6 +7,74 @@ import StarRating from "../components/StarRating";
 
 type ReportPeriod = "week" | "month" | "year";
 
+function PieChart({ data, t }: { data: Array<{ code: number | string; title: string; count: number }>; t: (key: string) => string }) {
+  const total = data.reduce((sum, d) => sum + d.count, 0);
+  if (total === 0) {
+    return (
+      <div className="w-48 h-48 rounded-full bg-gray-100 flex items-center justify-center">
+        <span className="text-sm text-gray-500">{t("dashboard.noData") || "Fără date"}</span>
+      </div>
+    );
+  }
+  
+  const colors = [
+    "rgb(122 99 241)", // primary
+    "rgb(139 92 246)", // purple-500
+    "rgb(168 85 247)", // purple-400
+    "rgb(192 132 252)", // purple-300
+    "rgb(217 70 239)", // fuchsia-500
+    "rgb(236 72 153)", // pink-500
+    "rgb(251 113 133)", // rose-400
+    "rgb(249 115 22)", // orange-500
+  ];
+  
+  let currentAngle = -90; // Start from top
+  const radius = 60;
+  const centerX = 70;
+  const centerY = 70;
+  
+  const paths = data.map((item, idx) => {
+    const percentage = item.count / total;
+    const angle = percentage * 360;
+    const startAngle = currentAngle;
+    const endAngle = currentAngle + angle;
+    currentAngle += angle;
+    
+    const startAngleRad = (startAngle * Math.PI) / 180;
+    const endAngleRad = (endAngle * Math.PI) / 180;
+    
+    const x1 = centerX + radius * Math.cos(startAngleRad);
+    const y1 = centerY + radius * Math.sin(startAngleRad);
+    const x2 = centerX + radius * Math.cos(endAngleRad);
+    const y2 = centerY + radius * Math.sin(endAngleRad);
+    
+    const largeArcFlag = angle > 180 ? 1 : 0;
+    
+    const pathData = [
+      `M ${centerX} ${centerY}`,
+      `L ${x1} ${y1}`,
+      `A ${radius} ${radius} 0 ${largeArcFlag} 1 ${x2} ${y2}`,
+      "Z",
+    ].join(" ");
+    
+    return (
+      <path
+        key={item.code}
+        d={pathData}
+        fill={colors[idx % colors.length]}
+        stroke="white"
+        strokeWidth="2"
+      />
+    );
+  });
+  
+  return (
+    <svg width="140" height="140" viewBox="0 0 140 140" className="w-48 h-48">
+      {paths}
+    </svg>
+  );
+}
+
 function hoursBetween(start: string, end: string): number {
   const a = new Date(start).getTime();
   const b = new Date(end).getTime();
@@ -22,17 +90,6 @@ function getDaysAgo(n: number): Date {
   d.setDate(d.getDate() - n);
   d.setHours(0, 0, 0, 0);
   return d;
-}
-
-const WEEKDAY_KEYS = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"] as const;
-const MONTH_KEYS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"] as const;
-
-function formatDateLabel(t: (key: string) => string, ymd: string): string {
-  const d = new Date(ymd + "T12:00:00");
-  const weekday = WEEKDAY_KEYS[d.getDay()];
-  const day = d.getDate();
-  const month = MONTH_KEYS[d.getMonth()];
-  return `${t(`dashboard.weekdayShort.${weekday}`)}, ${day} ${t(`dashboard.monthShort.${month}`)}`;
 }
 
 const MONTH_NAMES_LONG = ["Ianuarie", "Februarie", "Martie", "Aprilie", "Mai", "Iunie", "Iulie", "August", "Septembrie", "Octombrie", "Noiembrie", "Decembrie"] as const;
@@ -77,15 +134,15 @@ const STATS_ICONS = {
   ),
 };
 
-type AppWithSessions = { status: string; staffId?: string; staffName?: string; workSessions?: { workDate: string; checkedInAt?: string; checkedOutAt?: string }[] };
+type AppWithSessions = { status: string; staffId?: string; staffName?: string; workSessions?: { workDate: string; checkedInAt?: string; checkedOutAt?: string }[]; checkedInAt?: string; checkedOutAt?: string };
 
 export default function DashboardHomeCustomer() {
   const { t } = useTranslation();
   const { user } = useAuth();
   const { openPostJobModal, jobsAdded, removeJob, userRating } = useContext(DashboardContext);
-  const [toast, setToast] = useState<string | null>(null);
+  const [toast] = useState<string | null>(null);
   const [applicationsByJob, setApplicationsByJob] = useState<Record<string, AppWithSessions[]>>({});
-  const [reportPeriod, setReportPeriod] = useState<ReportPeriod>("week");
+  const [reportPeriod] = useState<ReportPeriod>("week");
   const [selectedJobIdForReport, setSelectedJobIdForReport] = useState<string | null>(null);
   const [selectedDateForReport, setSelectedDateForReport] = useState<string | null>(null);
   const [selectedStaffIdForReport, setSelectedStaffIdForReport] = useState<string | null>(null);
@@ -94,6 +151,12 @@ export default function DashboardHomeCustomer() {
   const [calendarViewMonth, setCalendarViewMonth] = useState(0);
   const [calendarViewYear, setCalendarViewYear] = useState(new Date().getFullYear());
   const [animatingDay, setAnimatingDay] = useState<string | null>(null);
+  const [generalStats, setGeneralStats] = useState<{ 
+    totalEmployees: number; 
+    categoriesByJobCount: Array<{ code: number; title: string; count: number }>;
+    branchesByJobCount: Array<{ branchId: string; branchName: string; count: number }>;
+  } | null>(null);
+  const [statsLoading, setStatsLoading] = useState(false);
 
   useEffect(() => {
     if (!selectedJobIdForReport || jobsAdded.length === 0) return;
@@ -127,6 +190,8 @@ export default function DashboardHomeCustomer() {
             staffId: a.staffId ?? "",
             staffName: a.staffName ?? "",
             workSessions: a.workSessions ?? [],
+            checkedInAt: a.checkedInAt,
+            checkedOutAt: a.checkedOutAt,
           }));
         });
         setApplicationsByJob(map);
@@ -138,6 +203,22 @@ export default function DashboardHomeCustomer() {
     if (!user?.id) return;
     fetchApplications();
   }, [user?.id, fetchApplications]);
+
+  const fetchGeneralStats = useCallback(() => {
+    if (!user?.id) return;
+    setStatsLoading(true);
+    jobsApi
+      .getStatistics()
+      .then((stats) => {
+        setGeneralStats(stats);
+      })
+      .catch(() => setGeneralStats(null))
+      .finally(() => setStatsLoading(false));
+  }, [user?.id]);
+
+  useEffect(() => {
+    fetchGeneralStats();
+  }, [fetchGeneralStats]);
 
   // Reîncarcă aplicațiile (inclusiv workSessions/check-in) când customer selectează un job pentru raport
   useEffect(() => {
@@ -152,11 +233,6 @@ export default function DashboardHomeCustomer() {
     window.addEventListener("focus", onFocus);
     return () => window.removeEventListener("focus", onFocus);
   }, [selectedJobIdForReport, user?.id, fetchApplications]);
-
-  const showToast = (msg: string) => {
-    setToast(msg);
-    setTimeout(() => setToast(null), 2500);
-  };
 
   const allJobs = useMemo(() => [...jobsAdded], [jobsAdded]);
 
@@ -174,7 +250,7 @@ export default function DashboardHomeCustomer() {
     return Math.min(100, Math.round((filled / totalSlots) * 100));
   }, [allJobs]);
 
-  const reportStats = useMemo(() => {
+  const _reportStats = useMemo(() => {
     const now = new Date();
     const periodStart =
       reportPeriod === "week" ? getDaysAgo(7) : reportPeriod === "month" ? getDaysAgo(30) : getDaysAgo(365);
@@ -215,8 +291,7 @@ export default function DashboardHomeCustomer() {
     const activityLabels = reportPeriod === "week" ? weekDayLabels : reportPeriod === "month" ? [t("dashboard.week") + " 1", t("dashboard.week") + " 2", t("dashboard.week") + " 3", t("dashboard.week") + " 4"] : ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
     return { totalHours: Math.round(totalHours * 10) / 10, completedJobs, activityBars, activityLabels };
   }, [applicationsByJob, reportPeriod, t]);
-
-  const maxActivityHours = useMemo(() => Math.max(1, ...reportStats.activityBars), [reportStats.activityBars]);
+  void _reportStats; // reserved for future report charts
 
   const statsWithValues = useMemo(
     () => [
@@ -281,7 +356,6 @@ export default function DashboardHomeCustomer() {
                   <th className="p-3 sm:p-4 font-medium">{t("dashboard.location")}</th>
                   <th className="p-3 sm:p-4 font-medium">{t("dashboard.jobTitle")}</th>
                   <th className="p-3 sm:p-4 font-medium">{t("dashboard.status")}</th>
-                  <th className="p-3 sm:p-4 font-medium">{t("dashboard.confirmed")}</th>
                   <th className="p-3 sm:p-4 font-medium">{t("dashboard.date")}</th>
                   <th className="p-3 sm:p-4 font-medium">{t("dashboard.time")}</th>
                   <th className="p-3 sm:p-4 font-medium">{t("dashboard.actions")}</th>
@@ -290,7 +364,7 @@ export default function DashboardHomeCustomer() {
               <tbody>
                 {allJobs.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="p-8 sm:p-12 text-center">
+                    <td colSpan={7} className="p-8 sm:p-12 text-center">
                       <p className="text-gray-500 text-sm sm:text-base mb-4">{t("dashboard.noJobsFound")}</p>
                       <button
                         type="button"
@@ -319,7 +393,6 @@ export default function DashboardHomeCustomer() {
                       <td className="p-3 sm:p-4">
                         <span className={`px-2 py-1 rounded-lg text-xs font-medium ${row.statusClass}`}>{row.status}</span>
                       </td>
-                      <td className="p-3 sm:p-4 text-gray-600 text-sm">{row.status === "Confirmat" ? "Da" : "—"}</td>
                       <td className="p-3 sm:p-4 text-gray-600 text-sm">{row.date}</td>
                       <td className="p-3 sm:p-4 text-gray-600 text-sm">
                         {row.startTime && row.endTime ? `${row.startTime} – ${row.endTime}` : "—"}
@@ -449,13 +522,129 @@ export default function DashboardHomeCustomer() {
                 </div>
               </label>
             </div>
+            {!selectedJobIdForReport && (
+              <div className="report-content-enter">
+                {statsLoading ? (
+                  <div className="py-12 text-center">
+                    <p className="text-gray-500 text-sm">{t("dashboard.loading") || "Se încarcă..."}</p>
+                  </div>
+                ) : (
+                  <div className="space-y-6">
+                    {/* General Statistics Cards */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
+                      {/* Job Fill Rate */}
+                      <div className="bg-white rounded-xl sm:rounded-2xl border border-gray-200 shadow-sm p-4 sm:p-6">
+                        <h3 className="text-sm font-semibold text-gray-900 mb-4">{t("dashboard.jobFillRate")}</h3>
+                        <div className="flex justify-center">
+                          <div className="relative w-32 h-32 sm:w-40 sm:h-40">
+                            <svg className="w-full h-full -rotate-90" viewBox="0 0 100 100">
+                              <circle cx="50" cy="50" r="42" fill="none" stroke="rgb(229 231 235)" strokeWidth="10" />
+                              <circle cx="50" cy="50" r="42" fill="none" stroke="rgb(122 99 241)" strokeWidth="10" strokeDasharray={`${jobFillRate * 2.64} 264`} strokeLinecap="round" />
+                            </svg>
+                            <span className="absolute inset-0 flex items-center justify-center text-xl sm:text-2xl font-bold text-gray-900">{jobFillRate}%</span>
+                          </div>
+                        </div>
+                      </div>
+                      {/* People Hired */}
+                      <div className="bg-white rounded-xl sm:rounded-2xl border border-gray-200 shadow-sm p-4 sm:p-6">
+                        <h3 className="text-sm font-semibold text-gray-900 mb-4">{t("dashboard.peopleHired") || "Oameni angajați"}</h3>
+                        <div className="flex items-center justify-center">
+                          <div className="text-center">
+                            <p className="text-4xl sm:text-5xl font-bold text-primary mb-2">{generalStats?.totalEmployees ?? 0}</p>
+                            <p className="text-sm text-gray-500">{t("dashboard.totalEmployeesWorked") || "angajați au lucrat"}</p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    {/* Job Categories Pie Chart */}
+                    {generalStats && generalStats.categoriesByJobCount.length > 0 && (
+                      <div className="bg-white rounded-xl sm:rounded-2xl border border-gray-200 shadow-sm p-4 sm:p-6">
+                        <h3 className="text-sm font-semibold text-gray-900 mb-4">{t("dashboard.jobCategoriesDistribution") || "Distribuția joburilor pe categorii"}</h3>
+                        <div className="flex flex-col sm:flex-row gap-6 items-center sm:items-start">
+                          {/* Pie Chart */}
+                          <div className="flex-shrink-0">
+                            <PieChart data={generalStats.categoriesByJobCount} t={t} />
+                          </div>
+                          {/* Legend */}
+                          <div className="flex-1 space-y-2 min-w-0">
+                            {generalStats.categoriesByJobCount.map((cat, idx) => {
+                              const colors = [
+                                "rgb(122 99 241)", // primary
+                                "rgb(139 92 246)", // purple-500
+                                "rgb(168 85 247)", // purple-400
+                                "rgb(192 132 252)", // purple-300
+                                "rgb(217 70 239)", // fuchsia-500
+                                "rgb(236 72 153)", // pink-500
+                                "rgb(251 113 133)", // rose-400
+                                "rgb(249 115 22)", // orange-500
+                              ];
+                              const color = colors[idx % colors.length];
+                              const total = generalStats.categoriesByJobCount.reduce((sum, c) => sum + c.count, 0);
+                              const percentage = total > 0 ? Math.round((cat.count / total) * 100) : 0;
+                              return (
+                                <div key={cat.code} className="flex items-center gap-3">
+                                  <div className="w-4 h-4 rounded flex-shrink-0" style={{ backgroundColor: color }} />
+                                  <span className="text-sm text-gray-700 flex-1 truncate">{cat.title}</span>
+                                  <span className="text-sm font-semibold text-gray-900">{cat.count}</span>
+                                  <span className="text-xs text-gray-500">({percentage}%)</span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                    {/* Branches Pie Chart */}
+                    {generalStats && generalStats.branchesByJobCount.length > 0 && (
+                      <div className="bg-white rounded-xl sm:rounded-2xl border border-gray-200 shadow-sm p-4 sm:p-6">
+                        <h3 className="text-sm font-semibold text-gray-900 mb-4">{t("dashboard.branchesDistribution") || "Distribuția joburilor pe filiale"}</h3>
+                        <div className="flex flex-col sm:flex-row gap-6 items-center sm:items-start">
+                          {/* Pie Chart */}
+                          <div className="flex-shrink-0">
+                            <PieChart 
+                              data={generalStats.branchesByJobCount.map((b, idx) => ({ code: idx, title: b.branchName, count: b.count }))} 
+                              t={t} 
+                            />
+                          </div>
+                          {/* Legend */}
+                          <div className="flex-1 space-y-2 min-w-0">
+                            {generalStats.branchesByJobCount.map((branch, idx) => {
+                              const colors = [
+                                "rgb(122 99 241)", // primary
+                                "rgb(139 92 246)", // purple-500
+                                "rgb(168 85 247)", // purple-400
+                                "rgb(192 132 252)", // purple-300
+                                "rgb(217 70 239)", // fuchsia-500
+                                "rgb(236 72 153)", // pink-500
+                                "rgb(251 113 133)", // rose-400
+                                "rgb(249 115 22)", // orange-500
+                              ];
+                              const color = colors[idx % colors.length];
+                              const total = generalStats.branchesByJobCount.reduce((sum, b) => sum + b.count, 0);
+                              const percentage = total > 0 ? Math.round((branch.count / total) * 100) : 0;
+                              return (
+                                <div key={branch.branchId} className="flex items-center gap-3">
+                                  <div className="w-4 h-4 rounded flex-shrink-0" style={{ backgroundColor: color }} />
+                                  <span className="text-sm text-gray-700 flex-1 truncate">{branch.branchName}</span>
+                                  <span className="text-sm font-semibold text-gray-900">{branch.count}</span>
+                                  <span className="text-xs text-gray-500">({percentage}%)</span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
             {selectedJobIdForReport && (
             <div className="report-content-enter">
             {(() => {
               const job = allJobs.find((j, i) => ("id" in j && j.id != null ? String(j.id) : `job-${i}`) === selectedJobIdForReport) as { date?: string; endDate?: string; startTime?: string; endTime?: string; peopleNeeded?: string } | undefined;
               const apps = applicationsByJob[selectedJobIdForReport] ?? [];
               const accepted = apps.filter((a) => String(a.status).toLowerCase() === "accepted");
-              const peopleNeeded = job ? (parseInt(String(job.peopleNeeded ?? "1"), 10) || 1) : 0;
               const jobDate = (job?.date || "").trim();
               const jobEndDate = (job?.endDate || "").trim();
               const scheduledDates = jobDate ? getScheduledDates(jobDate, jobEndDate || undefined) : [];
@@ -469,6 +658,16 @@ export default function DashboardHomeCustomer() {
                   const d = (s.workDate || "").slice(0, 10);
                   if (d) sessionsByDate[d] = { checkedInAt: s.checkedInAt, checkedOutAt: s.checkedOutAt };
                 });
+                // Fallback: if workSessions is empty but checkedInAt/checkedOutAt exist, use them for matching dates
+                if ((a.workSessions ?? []).length === 0 && (a.checkedInAt || a.checkedOutAt)) {
+                  const checkedInDate = a.checkedInAt ? a.checkedInAt.slice(0, 10) : null;
+                  const checkedOutDate = a.checkedOutAt ? a.checkedOutAt.slice(0, 10) : null;
+                  // Use the date from check-in or check-out, whichever exists
+                  const sessionDate = checkedInDate || checkedOutDate;
+                  if (sessionDate && scheduledDates.includes(sessionDate)) {
+                    sessionsByDate[sessionDate] = { checkedInAt: a.checkedInAt, checkedOutAt: a.checkedOutAt };
+                  }
+                }
                 scheduledDates.forEach((workDate) => {
                   const session = sessionsByDate[workDate];
                   rows.push({

@@ -1,11 +1,48 @@
-import { useContext, useState, useEffect, useRef } from "react";
+import { useContext, useState, useEffect, useRef, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "../hooks/useAuth";
-import { DashboardContext, getApplications, setApplications, type JobRow, type JobType } from "./DashboardLayout";
+import { DashboardContext, getApplications, setApplications, type JobRow, type Application, type JobType } from "./DashboardLayout";
 import { jobsApi } from "../api/client";
 import JobsMapModal from "../components/JobsMapModal";
 import JobScheduleModal from "../components/JobScheduleModal";
 import { MapPin, Clock, Users, Banknote, Calendar, Briefcase, Map, Search } from "lucide-react";
+import { getBusinessTotal, roundMoney } from "../utils/salary";
+
+/** Minutes from "HH:mm". Returns NaN if invalid. */
+function timeToMinutes(s: string | undefined): number {
+  if (!s || typeof s !== "string") return NaN;
+  const parts = s.trim().split(/[:\s]+/);
+  const h = parseInt(parts[0], 10);
+  const m = parts.length >= 2 ? parseInt(parts[1], 10) : 0;
+  if (!Number.isFinite(h) || !Number.isFinite(m)) return NaN;
+  return h * 60 + m;
+}
+/** Hours between start and end; if end <= start, treats end as next day. */
+function hoursBetweenTimes(startStr: string | undefined, endStr: string | undefined): number {
+  const start = timeToMinutes(startStr);
+  const end = timeToMinutes(endStr);
+  if (!Number.isFinite(start) || !Number.isFinite(end)) return 0;
+  const minsPerDay = 24 * 60;
+  const durationMins = end <= start ? minsPerDay - start + end : end - start;
+  return durationMins / 60;
+}
+
+/** Base total (rate × hours) for a job row. */
+function getCardBaseTotal(row: JobRow): number | null {
+  const rate = row.hourlyRateBase != null ? Number(row.hourlyRateBase) : (row.estimatedSalary ? parseFloat(String(row.estimatedSalary).replace(/,/g, ".")) : NaN);
+  if (!Number.isFinite(rate) || rate <= 0) return null;
+  const durationHours = row.duration ? parseFloat(String(row.duration)) : (row.startTime && row.endTime ? hoursBetweenTimes(row.startTime, row.endTime) : NaN);
+  if (!Number.isFinite(durationHours) || durationHours <= 0) return null;
+  return Math.round(rate * durationHours * 100) / 100;
+}
+
+/** Display total on card: business sees base + tax + platform, staff sees base (without taxes). */
+function getCardDisplayTotal(row: JobRow, viewerIsStaff: boolean): number | null {
+  const base = getCardBaseTotal(row);
+  if (base == null) return null;
+  // Staff sees base salary without taxes on the list page
+  return roundMoney(viewerIsStaff ? base : getBusinessTotal(base));
+}
 
 export default function DashboardJoburi() {
   const { t } = useTranslation();
@@ -18,6 +55,54 @@ export default function DashboardJoburi() {
   const isCustomer = roleLower === "customer";
   const isStaff = roleLower === "staff";
   const jobs = isCustomer ? jobsAdded : [];
+
+  /** Customer: applications per job (for "In process" / "Finished" and confirm). */
+  const [customerApplicationsByJob, setCustomerApplicationsByJob] = useState<Record<string, Application[]>>({});
+  const loadCustomerApplications = useCallback(() => {
+    if (!isCustomer) return Promise.resolve();
+    return jobsApi
+      .applications()
+      .then((r) => {
+        const raw = r?.applications ?? {};
+        const byJob: Record<string, Application[]> = {};
+        Object.keys(raw).forEach((jobId) => {
+          const list = raw[jobId];
+          if (!Array.isArray(list)) return;
+          byJob[jobId] = list.map((a: Record<string, unknown>) => ({
+            id: String(a.id ?? ""),
+            jobId: String(a.jobId ?? jobId),
+            staffId: String(a.staffId ?? ""),
+            staffName: String(a.staffName ?? ""),
+            staffEmail: a.staffEmail != null ? String(a.staffEmail) : undefined,
+            staffAvatar: a.staffAvatar != null ? String(a.staffAvatar) : undefined,
+            status: (a.status ?? "pending") as "pending" | "accepted" | "refused",
+            checkedInAt: a.checkedInAt != null ? String(a.checkedInAt) : undefined,
+            checkedOutAt: a.checkedOutAt != null ? String(a.checkedOutAt) : undefined,
+            businessConfirmedAt: a.businessConfirmedAt != null ? String(a.businessConfirmedAt) : undefined,
+            isBusinessConfirmed: !!(a.isBusinessConfirmed ?? (a.businessConfirmedAt != null && String(a.businessConfirmedAt).trim() !== "")),
+            workSessions: Array.isArray(a.workSessions) ? (a.workSessions as { workDate: string; checkedInAt?: string; checkedOutAt?: string }[]) : undefined,
+            ratingScore: a.ratingScore != null ? Number(a.ratingScore) : undefined,
+          }));
+        });
+        setCustomerApplicationsByJob(byJob);
+      });
+  }, [isCustomer]);
+  useEffect(() => {
+    if (!isCustomer) return;
+    loadCustomerApplications();
+  }, [isCustomer, loadCustomerApplications]);
+
+  /** Customer: derive "in_process" | "finished" and first check-in time for a job. */
+  const getCustomerJobStatus = (jobId: string): { status: "in_process" | "finished" | null; firstCheckedInAt?: string } => {
+    const apps = customerApplicationsByJob[String(jobId)] ?? [];
+    const accepted = apps.filter((a) => a.status === "accepted");
+    const anyCheckedOut = accepted.some((a) => a.checkedOutAt);
+    const anyCheckedIn = accepted.some((a) => a.checkedInAt);
+    const firstCheckedInAt = accepted.map((a) => a.checkedInAt).filter(Boolean)[0] as string | undefined;
+    if (anyCheckedOut) return { status: "finished", firstCheckedInAt };
+    if (anyCheckedIn) return { status: "in_process", firstCheckedInAt };
+    return { status: null };
+  };
 
   type MyAppInfo = { status: string; applicationId: string; checkedInAt?: string; checkedOutAt?: string; workSessions?: { workDate: string; checkedInAt?: string; checkedOutAt?: string }[] };
   const [publicJobs, setPublicJobs] = useState<JobRow[]>([]);
@@ -96,6 +181,8 @@ export default function DashboardJoburi() {
           postedBy: j.postedBy ?? (j.posted_by_name as string),
           jobCategoryCode: (j as any).jobCategoryCode,
           hourlyRateBase: (j as any).hourlyRateBase,
+          jobCategoryTitle: (j as any).jobCategoryTitle,
+          postedById: j.postedById,
           postedByRole: j.postedByRole,
           postedByAvatar: j.postedByAvatar,
           checkInLat: j.checkInLat != null ? Number(j.checkInLat) : undefined,
@@ -447,6 +534,14 @@ export default function DashboardJoburi() {
     return (row.acceptedCount ?? 0) >= needed;
   };
 
+  /** Badge text for job card: "0/2", "1/2", "2/2" or "Full" when full; otherwise row.status. */
+  const getJobSlotBadge = (row: JobRow) => {
+    const needed = parseInt(String(row.peopleNeeded ?? "1"), 10) || 1;
+    const accepted = row.acceptedCount ?? 0;
+    if (needed >= 1) return `${accepted}/${needed}`;
+    return isJobFull(row) ? t("dashboard.jobFull") : row.status;
+  };
+
   if (isStaff) {
     const myApp = (jobId: string) => applicationsByJob[String(jobId)];
     const isAcceptedToJob = (row: JobRow) => myApp(normJobId(row.id))?.status === "accepted";
@@ -753,13 +848,17 @@ export default function DashboardJoburi() {
                         </div>
                       </>
                     )}
-                <span className="absolute top-3 right-3 px-3 py-1 rounded-full text-xs font-medium bg-white/25 text-white backdrop-blur-sm">
-                  {row.status}
-                </span>
-              </div>
-              <div className="p-4 sm:p-5 flex-1 flex flex-col min-h-0">
-                <h2 className="text-lg font-bold text-gray-900 mb-3">{row.job}</h2>
+                    <span className="absolute top-3 right-3 px-3 py-1 rounded-full text-xs font-medium bg-white/25 text-white backdrop-blur-sm">
+                      {getJobSlotBadge(row)}
+                    </span>
+                  </div>
+                  <div className="p-4 sm:p-5 flex-1 flex flex-col min-h-0">
+                    <h2 className="text-lg font-bold text-gray-900 mb-1">{row.job}</h2>
                     <ul className="space-y-2 text-sm text-gray-600 flex-1">
+                      <li className="flex items-center gap-2">
+                        <Briefcase className="w-4 h-4 text-primary shrink-0" />
+                        <span>{row.jobCategoryTitle || "—"}</span>
+                      </li>
                       {(row.startTime || row.endTime) && (
                         <li className="flex items-center gap-2">
                           <Clock className="w-4 h-4 text-primary shrink-0" />
@@ -772,12 +871,15 @@ export default function DashboardJoburi() {
                           <span className="truncate">{row.location}</span>
                         </li>
                       )}
-                      {row.estimatedSalary && (
-                        <li className="flex items-center gap-2">
-                          <Banknote className="w-4 h-4 text-primary shrink-0" />
-                          <span>{row.estimatedSalary}</span>
-                        </li>
-                      )}
+                      {(() => {
+                        const total = getCardDisplayTotal(row, isStaff);
+                        return (total != null || row.estimatedSalary) ? (
+                          <li className="flex items-center gap-2">
+                            <Banknote className="w-4 h-4 text-primary shrink-0" />
+                            <span>{total != null ? total.toFixed(2) : row.estimatedSalary}</span>
+                          </li>
+                        ) : null;
+                      })()}
                     </ul>
                     {row.postedBy && (
                       <div className="flex items-center gap-3 mt-3 pt-3 border-t border-gray-100">
@@ -804,10 +906,11 @@ export default function DashboardJoburi() {
                       {!app ? (
                         <button
                           type="button"
+                          disabled={isJobFull(row)}
                           onClick={(e) => { e.stopPropagation(); handleApply(row); }}
-                          className="w-full py-2.5 rounded-xl bg-primary text-white font-medium hover:bg-primary-dark transition-colors"
+                          className="w-full py-2.5 rounded-xl bg-primary text-white font-medium hover:bg-primary-dark transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                         >
-                          {t("dashboard.apply")}
+                          {isJobFull(row) ? t("dashboard.jobFull") : t("dashboard.apply")}
                         </button>
                       ) : !isAccepted ? (
                         <span className={`inline-block w-full py-2.5 rounded-xl text-center text-sm font-medium ${
@@ -871,6 +974,7 @@ export default function DashboardJoburi() {
           open={scheduleJob !== null}
           onClose={() => setScheduleJob(null)}
           job={scheduleJob}
+          viewerIsStaff={isStaff}
           myAppInfo={scheduleJob?.id && applicationsByJob[String(scheduleJob.id)]?.status === "accepted" ? (() => {
             const jid = normJobId(scheduleJob!.id);
             const app = applicationsByJob[jid];
@@ -965,20 +1069,37 @@ export default function DashboardJoburi() {
                   </>
                 )}
                 <span className="absolute top-3 right-3 px-3 py-1 rounded-full text-xs font-medium bg-white/25 text-white backdrop-blur-sm">
-                  {isJobFull(row) ? t("dashboard.jobFull") : row.status}
+                  {getJobSlotBadge(row)}
                 </span>
+                {row.id && (() => {
+                  const { status } = getCustomerJobStatus(row.id);
+                  if (status === "in_process") {
+                    return (
+                      <span className="absolute bottom-3 left-3 right-3 sm:left-auto sm:right-3 sm:bottom-3 sm:w-auto px-3 py-1.5 rounded-full text-xs font-medium bg-amber-500/90 text-white backdrop-blur-sm">
+                        {t("dashboard.inProcess")}
+                      </span>
+                    );
+                  }
+                  if (status === "finished") {
+                    return (
+                      <span className="absolute bottom-3 left-3 right-3 sm:left-auto sm:right-3 sm:bottom-3 sm:w-auto px-3 py-1.5 rounded-full text-xs font-medium bg-green-600/90 text-white backdrop-blur-sm">
+                        {t("dashboard.finished")}
+                      </span>
+                    );
+                  }
+                  return null;
+                })()}
               </div>
 
               {/* Body: titlu + rânduri cu icoane */}
               <div className="p-4 sm:p-5 flex-1 flex flex-col min-h-0">
-                <h2 className="text-lg font-bold text-gray-900 mb-4 leading-tight">{row.job}</h2>
-
+                <h2 className="text-lg font-bold text-gray-900 mb-1 leading-tight">{row.job}</h2>
                 <ul className="space-y-2.5 flex-1">
                   <li className="flex items-center gap-3 text-gray-600 text-sm">
                     <span className="flex-shrink-0 w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center">
                       <Briefcase className="w-4 h-4 text-primary" />
                     </span>
-                    <span className="truncate">{row.job}</span>
+                    <span className="truncate">{row.jobCategoryTitle || "—"}</span>
                   </li>
                   {(row.startTime || row.endTime) && (
                     <li className="flex items-center gap-3 text-gray-600 text-sm">
@@ -996,14 +1117,17 @@ export default function DashboardJoburi() {
                       <span className="truncate">{row.location}</span>
                     </li>
                   )}
-                  {row.estimatedSalary && (
-                    <li className="flex items-center gap-3 text-gray-600 text-sm">
-                      <span className="flex-shrink-0 w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center">
-                        <Banknote className="w-4 h-4 text-primary" />
-                      </span>
-                      <span>{row.estimatedSalary}</span>
-                    </li>
-                  )}
+                  {(() => {
+                    const total = getCardDisplayTotal(row, isStaff);
+                    return (total != null || row.estimatedSalary) ? (
+                      <li className="flex items-center gap-3 text-gray-600 text-sm">
+                        <span className="flex-shrink-0 w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center">
+                          <Banknote className="w-4 h-4 text-primary" />
+                        </span>
+                        <span>{total != null ? total.toFixed(2) : row.estimatedSalary}</span>
+                      </li>
+                    ) : null;
+                  })()}
                   {row.peopleNeeded && (
                     <li className="flex items-center gap-3 text-gray-600 text-sm">
                       <span className="flex-shrink-0 w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center">
@@ -1078,6 +1202,8 @@ export default function DashboardJoburi() {
         open={scheduleJob !== null}
         onClose={() => setScheduleJob(null)}
         job={scheduleJob}
+        viewerIsStaff={false}
+        jobApplications={scheduleJob?.id ? (customerApplicationsByJob[String(scheduleJob.id)] ?? []) : []}
       />
     </>
   );

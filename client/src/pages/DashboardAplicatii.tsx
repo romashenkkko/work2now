@@ -1,10 +1,10 @@
 import { useContext, useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "../hooks/useAuth";
-import { DashboardContext, getApplications, setApplications, JobTitleIcon, JOB_TITLE_OPTIONS, type Application } from "./DashboardLayout";
+import { DashboardContext, getApplications, setApplications, JobTitleIcon, type Application, type JobRow } from "./DashboardLayout";
 import { jobsApi, ratingsApi } from "../api/client";
-import { Briefcase, User,  Clock, CheckCircle2, XCircle, Hourglass } from "lucide-react";
-import { MapPin, Calendar, Mail } from "lucide-react";
+import { Briefcase, MapPin, Calendar, User, Mail, Clock, CheckCircle2, XCircle, Hourglass } from "lucide-react";
 import StarRating from "../components/StarRating";
 
 const DEFAULT_AVATAR = "/Illustration/AvatarWhiteGuy.png";
@@ -60,7 +60,6 @@ type StaffApplication = {
   customerName?: string;
 
   // Work sessions / check-in/out info (optional)
-  completedAt?: string;
   checkedInAt?: string;
   checkedOutAt?: string;
   workSessions?: { workDate: string; checkedInAt?: string; checkedOutAt?: string }[];
@@ -105,6 +104,9 @@ export default function DashboardAplicatii() {
   const refreshJobs = ctx?.refreshJobs ?? (() => {});
   const [applications, setApplicationsState] = useState<Record<string, Application[]>>({});
 
+  /** Accept confirmation: show "Are you sure you want to accept [Name]?" before calling setStatus(accepted). */
+  const [acceptConfirm, setAcceptConfirm] = useState<{ jobId: string; applicationId: string; staffName: string } | null>(null);
+
   // Staff view: flat list of my applications
   const [myApps, setMyApps] = useState<StaffApplication[]>([]);
   const [myAppsLoading, setMyAppsLoading] = useState(false);
@@ -116,8 +118,10 @@ export default function DashboardAplicatii() {
       .applications()
       .then((r) => {
         const map: Record<string, Application[]> = {};
-        Object.keys(r.applications || {}).forEach((jobId) => {
-          map[jobId] = (r.applications![jobId] || []).map((a: Record<string, unknown>) => {
+        Object.keys(r.applications || {}).forEach((rawJobId) => {
+          const jobId = String(rawJobId ?? "").trim();
+          if (!jobId) return;
+          map[jobId] = (r.applications![rawJobId] || []).map((a: Record<string, unknown>) => {
             const rawAvatar = a.staffAvatar ?? a.staff_avatar;
             const staffAvatar =
               typeof rawAvatar === "string" && rawAvatar.trim() ? rawAvatar.trim() : undefined;
@@ -129,9 +133,10 @@ export default function DashboardAplicatii() {
               staffEmail: a.staffEmail as string | undefined,
               staffAvatar,
               status: a.status as "pending" | "accepted" | "refused",
-              completedAt: a.completedAt as string | undefined,
               checkedInAt: a.checkedInAt as string | undefined,
               checkedOutAt: a.checkedOutAt as string | undefined,
+              businessConfirmedAt: (a.businessConfirmedAt as string | undefined) ?? undefined,
+              isBusinessConfirmed: !!(a.isBusinessConfirmed ?? (a.businessConfirmedAt != null && String(a.businessConfirmedAt).trim() !== "")),
               workSessions: Array.isArray(a.workSessions)
                 ? (a.workSessions as { workDate: string; checkedInAt?: string; checkedOutAt?: string }[])
                 : undefined,
@@ -149,7 +154,7 @@ export default function DashboardAplicatii() {
     setMyAppsLoading(true);
     setMyAppsError(null);
     try {
-      const r = await (jobsApi as any).myApplicationsList(); // now exists in client.ts
+      const r = await jobsApi.myApplicationsList();
       const list = Array.isArray(r?.applications) ? r.applications : [];
   
       const normalized: StaffApplication[] = list.map((a: any) => ({
@@ -165,7 +170,6 @@ export default function DashboardAplicatii() {
   
         customerName: a.customerName,
   
-        completedAt: a.completedAt,
         checkedInAt: a.checkedInAt,
         checkedOutAt: a.checkedOutAt,
         workSessions: Array.isArray(a.workSessions) ? a.workSessions : undefined,
@@ -191,16 +195,19 @@ export default function DashboardAplicatii() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.role, user?.id]);
 
-  const [completingId, setCompletingId] = useState<string | null>(null);
+  const [confirmingCompletionId, setConfirmingCompletionId] = useState<string | null>(null);
   const [ratingSubmitting, setRatingSubmitting] = useState<string | null>(null);
   const [ratingDraft, setRatingDraft] = useState<Record<string, { score: number; comment: string }>>({});
 
-  const markComplete = (applicationId: string) => {
-    setCompletingId(applicationId);
+  const confirmCompletion = (applicationId: string) => {
+    setConfirmingCompletionId(applicationId);
     jobsApi
-      .completeApplication(applicationId)
-      .then(() => refreshCustomerApplications())
-      .finally(() => setCompletingId(null));
+      .confirmCompletion(applicationId)
+      .then(() => {
+        refreshCustomerApplications();
+        refreshJobs();
+      })
+      .finally(() => setConfirmingCompletionId(null));
   };
 
   const submitRating = (applicationId: string, score: number, comment?: string) => {
@@ -223,12 +230,14 @@ export default function DashboardAplicatii() {
   };
 
   const setStatus = (jobId: string, applicationId: string, status: "accepted" | "refused") => {
+    setAcceptConfirm(null);
     jobsApi
       .setApplicationStatus(applicationId, status)
       .then(() => {
         if (user?.role === "customer") {
           refreshCustomerApplications();
         }
+        refreshCustomerApplications();
         refreshJobs();
       })
       .catch(() => {
@@ -244,13 +253,6 @@ export default function DashboardAplicatii() {
   const isCustomer = user?.role === "customer";
   const isStaff = user?.role === "staff";
   const myJobs = isCustomer ? jobsAdded : [];
-
-  /** Iconița jobului după titlu (Ospătar -> waiter, Barman -> bartender, etc.) */
-  const getJobIconId = (jobTitle: string | undefined): string => {
-    if (!jobTitle) return "";
-    const opt = JOB_TITLE_OPTIONS.find((o) => t(o.labelKey) === jobTitle);
-    return opt?.id ?? "";
-  };
 
   // -----------------------------
   // STAFF VIEW (MY APPLICATIONS)
@@ -352,7 +354,7 @@ export default function DashboardAplicatii() {
                       );
                     })()}
 
-                    {a.status === "accepted" && a.completedAt && (
+                    {a.status === "accepted" && a.checkedOutAt && (
                       <div className="mt-2 flex items-center gap-2 flex-wrap">
                         {a.ratingScore != null ? (
                           <span className="text-sm text-gray-600 flex items-center gap-1">
@@ -376,6 +378,25 @@ export default function DashboardAplicatii() {
     );
   }
 
+  // Helper function to extract job icon ID from job title or category
+  const getJobIconId = (jobTitle?: string, jobCategoryTitle?: string): string => {
+    if (!jobTitle && !jobCategoryTitle) return "waiter";
+    const title = (jobCategoryTitle || jobTitle || "").toLowerCase();
+    // Map common job titles/categories to icon IDs
+    if (title.includes("barista")) return "barista";
+    if (title.includes("bartender") || title.includes("barman")) return "bartender";
+    if (title.includes("chef") || title.includes("bucatar")) return "chef";
+    if (title.includes("cleaner") || title.includes("curatenie")) return "cleaner";
+    if (title.includes("dishwasher") || title.includes("spalator")) return "dishwasher";
+    if (title.includes("event") || title.includes("echipa")) return "eventcrew";
+    if (title.includes("grocery") || title.includes("magazin")) return "grocery";
+    if (title.includes("maintenance") || title.includes("intretinere")) return "maintenance";
+    if (title.includes("receptionist") || title.includes("receptioner")) return "receptionist";
+    if (title.includes("training")) return "trainingevent";
+    if (title.includes("waiter") || title.includes("ospatar")) return "waiter";
+    return "waiter"; // default
+  };
+
   // -----------------------------
   // CUSTOMER VIEW (APPLICANTS)
   // -----------------------------
@@ -394,14 +415,48 @@ export default function DashboardAplicatii() {
   }
 
   const jobsWithApplicants = myJobs
-    .map((job) => ({
-      job,
-      applicants: (applications[job.id ?? ""] || []).filter((a) => a.staffId),
-    }))
+    .map((job) => {
+      const jobKey = String(job?.id ?? "").trim();
+      const applicants = (applications[jobKey] || [])
+        .filter((a) => a.staffId && !a.businessConfirmedAt);
+      return { job, applicants };
+    })
     .filter(({ applicants }) => applicants.length > 0);
+
+  const acceptConfirmModal = acceptConfirm && createPortal(
+    <div className="fixed inset-0 flex items-center justify-center p-4 bg-black/50" style={{ zIndex: 9999 }} role="dialog" aria-modal="true" aria-labelledby="accept-confirm-title">
+      <div className="bg-white rounded-2xl shadow-xl max-w-sm w-full p-5" onClick={(e) => e.stopPropagation()}>
+        <h3 id="accept-confirm-title" className="text-lg font-semibold text-gray-900 mb-2">
+          {t("dashboard.confirmAcceptTitle")}
+        </h3>
+        <p className="text-gray-600 mb-4">
+          {t("dashboard.confirmAcceptMessage", { name: acceptConfirm.staffName })}
+        </p>
+        <div className="flex gap-3 justify-end">
+          <button
+            type="button"
+            onClick={() => setAcceptConfirm(null)}
+            className="px-4 py-2 rounded-xl border border-gray-300 text-gray-700 font-medium hover:bg-gray-50"
+          >
+            {t("dashboard.reject")}
+          </button>
+          <button
+            type="button"
+            onClick={() => setStatus(acceptConfirm.jobId, acceptConfirm.applicationId, "accepted")}
+            className="px-4 py-2 rounded-xl bg-green-600 text-white font-medium hover:bg-green-700"
+          >
+            {t("dashboard.confirm")}
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
 
   return (
     <>
+      {acceptConfirmModal}
+
       <header className="mb-6 md:mb-8 p-5 md:p-6 rounded-2xl bg-gradient-to-br from-white via-[#faf8ff] to-[#f3efff] border border-[rgba(122,99,241,0.12)] shadow-[0_4px_20px_rgba(122,99,241,0.08)]">
         <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-[#1e1c2f]">{t("dashboard.aplicatii")}</h1>
         <p className="text-gray-500 text-sm mt-1.5 max-w-md">Vezi aplicațiile candidaților la joburile tale.</p>
@@ -413,14 +468,20 @@ export default function DashboardAplicatii() {
         </div>
       ) : (
         <div className="space-y-6">
-          {jobsWithApplicants.map(({ job, applicants }) => (
+          {jobsWithApplicants.map(({ job, applicants }: { job: JobRow; applicants: Application[] }) => {
+            const needed = parseInt(String(job.peopleNeeded ?? "1"), 10) || 1;
+            const acceptedFromApi = job.acceptedCount ?? 0;
+            const acceptedFromList = applicants.filter((a) => a.status === "accepted").length;
+            const acceptedCount = Math.max(acceptedFromApi, acceptedFromList);
+            const isFull = acceptedCount >= needed;
+            return (
             <section
               key={job.id}
               className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden"
             >
               <div className="p-4 sm:p-5 border-b border-gray-100">
                 <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-                  <JobTitleIcon jobId={getJobIconId(job.job)} className="w-5 h-5 text-primary shrink-0" size={20} />
+                  <JobTitleIcon jobId={getJobIconId(job.job, job.jobCategoryTitle)} className="w-5 h-5 text-primary shrink-0" size={20} />
                   {job.job}
                 </h2>
                 {job.location && (
@@ -439,7 +500,7 @@ export default function DashboardAplicatii() {
               </div>
               <div className="p-4 sm:p-5">
                 <h3 className="text-sm font-semibold text-gray-900 mb-3">
-                  {t("dashboard.applicants")} ({applicants.length})
+                  {t("dashboard.applicants")} ({applicants.length}) — {acceptedCount}/{needed}
                 </h3>
                 <ul className="space-y-3">
                   {applicants.map((a) => (
@@ -504,21 +565,20 @@ export default function DashboardAplicatii() {
                               );
                             })()}
 
-                          {a.status === "accepted" && !a.completedAt && (
-                            <div className="mt-2">
-                              <button
-                                type="button"
-                                onClick={() => markComplete(a.id)}
-                                disabled={completingId === a.id}
-                                className="text-sm font-medium text-primary hover:underline disabled:opacity-50"
-                              >
-                                {completingId === a.id ? "..." : t("dashboard.markCompleted")}
-                              </button>
-                            </div>
-                          )}
-
-                          {a.status === "accepted" && a.completedAt && (
+                          {a.status === "accepted" && a.checkedOutAt && (
                             <div className="mt-2 space-y-2">
+                              {!a.businessConfirmedAt && (
+                                <div>
+                                  <button
+                                    type="button"
+                                    onClick={() => confirmCompletion(a.id)}
+                                    disabled={confirmingCompletionId === a.id}
+                                    className="text-sm font-medium text-primary hover:underline disabled:opacity-50"
+                                  >
+                                    {confirmingCompletionId === a.id ? "..." : t("dashboard.confirmFinished")}
+                                  </button>
+                                </div>
+                              )}
                               {a.ratingScore != null ? (
                                 <span className="text-sm text-gray-600 flex items-center gap-1">
                                   {t("dashboard.rated")}:
@@ -566,8 +626,9 @@ export default function DashboardAplicatii() {
                         <div className="flex gap-2 flex-shrink-0">
                           <button
                             type="button"
-                            onClick={() => job.id && setStatus(job.id, a.id, "accepted")}
-                            className="px-4 py-2 rounded-xl bg-green-600 text-white text-sm font-medium hover:bg-green-700 transition-colors"
+                            disabled={isFull}
+                            onClick={() => job.id && (isFull ? undefined : setAcceptConfirm({ jobId: job.id, applicationId: a.id, staffName: a.staffName || t("dashboard.applicant") }))}
+                            className="px-4 py-2 rounded-xl bg-green-600 text-white text-sm font-medium hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                           >
                             {t("dashboard.accept")}
                           </button>
@@ -585,7 +646,8 @@ export default function DashboardAplicatii() {
                 </ul>
               </div>
             </section>
-          ))}
+          );
+          })}
         </div>
       )}
     </>

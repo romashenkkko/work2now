@@ -24,7 +24,8 @@ import {
 } from "lucide-react";
 import { coffeemaker } from "@lucide/lab";
 import { useAuth } from "../hooks/useAuth";
-import { jobsApi, ratingsApi, experiencesApi } from "../api/client";
+import { getBusinessTotal, roundMoney } from "../utils/salary";
+import { jobsApi, ratingsApi, experiencesApi, type JobCategory } from "../api/client";
 import TimePicker from "../components/TimePicker";
 import StarRating from "../components/StarRating";
 import DatePicker from "../components/DatePicker";
@@ -34,7 +35,8 @@ import DocumentsModal, { type DocItem } from "../components/DocumentsModal";
 export type JobType = "one-day" | "multi-day" | "full-time";
 export type JobRow = {
   id?: string;
-  job: string;
+  job: string; // Custom title (max 30 chars)
+  jobCategoryTitle?: string; // Category name from job_categories
   location: string;
   status: string;
   statusClass: string;
@@ -69,9 +71,12 @@ export type Application = {
   staffEmail?: string;
   staffAvatar?: string;
   status: "pending" | "accepted" | "refused";
-  completedAt?: string;
   checkedInAt?: string;
   checkedOutAt?: string;
+  /** When set, business confirmed job finished; application moves to history (hidden from active list). */
+  businessConfirmedAt?: string;
+  /** Explicit boolean for business confirmation (true = confirmed by business). */
+  isBusinessConfirmed?: boolean;
   workSessions?: { workDate: string; checkedInAt?: string; checkedOutAt?: string }[];
   ratingScore?: number;
 };
@@ -239,6 +244,10 @@ export default function DashboardLayout() {
     hourlyRateBase?: string;
     jobCategoryCode?: string;
   }>({});
+  const [jobCategories, setJobCategories] = useState<JobCategory[]>([]);
+  const [selectedJobCategory, setSelectedJobCategory] = useState<number | null>(null);
+  const [hourlyRate, setHourlyRate] = useState<string>("");
+  const [calculatedSalary, setCalculatedSalary] = useState<number | null>(null);
   
   const [postJobStep, setPostJobStep] = useState<"choose-type" | "how-to-post" | "form">("choose-type");
   const [selectedJobType, setSelectedJobType] = useState<"one-day" | "multi-day" | "full-time" | null>(null);
@@ -261,7 +270,6 @@ export default function DashboardLayout() {
   const [staffCountSelect, setStaffCountSelect] = useState("1");
   const [staffDropdownOpen, setStaffDropdownOpen] = useState(false);
   const staffDropdownRef = useRef<HTMLDivElement>(null);
-  const [salarySelect, setSalarySelect] = useState("");
   const [salaryDropdownOpen, setSalaryDropdownOpen] = useState(false);
   const salaryDropdownRef = useRef<HTMLDivElement>(null);
   const [unpaidBreak, setUnpaidBreak] = useState<"no" | "yes">("no");
@@ -299,6 +307,7 @@ export default function DashboardLayout() {
         const list = (r.jobs || []).map((j) => ({
           id: j.id,
           job: j.job,
+          jobCategoryTitle: (j as any).jobCategoryTitle,
           location: j.location,
           status: j.status,
           statusClass: j.statusClass ?? "bg-gray-100 text-gray-700",
@@ -314,6 +323,8 @@ export default function DashboardLayout() {
           estimatedSalary: j.estimatedSalary,
           imageUrl: j.imageUrl,
           postedBy: j.postedBy,
+          jobCategoryCode: (j as any).jobCategoryCode,
+          hourlyRateBase: (j as any).hourlyRateBase,
         }));
         setJobsAdded(list);
         try {
@@ -356,6 +367,49 @@ export default function DashboardLayout() {
         // If check fails, allow access (don't block dashboard)
       });
   }, [loading, user?.id, user?.role, location.pathname, navigate]);
+
+  // Fetch job categories
+  useEffect(() => {
+    jobsApi
+      .getCategories()
+      .then((r) => {
+        setJobCategories(r.categories || []);
+      })
+      .catch((err) => {
+        console.error("Failed to load job categories:", err);
+        setJobCategories([]);
+      });
+  }, []);
+
+  // Calculate salary based on hours and hourly rate
+  useEffect(() => {
+    if (!formStartTime || !formEndTime || !hourlyRate) {
+      setCalculatedSalary(null);
+      return;
+    }
+
+    const [startHour, startMin] = formStartTime.split(":").map(Number);
+    const [endHour, endMin] = formEndTime.split(":").map(Number);
+    const startMinutes = startHour * 60 + startMin;
+    const endMinutes = endHour * 60 + endMin;
+    
+    if (endMinutes <= startMinutes) {
+      setCalculatedSalary(null);
+      return;
+    }
+
+    const totalMinutes = endMinutes - startMinutes;
+    const totalHours = totalMinutes / 60;
+    const rate = parseFloat(hourlyRate);
+    
+    if (isNaN(rate) || rate <= 0) {
+      setCalculatedSalary(null);
+      return;
+    }
+
+    const baseTotal = totalHours * rate;
+    setCalculatedSalary(roundMoney(getBusinessTotal(baseTotal)));
+  }, [formStartTime, formEndTime, hourlyRate]);
   const [availableToWork, setAvailableToWorkState] = useState(() => {
     if (typeof window === "undefined") return true;
     try {
@@ -372,8 +426,9 @@ export default function DashboardLayout() {
   };
 
   const addJob = async (job: Omit<JobRow, "id">): Promise<boolean> => {
+    if (job.jobCategoryCode == null || job.hourlyRateBase == null) return false;
     const payload = {
-      job: job.job,
+      job: job.job, // Custom title (max 30 chars)
       location: job.location,
       status: job.status,
       statusClass: job.statusClass,
@@ -412,6 +467,9 @@ export default function DashboardLayout() {
           estimatedSalary: created.estimatedSalary,
           imageUrl: created.imageUrl,
           postedBy: created.postedBy,
+          jobCategoryCode: created.jobCategoryCode,
+          hourlyRateBase: created.hourlyRateBase,
+          jobCategoryTitle: created.jobCategoryTitle,
           postedById: created.postedById,
           postedByRole: created.postedByRole,
           postedByAvatar: created.postedByAvatar,
@@ -809,7 +867,17 @@ export default function DashboardLayout() {
                   <h3 className="text-lg font-bold text-gray-900">{t("dashboard.postJobTitle")}</h3>
                   <button
                     type="button"
-                    onClick={() => { setShowPostJob(false); setPostJobStep("choose-type"); setSelectedJobType(null); setPostMethod(null); setPostJobError(""); }}
+                    onClick={() => {
+                      setShowPostJob(false);
+                      setPostJobStep("choose-type");
+                      setSelectedJobType(null);
+                      setPostMethod(null);
+                      setPostJobError("");
+                      setSelectedJobCategory(null);
+                      setHourlyRate("");
+                      setCalculatedSalary(null);
+                      setPostJobFieldErrors({});
+                    }}
                     className="p-2 rounded-lg text-gray-500 hover:bg-gray-100 hover:text-gray-700"
                     aria-label={t("dashboard.close")}
                   >
@@ -822,18 +890,28 @@ export default function DashboardLayout() {
                     setPostJobError("");
                     setPostJobFieldErrors({});
                     const form = e.currentTarget;
-                    const categoryRaw = (form.elements.namedItem("jobCategoryCode") as HTMLSelectElement)?.value?.trim();
-const hourlyRaw = (form.elements.namedItem("hourlyRateBase") as HTMLInputElement)?.value?.trim();
+                    // Use state variables directly since we're managing them with React state
+                    const jobCategoryCode = selectedJobCategory;
+                    const hourlyRateBase = hourlyRate ? Number(hourlyRate) : NaN;
 
-const jobCategoryCode = categoryRaw ? Number(categoryRaw) : NaN;
-const hourlyRateBase = hourlyRaw ? Number(hourlyRaw) : NaN;
+                    // Validate job category
+                    if (jobCategoryCode === null || jobCategoryCode === undefined || jobCategoryCode <= 0) {
+                      setPostJobFieldErrors((prev) => ({ ...prev, jobCategoryCode: "Please select a job category" }));
+                      return;
+                    }
 
-                    const jobTitle = jobTitleSelected ? t(JOB_TITLE_OPTIONS.find((o) => o.id === jobTitleSelected)?.labelKey ?? "") : (form.elements.namedItem("jobTitle") as HTMLInputElement)?.value?.trim();
+                    // Validate hourly rate
+                    if (!hourlyRate || hourlyRate.trim() === "" || isNaN(hourlyRateBase) || hourlyRateBase <= 0) {
+                      setPostJobFieldErrors((prev) => ({ ...prev, hourlyRateBase: "Please enter a valid hourly rate" }));
+                      return;
+                    }
+
+                    const jobTitle = (form.elements.namedItem("job") as HTMLInputElement)?.value?.trim().slice(0, 30);
                     const address = jobAddress.trim() || (form.elements.namedItem("address") as HTMLInputElement)?.value?.trim();
                     const dateVal = jobDate || (form.elements.namedItem("jobDate") as HTMLInputElement)?.value?.trim();
                     const endDateVal = jobEndDate || (form.elements.namedItem("jobEndDate") as HTMLInputElement)?.value?.trim();
-                    const peopleVal = (form.elements.namedItem("numberOfStaff") as HTMLSelectElement)?.value?.trim();
-                    const salaryVal = (form.elements.namedItem("estimatedSalary") as HTMLSelectElement)?.value?.trim();
+                    const peopleVal = (form.elements.namedItem("numberOfStaff") as HTMLInputElement | HTMLSelectElement)?.value?.trim();
+                    const salaryVal = calculatedSalary !== null ? String(calculatedSalary.toFixed(2)) : (form.elements.namedItem("estimatedSalary") as HTMLInputElement | HTMLSelectElement)?.value?.trim();
                     const toYmdToday = () => {
                       const d = new Date();
                       return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -886,6 +964,10 @@ const hourlyRateBase = hourlyRaw ? Number(hourlyRaw) : NaN;
                     setUnpaidBreak("no");
                     setUnpaidBreakOpen(false);
                     setPostJobError("");
+                    setSelectedJobCategory(null);
+                    setHourlyRate("");
+                    setCalculatedSalary(null);
+                    setPostJobFieldErrors({});
                   }}
                   className="p-4 sm:p-6 overflow-y-auto max-h-[calc(100vh-12rem)]"
                 >
@@ -907,6 +989,18 @@ const hourlyRateBase = hourlyRaw ? Number(hourlyRaw) : NaN;
                   <section>
                     <h4 className="text-sm font-semibold text-gray-900 mb-3">{t("dashboard.jobDetails")}</h4>
                     <div className="space-y-4">
+                      <label className="block">
+                        <span className="text-sm font-medium text-gray-700">Title <span className="text-red-500">*</span></span>
+                        <input
+                          name="job"
+                          type="text"
+                          maxLength={30}
+                          placeholder="e.g. Cautam Urgent Barista"
+                          className="mt-1 block w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:ring-2 focus:ring-primary"
+                          required
+                        />
+                        <p className="mt-1 text-xs text-gray-500">Maximum 30 characters</p>
+                      </label>
                       <label className="block">
                         <span className="text-sm font-medium text-gray-700">{t("dashboard.eventName")}</span>
                         <input
@@ -954,222 +1048,68 @@ const hourlyRateBase = hourlyRaw ? Number(hourlyRaw) : NaN;
                           </div>
                         </label>
                         <label className="block min-w-0">
-                          <span className="text-sm font-medium text-gray-700">{t("dashboard.estimatedSalary")}</span>
-                          <input type="hidden" name="estimatedSalary" value={salarySelect} readOnly />
-                          <div ref={salaryDropdownRef} className="mt-1 relative">
-                            <button
-                              type="button"
-                              onClick={() => { setSalaryDropdownOpen((v) => !v); setStaffDropdownOpen(false); }}
-                              aria-expanded={salaryDropdownOpen}
-                              aria-haspopup="listbox"
-                              className="w-full flex items-center justify-between gap-2 px-4 py-2.5 rounded-xl border border-gray-200 bg-white text-left text-gray-900 shadow-sm transition-all hover:border-gray-300 focus:ring-2 focus:ring-primary focus:border-primary"
-                            >
-                              <span className="font-medium">{salarySelect || "—"}</span>
-                              <svg className={`w-5 h-5 text-gray-400 flex-shrink-0 transition-transform ${salaryDropdownOpen ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
-                            </button>
-                            {salaryDropdownOpen && (
-                              <div
-                                role="listbox"
-                                aria-label={t("dashboard.estimatedSalary")}
-                                className="absolute left-0 right-0 top-full z-[70] mt-1.5 max-h-64 overflow-y-auto rounded-xl border border-gray-200 bg-white shadow-lg py-1.5 dropdown-enter origin-top"
-                              >
-                                <button
-                                  type="button"
-                                  role="option"
-                                  aria-selected={salarySelect === ""}
-                                  onMouseDown={(e) => { e.preventDefault(); setSalarySelect(""); setSalaryDropdownOpen(false); }}
-                                  className={`block w-full text-left px-4 py-2.5 text-sm font-medium transition-colors ${salarySelect === "" ? "bg-primary/10 text-primary" : "text-gray-700 hover:bg-gray-50"}`}
-                                >
-                                  —
-                                </button>
-                                {["500 MDL", "750 MDL", "1000 MDL", "1500 MDL", "2000 MDL", "2500 MDL", "3000 MDL", "5000 MDL"].map((v) => (
-                                  <button
-                                    key={v}
-                                    type="button"
-                                    role="option"
-                                    aria-selected={salarySelect === v}
-                                    onMouseDown={(e) => { e.preventDefault(); setSalarySelect(v); setSalaryDropdownOpen(false); }}
-                                    className={`block w-full text-left px-4 py-2.5 text-sm font-medium transition-colors ${salarySelect === v ? "bg-primary/10 text-primary" : "text-gray-700 hover:bg-gray-50"}`}
-                                  >
-                                    {v}
-                                  </button>
-                                ))}
-                              </div>
-                            )}
-                          </div>
+                          <span className="text-sm font-medium text-gray-700">Job Category <span className="text-red-500">*</span></span>
+                          <select
+                            name="jobCategoryCode"
+                            value={selectedJobCategory || ""}
+                            onChange={(e) => {
+                              const code = e.target.value ? Number(e.target.value) : null;
+                              setSelectedJobCategory(code);
+                              setPostJobFieldErrors((prev) => ({ ...prev, jobCategoryCode: undefined }));
+                              setHourlyRate("");
+                              setCalculatedSalary(null);
+                            }}
+                            className={`mt-1 block w-full px-4 py-2.5 rounded-xl border ${
+                              postJobFieldErrors.jobCategoryCode ? "border-red-400" : "border-gray-200"
+                            } focus:ring-2 focus:ring-primary focus:border-primary transition-colors`}
+                          >
+                            <option value="" disabled>Choose category</option>
+                            {jobCategories.map((cat) => (
+                              <option key={cat.code} value={cat.code}>
+                                {cat.title}
+                              </option>
+                            ))}
+                          </select>
+                          {postJobFieldErrors.jobCategoryCode && (
+                            <p className="mt-1 text-sm text-red-600">{postJobFieldErrors.jobCategoryCode}</p>
+                          )}
                         </label>
                         <label className="block min-w-0">
-  <span className="text-sm font-medium text-gray-700">Job Category</span>
-  <select
-    name="jobCategoryCode"
-    className={`mt-1 block w-full px-4 py-2.5 rounded-xl border ${
-      postJobFieldErrors.jobCategoryCode ? "border-red-400" : "border-gray-200"
-    } focus:ring-2 focus:ring-primary focus:border-primary transition-colors`}
-    defaultValue=""
-  >
-    <option value="" disabled>Choose category</option>
-    {/* TODO: replace these with your real enum codes */}
-    <option value="1">Category 1</option>
-    <option value="2">Category 2</option>
-    <option value="3">Category 3</option>
-  </select>
-  {postJobFieldErrors.jobCategoryCode && (
-    <p className="mt-1 text-sm text-red-600">{postJobFieldErrors.jobCategoryCode}</p>
-  )}
-</label>
-<label className="block min-w-0">
-  <span className="text-sm font-medium text-gray-700">Hourly rate (MDL/hour)</span>
-  <input
-    name="hourlyRateBase"
-    type="number"
-    inputMode="decimal"
-    min="0"
-    step="0.01"
-    placeholder="e.g. 65"
-    className={`mt-1 block w-full px-4 py-2.5 rounded-xl border ${
-      postJobFieldErrors.hourlyRateBase ? "border-red-400" : "border-gray-200"
-    } focus:ring-2 focus:ring-primary focus:border-primary transition-colors`}
-    onChange={() => {
-      // clear only this field error when user edits
-      setPostJobFieldErrors((prev) => ({ ...prev, hourlyRateBase: undefined }));
-    }}
-  />
-  {postJobFieldErrors.hourlyRateBase && (
-    <p className="mt-1 text-sm text-red-600">{postJobFieldErrors.hourlyRateBase}</p>
-  )}
-</label>
-
-                      </div>
-                      <label className="block">
-                        <span className="text-sm font-medium text-gray-700">{t("dashboard.jobImage")}</span>
-                        <input
-                          type="file"
-                          accept="image/*"
-                          className="mt-1 block w-full text-sm text-gray-500 file:mr-3 file:py-2 file:px-4 file:rounded-xl file:border-0 file:bg-primary file:text-white file:font-medium"
-                          onChange={(e) => {
-                            const file = e.target.files?.[0];
-                            if (!file || !file.type.startsWith("image/")) return;
-                            const reader = new FileReader();
-                            reader.onload = () => setJobImage(reader.result as string);
-                            reader.readAsDataURL(file);
-                          }}
-                        />
-                        {jobImage && (
-                          <div className="mt-2 relative inline-block">
-                            <img src={jobImage} alt="" className="h-24 w-auto rounded-xl border border-gray-200 object-cover" />
-                            <button type="button" onClick={() => setJobImage(null)} className="absolute -top-1 -right-1 w-6 h-6 rounded-full bg-red-500 text-white text-sm leading-none" aria-label={t("dashboard.removeImage")}>×</button>
+                          <span className="text-sm font-medium text-gray-700">Hourly rate (MDL/hour) <span className="text-red-500">*</span></span>
+                          <input
+                            name="hourlyRateBase"
+                            type="number"
+                            inputMode="decimal"
+                            min="0"
+                            step="0.01"
+                            placeholder="e.g. 65"
+                            value={hourlyRate}
+                            onChange={(e) => {
+                              const value = e.target.value;
+                              setHourlyRate(value);
+                              setPostJobFieldErrors((prev) => ({ ...prev, hourlyRateBase: undefined }));
+                            }}
+                            className={`mt-1 block w-full px-4 py-2.5 rounded-xl border ${
+                              postJobFieldErrors.hourlyRateBase ? "border-red-400" : "border-gray-200"
+                            } focus:ring-2 focus:ring-primary focus:border-primary transition-colors`}
+                          />
+                          {postJobFieldErrors.hourlyRateBase && (
+                            <p className="mt-1 text-sm text-red-600">{postJobFieldErrors.hourlyRateBase}</p>
+                          )}
+                        </label>
+                        {calculatedSalary !== null && (
+                          <div className="col-span-1 sm:col-span-2 p-4 rounded-xl bg-primary/5 border border-primary/20">
+                            <div className="flex items-center justify-between">
+                              <span className="text-sm font-medium text-gray-700">{t("dashboard.estimatedTotalCost", "Total (incl. 24% tax + 10% maintenance)")}</span>
+                              <span className="text-lg font-bold text-primary">{calculatedSalary.toFixed(2)} MDL</span>
+                            </div>
+                            <p className="mt-1 text-xs text-gray-500">
+                              Based on {formStartTime} – {formEndTime} ({((parseFloat(hourlyRate) || 0) > 0 ? (calculatedSalary / (1 + 0.24 + 0.1) / parseFloat(hourlyRate)).toFixed(2) : 0)} hours) × {hourlyRate} MDL/hour
+                            </p>
                           </div>
                         )}
-                      </label>
-                      <label className="block min-w-0">
-                          <span className="text-sm font-medium text-gray-700">{t("dashboard.staffContactPhone")}</span>
-                          <div className="mt-1 flex rounded-xl border border-gray-200 bg-white overflow-visible focus-within:ring-2 focus-within:ring-primary focus-within:border-primary transition-colors">
-                            <div ref={phoneCountryRef} className="relative shrink-0">
-                              <input type="hidden" name="phoneCountryCode" value={phoneCountryCode} readOnly />
-                              <button
-                                type="button"
-                                onClick={() => setPhoneCountryOpen((v) => !v)}
-                                className="h-full flex items-center gap-1.5 text-gray-700 pl-4 pr-2 py-2.5 border-r border-gray-200 bg-gray-50/80 hover:bg-gray-100/80 transition-colors rounded-l-xl min-h-[42px]"
-                                aria-label={t("dashboard.countryCode")}
-                                aria-expanded={phoneCountryOpen}
-                                aria-haspopup="listbox"
-                              >
-                                <span className="text-sm font-medium whitespace-nowrap">
-                                  {phoneCountryCode} {COUNTRY_CODES.find((c) => c.code === phoneCountryCode)?.label ?? ""}
-                                </span>
-                                <svg className={`w-4 h-4 text-gray-500 flex-shrink-0 transition-transform ${phoneCountryOpen ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
-                              </button>
-                              {phoneCountryOpen && (
-                                <div
-                                  className="absolute left-0 top-full mt-0.5 z-50 min-w-[10rem] max-h-56 overflow-y-auto rounded-xl border border-gray-200 bg-white shadow-lg py-1 dropdown-enter origin-top"
-                                  role="listbox"
-                                >
-                                  {COUNTRY_CODES.map(({ code, label }) => (
-                                    <button
-                                      key={code}
-                                      type="button"
-                                      role="option"
-                                      aria-selected={phoneCountryCode === code}
-                                      onClick={() => { setPhoneCountryCode(code); setPhoneCountryOpen(false); }}
-                                      className={`block w-full text-left px-3 py-2.5 text-sm font-medium transition-colors ${phoneCountryCode === code ? "bg-primary/10 text-primary" : "text-gray-700 hover:bg-gray-50"}`}
-                                    >
-                                      {code} {label}
-                                    </button>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
-                            <input
-                              name="staffPhone"
-                              type="tel"
-                              placeholder="(79) 14-37-02"
-                              className="flex-1 min-w-[16rem] sm:min-w-[20rem] w-full px-4 py-2.5 border-0 bg-transparent focus:ring-0 rounded-r-xl text-gray-900 placeholder:text-gray-400"
-                            />
-                          </div>
-                        </label>
-                      <label className="block">
-                        <span className="text-sm font-medium text-gray-700">{t("dashboard.jobTitleLabel")}</span>
-                        <input
-                          name="jobTitle"
-                          type="hidden"
-                          value={jobTitleSelected ? t(JOB_TITLE_OPTIONS.find((o) => o.id === jobTitleSelected)?.labelKey ?? "") : ""}
-                          required
-                          readOnly
-                        />
-                        <button
-                          type="button"
-                          onClick={() => setShowJobTitleModal(true)}
-                          className="mt-1 w-full flex items-center justify-between gap-2 px-4 py-2.5 rounded-xl border border-gray-200 bg-white text-left hover:border-primary/40 focus:ring-2 focus:ring-primary focus:border-primary transition-colors"
-                        >
-                          <span className={jobTitleSelected ? "text-gray-900 font-medium" : "text-gray-400"}>
-                            {jobTitleSelected ? t(JOB_TITLE_OPTIONS.find((o) => o.id === jobTitleSelected)?.labelKey ?? "") : t("dashboard.jobTitlePlaceholder")}
-                          </span>
-                          <svg className="w-5 h-5 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
-                        </button>
-                      </label>
-                      <label className="block">
-                        <span className="text-sm font-medium text-gray-700">{t("dashboard.description")}</span>
-                        <textarea
-                          name="description"
-                          rows={3}
-                          placeholder={t("dashboard.descriptionPlaceholder")}
-                          className="mt-1 block w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:ring-2 focus:ring-primary resize-none"
-                        />
-                      </label>
-                    </div>
-                  </section>
 
-                  <section>
-                    <h4 className="text-sm font-semibold text-gray-900 mb-3">{t("dashboard.additionalDocuments")}</h4>
-                    <p className="text-sm text-gray-500 mb-2">{t("dashboard.addDocumentsHint")}</p>
-                    <button
-                      type="button"
-                      onClick={() => setShowDocumentsModal(true)}
-                      className="w-full sm:w-auto px-4 py-2.5 rounded-xl border border-gray-300 font-medium text-gray-700 hover:bg-gray-50 hover:border-primary/40 hover:bg-primary/5 transition-colors"
-                    >
-                      {t("dashboard.addDocuments")}
-                    </button>
-                    {jobDocuments.length > 0 && (
-                      <ul className="mt-3 space-y-2">
-                        {jobDocuments.map((doc) => (
-                          <li key={doc.id} className="flex items-center gap-2 text-sm text-gray-700 bg-gray-50 rounded-lg px-3 py-2">
-                            <span className="text-red-600">
-                              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6zM6 20V4h7v5h5v11H6z" /></svg>
-                            </span>
-                            <span className="truncate flex-1">{doc.file.name}</span>
-                            <button
-                              type="button"
-                              onClick={() => setJobDocuments((prev) => prev.filter((d) => d.id !== doc.id))}
-                              className="text-gray-400 hover:text-red-600 p-1"
-                              aria-label={t("dashboard.remove")}
-                            >
-                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-                            </button>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </section>
+                      </div>
 
                   <section>
                     <h4 className="text-sm font-semibold text-gray-900 mb-3">{t("dashboard.timeAndDate")}</h4>
@@ -1254,22 +1194,128 @@ const hourlyRateBase = hourlyRaw ? Number(hourlyRaw) : NaN;
                         <button
                           type="button"
                           onClick={() => setShowAddressModal(true)}
-                          className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl border-2 border-dashed border-gray-200 text-gray-600 hover:border-primary/40 hover:bg-primary/5 hover:text-primary transition-colors min-h-[52px]"
+                          className="w-full px-4 py-2.5 rounded-xl border-2 border-dashed border-gray-300 bg-white text-left text-sm font-medium text-gray-700 hover:border-primary/40 hover:bg-primary/5 transition-colors inline-flex items-center justify-center gap-2"
                         >
+                          <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
                           {jobAddress ? (
-                            <span className="truncate text-left flex-1 font-medium text-gray-900">{jobAddress}</span>
+                            <span className="truncate flex-1 text-left">{jobAddress}</span>
                           ) : (
-                            <>
-                              <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg>
-                              <span>{t("dashboard.addAddress")}</span>
-                            </>
+                            <span>{t("dashboard.addAddress")}</span>
                           )}
                         </button>
-                        {jobAddress && (
-                          <p className="mt-1 text-xs text-gray-500">{t("dashboard.clickToChangeAddress")}</p>
-                        )}
                       </div>
                     </div>
+                  </section>
+
+                      <label className="block">
+                        <span className="text-sm font-medium text-gray-700">{t("dashboard.jobImage")}</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="mt-1 block w-full text-sm text-gray-500 file:mr-3 file:py-2 file:px-4 file:rounded-xl file:border-0 file:bg-primary file:text-white file:font-medium"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (!file || !file.type.startsWith("image/")) return;
+                            const reader = new FileReader();
+                            reader.onload = () => setJobImage(reader.result as string);
+                            reader.readAsDataURL(file);
+                          }}
+                        />
+                        {jobImage && (
+                          <div className="mt-2 relative inline-block">
+                            <img src={jobImage} alt="" className="h-24 w-auto rounded-xl border border-gray-200 object-cover" />
+                            <button type="button" onClick={() => setJobImage(null)} className="absolute -top-1 -right-1 w-6 h-6 rounded-full bg-red-500 text-white text-sm leading-none" aria-label={t("dashboard.removeImage")}>×</button>
+                          </div>
+                        )}
+                      </label>
+                      <label className="block min-w-0">
+                          <span className="text-sm font-medium text-gray-700">{t("dashboard.staffContactPhone")}</span>
+                          <div className="mt-1 flex rounded-xl border border-gray-200 bg-white overflow-visible focus-within:ring-2 focus-within:ring-primary focus-within:border-primary transition-colors">
+                            <div ref={phoneCountryRef} className="relative shrink-0">
+                              <input type="hidden" name="phoneCountryCode" value={phoneCountryCode} readOnly />
+                              <button
+                                type="button"
+                                onClick={() => setPhoneCountryOpen((v) => !v)}
+                                className="h-full flex items-center gap-1.5 text-gray-700 pl-4 pr-2 py-2.5 border-r border-gray-200 bg-gray-50/80 hover:bg-gray-100/80 transition-colors rounded-l-xl min-h-[42px]"
+                                aria-label={t("dashboard.countryCode")}
+                                aria-expanded={phoneCountryOpen}
+                                aria-haspopup="listbox"
+                              >
+                                <span className="text-sm font-medium whitespace-nowrap">
+                                  {phoneCountryCode} {COUNTRY_CODES.find((c) => c.code === phoneCountryCode)?.label ?? ""}
+                                </span>
+                                <svg className={`w-4 h-4 text-gray-500 flex-shrink-0 transition-transform ${phoneCountryOpen ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                              </button>
+                              {phoneCountryOpen && (
+                                <div
+                                  className="absolute left-0 top-full mt-0.5 z-50 min-w-[10rem] max-h-56 overflow-y-auto rounded-xl border border-gray-200 bg-white shadow-lg py-1 dropdown-enter origin-top"
+                                  role="listbox"
+                                >
+                                  {COUNTRY_CODES.map(({ code, label }) => (
+                                    <button
+                                      key={code}
+                                      type="button"
+                                      role="option"
+                                      aria-selected={phoneCountryCode === code}
+                                      onClick={() => { setPhoneCountryCode(code); setPhoneCountryOpen(false); }}
+                                      className={`block w-full text-left px-3 py-2.5 text-sm font-medium transition-colors ${phoneCountryCode === code ? "bg-primary/10 text-primary" : "text-gray-700 hover:bg-gray-50"}`}
+                                    >
+                                      {code} {label}
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                            <input
+                              name="staffPhone"
+                              type="tel"
+                              placeholder="(79) 14-37-02"
+                              className="flex-1 min-w-[16rem] sm:min-w-[20rem] w-full px-4 py-2.5 border-0 bg-transparent focus:ring-0 rounded-r-xl text-gray-900 placeholder:text-gray-400"
+                            />
+                          </div>
+                        </label>
+                      <label className="block">
+                        <span className="text-sm font-medium text-gray-700">{t("dashboard.description")}</span>
+                        <textarea
+                          name="description"
+                          rows={3}
+                          placeholder={t("dashboard.descriptionPlaceholder")}
+                          className="mt-1 block w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:ring-2 focus:ring-primary resize-none"
+                        />
+                      </label>
+                    </div>
+                  </section>
+
+                  <section>
+                    <h4 className="text-sm font-semibold text-gray-900 mb-3">{t("dashboard.additionalDocuments")}</h4>
+                    <p className="text-sm text-gray-500 mb-2">{t("dashboard.addDocumentsHint")}</p>
+                    <button
+                      type="button"
+                      onClick={() => setShowDocumentsModal(true)}
+                      className="w-full sm:w-auto px-4 py-2.5 rounded-xl border border-gray-300 font-medium text-gray-700 hover:bg-gray-50 hover:border-primary/40 hover:bg-primary/5 transition-colors"
+                    >
+                      {t("dashboard.addDocuments")}
+                    </button>
+                    {jobDocuments.length > 0 && (
+                      <ul className="mt-3 space-y-2">
+                        {jobDocuments.map((doc) => (
+                          <li key={doc.id} className="flex items-center gap-2 text-sm text-gray-700 bg-gray-50 rounded-lg px-3 py-2">
+                            <span className="text-red-600">
+                              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6zM6 20V4h7v5h5v11H6z" /></svg>
+                            </span>
+                            <span className="truncate flex-1">{doc.file.name}</span>
+                            <button
+                              type="button"
+                              onClick={() => setJobDocuments((prev) => prev.filter((d) => d.id !== doc.id))}
+                              className="text-gray-400 hover:text-red-600 p-1"
+                              aria-label={t("dashboard.remove")}
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
                   </section>
 
                   <div className="flex gap-3 pt-2 border-t border-gray-100">
