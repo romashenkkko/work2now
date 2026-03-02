@@ -7,6 +7,10 @@
     "dev:client": "cd client && npm run dev"
   },
   "devDependencies": {
+    "@types/twilio": "^3.19.2",
     "concurrently": "^8.2.2"
+  },
+  "dependencies": {
+    "twilio": "^5.12.2"
   }
 }

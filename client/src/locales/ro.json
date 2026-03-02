@@ -166,7 +166,12 @@
     "verifyAndRegister": "Verifică și înregistrează",
     "resendOTP": "Retrimite codul",
     "backToForm": "Înapoi la formular",
-    "registering": "Se înregistrează..."
+    "registering": "Se înregistrează...",
+    "acceptTermsTitle": "Acceptați Termenii și Condițiile",
+    "acceptTermsSubtitle": "Citiți cu atenție documentul de mai jos înainte de a continua.",
+    "acceptTerms": "Accept și continui",
+    "termsDecline": "Înapoi",
+    "termsScrollHint": "Derulați până la capătul documentului pentru a activa butonul."
   },
   "roleModal": {
     "title": "Please select your role",
