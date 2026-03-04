@@ -173,6 +173,7 @@ function rowToJob(r: Record<string, unknown>): Record<string, unknown> {
   const computedDuration = hoursBetweenTimes(startTime, endTime);
   const duration = storedDuration ?? (computedDuration != null ? String(computedDuration) : undefined);
 
+  const isPromoted = r.is_promoted === 1 || r.is_promoted === true;
   return {
     id: String(r.id),
     job: r.job, // Custom title (max 30 chars)
@@ -192,6 +193,7 @@ function rowToJob(r: Record<string, unknown>): Record<string, unknown> {
     estimatedSalary: r.estimated_salary ?? undefined,
     imageUrl: r.image_url ?? undefined,
     postedBy: name,
+    isPromoted,
 
 
     // ✅ NEW (so frontend can see/store them)
@@ -259,7 +261,7 @@ router.get("/", authMiddleware, async (req: ReqWithUser, res: Response): Promise
               ) AS posted_by_name,
               u.Id AS posted_by_user_id,
               u.Role AS posted_by_role,
-              COALESCE(ep.ProfilePictureFileId, u.Avatar, NULL) AS posted_by_avatar,
+              COALESCE(u.Avatar, ep.ProfilePictureFileId, NULL) AS posted_by_avatar,
               (SELECT COUNT(*) FROM applications a WHERE a.job_id = j.id AND LOWER(TRIM(COALESCE(a.status,''))) = 'accepted') AS accepted_count
          FROM jobs j
          LEFT JOIN job_categories jc ON jc.Code = j.job_category_code
@@ -267,7 +269,7 @@ router.get("/", authMiddleware, async (req: ReqWithUser, res: Response): Promise
          LEFT JOIN business_profiles bp ON bp.UserId = u.Id
          LEFT JOIN employee_profiles ep ON ep.UserId = u.Id
          WHERE j.user_id = ?
-         ORDER BY j.created_at DESC`,
+         ORDER BY COALESCE(j.is_promoted, 0) DESC, j.created_at DESC`,
       [userId]
     ) as [Record<string, unknown>[], unknown];
     list = Array.isArray(r) ? r : [];
@@ -283,14 +285,14 @@ router.get("/", authMiddleware, async (req: ReqWithUser, res: Response): Promise
               ) AS posted_by_name,
               u.Id AS posted_by_user_id,
               u.Role AS posted_by_role,
-              COALESCE(ep.ProfilePictureFileId, u.Avatar, NULL) AS posted_by_avatar,
+              COALESCE(u.Avatar, ep.ProfilePictureFileId, NULL) AS posted_by_avatar,
               (SELECT COUNT(*) FROM applications a WHERE a.job_id = j.id AND LOWER(TRIM(COALESCE(a.status,''))) = 'accepted') AS accepted_count
          FROM jobs j
          LEFT JOIN job_categories jc ON jc.Code = j.job_category_code
          LEFT JOIN users u ON u.Id = j.user_id
          LEFT JOIN business_profiles bp ON bp.UserId = u.Id
          LEFT JOIN employee_profiles ep ON ep.UserId = u.Id
-         ORDER BY j.created_at DESC`
+         ORDER BY COALESCE(j.is_promoted, 0) DESC, j.created_at DESC`
     ) as [Record<string, unknown>[], unknown];
     list = Array.isArray(r) ? r : [];
   }
@@ -431,7 +433,7 @@ router.post("/", authMiddleware, async (req: ReqWithUser, res: Response): Promis
               jc.Title AS job_category_title,
               u.Id AS posted_by_user_id,
               u.Role AS posted_by_role,
-              COALESCE(ep.ProfilePictureFileId, NULL) AS posted_by_avatar,
+              COALESCE(u.Avatar, ep.ProfilePictureFileId, NULL) AS posted_by_avatar,
               COALESCE(
                 bp.CompanyName,
                 TRIM(CONCAT(ep.Name, ' ', ep.Surname)),
@@ -482,6 +484,35 @@ router.delete("/:id", authMiddleware, async (req: ReqWithUser, res: Response): P
   await db.query("DELETE FROM applications WHERE job_id = ?", [jobId]);
   await db.query("DELETE FROM jobs WHERE id = ?", [jobId]);
   res.json({ ok: true });
+});
+
+/** PATCH /api/jobs/:id/promote - customer/admin: set job as promoted (booster) or not */
+router.patch("/:id/promote", authMiddleware, async (req: ReqWithUser, res: Response): Promise<void> => {
+  const userId = req.user?.userId;
+  const jobId = req.params.id;
+  const promoted = req.body?.promoted === true;
+  if (!userId || !jobId) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+  const [rows] = await db.query(
+    "SELECT id, user_id FROM jobs WHERE id = ?",
+    [jobId]
+  ) as [Record<string, unknown>[], unknown];
+  const row = Array.isArray(rows) ? rows[0] : null;
+  if (!row) {
+    res.status(404).json({ error: "Job negăsit." });
+    return;
+  }
+  const [roleRows] = await db.query("SELECT Role FROM users WHERE Id = ?", [userId]) as [unknown[], unknown];
+  const role = normalizeRole(getRoleFromRow((roleRows as unknown[] | undefined)?.[0]));
+  const isOwner = String(row.user_id) === userId;
+  if (!isOwner && role !== "admin") {
+    res.status(403).json({ error: "Doar proprietarul jobului sau admin poate seta promovarea." });
+    return;
+  }
+  await db.query("UPDATE jobs SET is_promoted = ? WHERE id = ?", [promoted ? 1 : 0, jobId]);
+  res.json({ ok: true, promoted });
 });
 
 /** GET /api/jobs/my-applications - staff: my application status per job */
@@ -788,7 +819,7 @@ router.get("/applications", authMiddleware, async (req: ReqWithUser, res: Respon
   if (staffIdStrings.length > 0) {
     const ph = staffIdStrings.map(() => "?").join(",");
     const [userRows] = await db.query(
-      `SELECT u.Id AS id, COALESCE(ep.ProfilePictureFileId, NULL) AS avatar
+      `SELECT u.Id AS id, COALESCE(u.Avatar, ep.ProfilePictureFileId, NULL) AS avatar
        FROM users u
        LEFT JOIN employee_profiles ep ON u.Id = ep.UserId
        WHERE u.Id IN (${ph})`,
@@ -1161,6 +1192,181 @@ router.patch("/applications/:id", authMiddleware, async (req: ReqWithUser, res: 
     notifyStaffRefused(staffEmail, staffName, jobTitle).catch(() => {});
   }
   res.json({ ok: true });
+});
+
+// Platform financial constants (must match client utils/salary.ts)
+const BUSINESS_TAX_RATE = 0.24;
+const BUSINESS_MAINTENANCE_RATE = 0.1;
+
+/** GET /api/jobs/admin/statistics - admin only: salary by domain/region, financial, company ranking */
+router.get("/admin/statistics", authMiddleware, async (req: ReqWithUser, res: Response): Promise<void> => {
+  const userId = req.user?.userId;
+  if (!userId) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+  const [roleRows] = await db.query("SELECT Role FROM users WHERE Id = ?", [userId]) as [unknown[], unknown];
+  const role = normalizeRole(getRoleFromRow((roleRows as unknown[] | undefined)?.[0]));
+  if (role !== "admin") {
+    res.status(403).json({ error: "Doar administratorii pot accesa statisticile." });
+    return;
+  }
+
+  try {
+    // Totals: activi = conectați în ultimele 15 min; inactivi = restul (pagina închisă, delogare sau inactivitate > 15 min)
+    const [[usersRow], [jobsRow], [appsRow]] = await Promise.all([
+      db.query("SELECT COUNT(*) AS c FROM users") as Promise<[Record<string, unknown>[], unknown]>,
+      db.query("SELECT COUNT(*) AS c FROM jobs") as Promise<[Record<string, unknown>[], unknown]>,
+      db.query("SELECT COUNT(*) AS c FROM applications") as Promise<[Record<string, unknown>[], unknown]>,
+    ]);
+    const totalUsers = Number(usersRow?.[0]?.c ?? 0);
+
+    let activeUsers = 0;
+    try {
+      const [activeRow] = await db.query(
+        "SELECT COUNT(*) AS c FROM users WHERE COALESCE(IsActive, 1) = 1 AND LastActiveAt >= DATE_SUB(NOW(), INTERVAL 15 MINUTE) AND (Role IS NULL OR Role != 3)"
+      ) as [Record<string, unknown>[], unknown];
+      activeUsers = Number(activeRow?.[0]?.c ?? 0);
+    } catch (_) {
+      // LastActiveAt poate să lipsească la prima rulare; afișăm 0 până la migrare
+    }
+    const inactiveUsers = Math.max(0, totalUsers - activeUsers);
+    const totalJobs = Number(jobsRow?.[0]?.c ?? 0);
+    const totalApplications = Number(appsRow?.[0]?.c ?? 0);
+
+    // Salary by domain (job category): avg/min/max hourly rate, count
+    const [salaryByDomainRows] = await db.query(
+      `SELECT
+         COALESCE(j.job_category_code, 0) AS category_code,
+         COALESCE(jc.Title, 'Fără categorie') AS category_title,
+         AVG(j.hourly_rate_base) AS avg_hourly,
+         MIN(j.hourly_rate_base) AS min_hourly,
+         MAX(j.hourly_rate_base) AS max_hourly,
+         COUNT(j.id) AS job_count
+       FROM jobs j
+       LEFT JOIN job_categories jc ON jc.Code = j.job_category_code
+       WHERE j.hourly_rate_base IS NOT NULL
+       GROUP BY j.job_category_code, jc.Title
+       ORDER BY avg_hourly DESC`
+    ) as [Record<string, unknown>[], unknown];
+    const salaryByDomain = (Array.isArray(salaryByDomainRows) ? salaryByDomainRows : []).map((r) => ({
+      categoryCode: r.category_code != null ? Number(r.category_code) : 0,
+      categoryTitle: String(r.category_title ?? "Fără categorie"),
+      avgHourly: r.avg_hourly != null ? Number(Number(r.avg_hourly).toFixed(2)) : 0,
+      minHourly: r.min_hourly != null ? Number(r.min_hourly) : 0,
+      maxHourly: r.max_hourly != null ? Number(r.max_hourly) : 0,
+      jobCount: r.job_count != null ? Number(r.job_count) : 0,
+    }));
+
+    // Region = branch city when job location matches; else 'Alte'. Salary by region (avg hourly, count)
+    const [salaryByRegionRows] = await db.query(
+      `SELECT
+         COALESCE(region_city, 'Alte') AS region,
+         AVG(hourly_rate_base) AS avg_hourly,
+         COUNT(*) AS job_count
+       FROM (
+         SELECT j.id, j.hourly_rate_base,
+           (SELECT b.City FROM branches b
+            INNER JOIN business_profiles bp ON bp.Id = b.BusinessProfileId AND bp.UserId = j.user_id
+            WHERE (j.location LIKE CONCAT('%', b.City, '%') OR b.City LIKE CONCAT('%', j.location, '%'))
+            LIMIT 1) AS region_city
+         FROM jobs j
+         WHERE j.hourly_rate_base IS NOT NULL
+       ) AS t
+       GROUP BY COALESCE(region_city, 'Alte')
+       ORDER BY avg_hourly DESC`
+    ) as [Record<string, unknown>[], unknown];
+    const salaryByRegion = (Array.isArray(salaryByRegionRows) ? salaryByRegionRows : []).map((r) => ({
+      region: String(r.region ?? "Alte"),
+      avgHourly: r.avg_hourly != null ? Number(Number(r.avg_hourly).toFixed(2)) : 0,
+      jobCount: r.job_count != null ? Number(r.job_count) : 0,
+    }));
+
+    // Salary by domain AND region (avg hourly, count)
+    const [salaryByDomainRegionRows] = await db.query(
+      `SELECT
+         COALESCE(r.region_city, 'Alte') AS region,
+         COALESCE(j.job_category_code, 0) AS category_code,
+         COALESCE(jc.Title, 'Fără categorie') AS category_title,
+         AVG(j.hourly_rate_base) AS avg_hourly,
+         COUNT(j.id) AS job_count
+       FROM jobs j
+       LEFT JOIN job_categories jc ON jc.Code = j.job_category_code
+       LEFT JOIN (
+         SELECT j2.id,
+           (SELECT b.City FROM branches b
+            INNER JOIN business_profiles bp ON bp.Id = b.BusinessProfileId AND bp.UserId = j2.user_id
+            WHERE (j2.location LIKE CONCAT('%', b.City, '%') OR b.City LIKE CONCAT('%', j2.location, '%'))
+            LIMIT 1) AS region_city
+         FROM jobs j2
+       ) AS r ON r.id = j.id
+       WHERE j.hourly_rate_base IS NOT NULL
+       GROUP BY COALESCE(r.region_city, 'Alte'), j.job_category_code, jc.Title
+       ORDER BY region, category_title`
+    ) as [Record<string, unknown>[], unknown];
+    const salaryByDomainAndRegion = (Array.isArray(salaryByDomainRegionRows) ? salaryByDomainRegionRows : []).map((r) => ({
+      region: String(r.region ?? "Alte"),
+      categoryCode: r.category_code != null ? Number(r.category_code) : 0,
+      categoryTitle: String(r.category_title ?? "Fără categorie"),
+      avgHourly: r.avg_hourly != null ? Number(Number(r.avg_hourly).toFixed(2)) : 0,
+      jobCount: r.job_count != null ? Number(r.job_count) : 0,
+    }));
+
+    // Financial: total base from completed work sessions (checked in + checked out), then tax & profit
+    const [financialRows] = await db.query(
+      `SELECT SUM(
+         (TIMESTAMPDIFF(SECOND, ws.checked_in_at, ws.checked_out_at) / 3600.0) * COALESCE(j.hourly_rate_base, 0)
+       ) AS total_base
+       FROM application_work_sessions ws
+       INNER JOIN applications a ON a.id = ws.application_id
+       INNER JOIN jobs j ON j.id = a.job_id
+       WHERE ws.checked_in_at IS NOT NULL AND ws.checked_out_at IS NOT NULL`
+    ) as [Record<string, unknown>[], unknown];
+    const totalBase = Number(financialRows?.[0]?.total_base ?? 0) || 0;
+    const taxesCollected = Number((totalBase * BUSINESS_TAX_RATE).toFixed(2));
+    const profit = Number((totalBase * BUSINESS_MAINTENANCE_RATE).toFixed(2));
+
+    // Company ranking by number of accepted applications (most active hirers)
+    const [rankingRows] = await db.query(
+      `SELECT
+         COALESCE(bp.CompanyName, 'Necunoscut') AS company_name,
+         j.user_id AS user_id,
+         COUNT(a.id) AS accepted_count
+       FROM applications a
+       INNER JOIN jobs j ON j.id = a.job_id
+       LEFT JOIN business_profiles bp ON bp.UserId = j.user_id
+       WHERE LOWER(TRIM(COALESCE(a.status, ''))) = 'accepted'
+       GROUP BY j.user_id, bp.CompanyName
+       ORDER BY accepted_count DESC
+       LIMIT 50`
+    ) as [Record<string, unknown>[], unknown];
+    const companyRanking = (Array.isArray(rankingRows) ? rankingRows : []).map((r, i) => ({
+      rank: i + 1,
+      companyName: String(r.company_name ?? "Necunoscut"),
+      userId: r.user_id != null ? String(r.user_id) : "",
+      acceptedCount: Number(r.accepted_count ?? 0),
+    }));
+
+    res.json({
+      totalUsers,
+      activeUsers,
+      inactiveUsers,
+      totalJobs,
+      totalApplications,
+      salaryByDomain,
+      salaryByRegion,
+      salaryByDomainAndRegion,
+      financial: {
+        totalBase: Number(totalBase.toFixed(2)),
+        taxesCollected,
+        profit,
+      },
+      companyRanking,
+    });
+  } catch (err) {
+    console.error("GET /api/jobs/admin/statistics error:", err);
+    res.status(500).json({ error: "Eroare la încărcarea statisticilor admin." });
+  }
 });
 
 export default router;

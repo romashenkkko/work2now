@@ -39,19 +39,21 @@ export default function Blog() {
     <div ref={sectionRef} className="blog-page">
       <div className="blog-page__inner">
         <header className="blog-page__header">
-          <span className="blog-page__label">{t("blogPage.label", "Blog")}</span>
+          <p className="blog-page__label">{t("blogPage.label", "Blog")}</p>
           <h1 className="blog-page__title">{t("blogPage.title")}</h1>
           <p className="blog-page__lead">{t("blogPage.lead")}</p>
         </header>
 
-        <div className="blog-page__grid">
+        <div className="blog-zigzag">
           {POSTS.map((post, i) => (
-            <BlogCard
+            <BlogItem
               key={post.title}
               post={post}
               index={i}
               visible={visible}
               readMoreLabel={t("blogPage.readMore")}
+              isLast={i === POSTS.length - 1}
+              alignRight={i % 2 === 1}
             />
           ))}
         </div>
@@ -60,51 +62,65 @@ export default function Blog() {
   );
 }
 
-function BlogCard({
+function BlogItem({
   post,
   index,
   visible,
   readMoreLabel,
+  isLast,
+  alignRight,
 }: {
   post: (typeof POSTS)[0];
   index: number;
   visible: boolean;
   readMoreLabel: string;
+  isLast: boolean;
+  alignRight: boolean;
 }) {
-  const { ref, inView } = useInView(0.12);
+  const { ref, inView } = useInView(0.1);
   const show = visible && inView;
-  const delay = index * 0.06;
+  const delay = index * 0.08;
 
   return (
     <article
       ref={ref}
-      className="blog-card-v2"
+      className={`blog-zigzag__item ${isLast ? "blog-zigzag__item--last" : ""} ${alignRight ? "blog-zigzag__item--right" : "blog-zigzag__item--left"}`}
       style={
         show
           ? {
-              animation: "blog-card-v2-in 0.5s cubic-bezier(0.22, 1, 0.36, 1) forwards",
+              animation: "blog-zigzag-in 0.55s cubic-bezier(0.22, 1, 0.36, 1) forwards",
               animationDelay: `${delay}s`,
             }
-          : { opacity: 0, transform: "translateY(16px)" }
+          : { opacity: 0, transform: alignRight ? "translateX(12px)" : "translateX(-12px)" }
       }
     >
-      <div className="blog-card-v2__accent" aria-hidden />
-      <div className="blog-card-v2__top">
-        <time className="blog-card-v2__date" dateTime="2026-01-15">
-          {post.date}
-        </time>
-        <span className="blog-card-v2__icon" aria-hidden>
-          {post.icon}
-        </span>
+      <div className="blog-zigzag__center">
+        <div className="blog-zigzag__node" aria-hidden>
+          <span className="blog-zigzag__icon">{post.icon}</span>
+        </div>
+        <div className="blog-zigzag__line" aria-hidden />
       </div>
-      <div className="blog-card-v2__body">
-        <h2 className="blog-card-v2__title">{post.title}</h2>
-        <p className="blog-card-v2__desc">{post.desc}</p>
-        <a href="#" className="blog-card-v2__link">
-          {readMoreLabel}
-          <span className="blog-card-v2__arrow" aria-hidden>→</span>
+      {!alignRight ? (
+        <a href="#" className="blog-zigzag__content blog-zigzag__content--left">
+          <time className="blog-zigzag__date" dateTime="2026-01-15">{post.date}</time>
+          <h2 className="blog-zigzag__title">{post.title}</h2>
+          <p className="blog-zigzag__desc">{post.desc}</p>
+          <span className="blog-zigzag__cta">
+            {readMoreLabel}
+            <span className="blog-zigzag__arrow" aria-hidden>→</span>
+          </span>
         </a>
-      </div>
+      ) : (
+        <a href="#" className="blog-zigzag__content blog-zigzag__content--right">
+          <time className="blog-zigzag__date" dateTime="2026-01-15">{post.date}</time>
+          <h2 className="blog-zigzag__title">{post.title}</h2>
+          <p className="blog-zigzag__desc">{post.desc}</p>
+          <span className="blog-zigzag__cta">
+            {readMoreLabel}
+            <span className="blog-zigzag__arrow" aria-hidden>→</span>
+          </span>
+        </a>
+      )}
     </article>
   );
 }

@@ -22,7 +22,7 @@ export default function Contact() {
   }
 
   return (
-    <div className="container mx-auto px-4 py-16 md:py-24 max-w-6xl">
+    <div className="contact-page container mx-auto px-4 py-16 md:py-24 max-w-6xl">
       {/* Header */}
       <header className="text-center max-w-2xl mx-auto mb-14 md:mb-16">
         <h1 className="text-3xl md:text-4xl font-extrabold text-[#1e1c2f] mb-4 tracking-tight">
@@ -50,7 +50,7 @@ export default function Contact() {
         <div className="space-y-5">
           <a
             href="mailto:contact@work2now.local"
-            className="contact-card group flex items-center gap-5 p-5 rounded-2xl bg-white/90 border border-[rgba(224,216,247,0.5)] shadow-[0_4px_24px_-4px_rgba(122,99,241,0.12)] hover:shadow-[0_12px_40px_-8px_rgba(122,99,241,0.2)] hover:border-[rgba(122,99,241,0.35)] transition-all duration-300"
+            className="contact-card group flex items-center gap-5 p-5 rounded-2xl bg-white/95 border border-[rgba(224,216,247,0.5)] hover:border-[rgba(122,99,241,0.35)] transition-all duration-300"
           >
             <span className="contact-card__icon flex-shrink-0 w-14 h-14 rounded-2xl bg-gradient-to-br from-[#7a63f1] to-[#9d7bff] flex items-center justify-center text-white shadow-lg shadow-primary/25 group-hover:scale-105 transition-transform">
               <svg className="w-7 h-7" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24" aria-hidden><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" /><polyline points="22,6 12,13 2,6" /></svg>
@@ -62,7 +62,7 @@ export default function Contact() {
           </a>
           <a
             href="tel:+37360123456"
-            className="contact-card group flex items-center gap-5 p-5 rounded-2xl bg-white/90 border border-[rgba(224,216,247,0.5)] shadow-[0_4px_24px_-4px_rgba(122,99,241,0.12)] hover:shadow-[0_12px_40px_-8px_rgba(122,99,241,0.2)] hover:border-[rgba(122,99,241,0.35)] transition-all duration-300"
+            className="contact-card group flex items-center gap-5 p-5 rounded-2xl bg-white/95 border border-[rgba(224,216,247,0.5)] hover:border-[rgba(122,99,241,0.35)] transition-all duration-300"
           >
             <span className="contact-card__icon flex-shrink-0 w-14 h-14 rounded-2xl bg-gradient-to-br from-[#7a63f1] to-[#9d7bff] flex items-center justify-center text-white shadow-lg shadow-primary/25 group-hover:scale-105 transition-transform">
               <svg className="w-7 h-7" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24" aria-hidden><rect x="5" y="2" width="14" height="20" rx="2" ry="2" /><line x1="12" y1="18" x2="12.01" y2="18" /></svg>
@@ -72,7 +72,7 @@ export default function Contact() {
               <span className="text-[#1e1c2f] font-semibold group-hover:text-[#6c58d6] transition-colors">+373 60 123 456</span>
             </div>
           </a>
-          <div className="contact-card flex items-center gap-5 p-5 rounded-2xl bg-white/90 border border-[rgba(224,216,247,0.5)] shadow-[0_4px_24px_-4px_rgba(122,99,241,0.12)]">
+          <div className="contact-card flex items-center gap-5 p-5 rounded-2xl bg-white/95 border border-[rgba(224,216,247,0.5)]">
             <span className="contact-card__icon flex-shrink-0 w-14 h-14 rounded-2xl bg-gradient-to-br from-[#7a63f1] to-[#9d7bff] flex items-center justify-center text-white shadow-lg shadow-primary/25">
               <svg className="w-7 h-7" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24" aria-hidden><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" /><circle cx="12" cy="10" r="3" /></svg>
             </span>
@@ -84,7 +84,7 @@ export default function Contact() {
         </div>
 
         {/* Right: form */}
-        <div className="rounded-3xl bg-white border border-[rgba(224,216,247,0.6)] shadow-[0_20px_50px_-12px_rgba(75,60,120,0.15),0_8px_24px_-8px_rgba(122,99,241,0.1),inset_0_1px_0_rgba(255,255,255,0.9)] overflow-hidden">
+        <div className="contact-form-box rounded-3xl bg-white border border-[rgba(224,216,247,0.6)] overflow-hidden">
           <form onSubmit={handleSubmit} className="p-8 md:p-10">
             <div className="grid sm:grid-cols-2 gap-6 mb-6">
               <div>

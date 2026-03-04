@@ -61,6 +61,8 @@ export type JobRow = {
   checkInLat?: number;
   checkInLng?: number;
   checkInRadiusM?: number;
+  /** Promovare Booster: job afișat prioritar */
+  isPromoted?: boolean;
 };
 
 export type Application = {
@@ -471,7 +473,7 @@ export default function DashboardLayout() {
           jobCategoryTitle: created.jobCategoryTitle,
           postedById: created.postedById,
           postedByRole: created.postedByRole,
-          postedByAvatar: created.postedByAvatar,
+          postedByAvatar: created.postedByAvatar ?? (user?.avatar ?? undefined),
           ...(created.checkInLat != null && created.checkInLng != null && created.checkInRadiusM != null
             ? { checkInLat: created.checkInLat, checkInLng: created.checkInLng, checkInRadiusM: created.checkInRadiusM }
             : {}),
@@ -1357,7 +1359,7 @@ export default function DashboardLayout() {
         document.body
       )}
 
-      {isCustomer && (
+      {isCustomer && showDocumentsModal && createPortal(
         <DocumentsModal
           open={showDocumentsModal}
           onClose={() => setShowDocumentsModal(false)}
@@ -1370,7 +1372,8 @@ export default function DashboardLayout() {
                 setShowDocumentsModal(false);
               }}
           existing={jobDocuments}
-        />
+        />,
+        document.body
       )}
 
       {isCustomer && showJobTitleModal && createPortal(

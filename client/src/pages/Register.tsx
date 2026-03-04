@@ -4,6 +4,21 @@ import { useTranslation } from "react-i18next";
 import { authApi } from "../api/client";
 import DatePicker from "../components/DatePicker";
 
+/** 0 = none, 1 = weak, 2 = fair, 3 = good, 4 = strong */
+function getPasswordStrength(password: string): 0 | 1 | 2 | 3 | 4 {
+  if (!password.length) return 0;
+  let score = 0;
+  if (password.length >= 6) score++;
+  if (password.length >= 10) score++;
+  if (/[a-z]/.test(password) && /[A-Z]/.test(password)) score++;
+  if (/\d/.test(password)) score++;
+  if (/[^a-zA-Z0-9]/.test(password)) score++;
+  if (score <= 1) return 1;
+  if (score <= 2) return 2;
+  if (score <= 3) return 3;
+  return 4;
+}
+
 const COMPANY_CATEGORY_OPTIONS = [
   { value: "1", labelKey: "auth.companyCategoryCanteen" },
   { value: "2", labelKey: "auth.companyCategoryCatering" },
@@ -20,6 +35,7 @@ export default function Register() {
   const { role: roleParam } = useParams<{ role: string }>();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [passwordStrength, setPasswordStrength] = useState<0 | 1 | 2 | 3 | 4>(0);
   const [confirm, setConfirm] = useState("");
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -37,6 +53,7 @@ export default function Register() {
   const [companyName, setCompanyName] = useState("");
   const [contactFirstName, setContactFirstName] = useState("");
   const [contactLastName, setContactLastName] = useState("");
+  const [contactDateOfBirth, setContactDateOfBirth] = useState("");
   const [contactPhoneNumber, setContactPhoneNumber] = useState(""); // Customer contact phone number
   const [companyCategory, setCompanyCategory] = useState("1");
   const [companyCategoryOpen, setCompanyCategoryOpen] = useState(false);
@@ -55,6 +72,24 @@ export default function Register() {
   const [otpLoading, setOtpLoading] = useState(false);
   const [otpError, setOtpError] = useState("");
   const [verifiedPhone, setVerifiedPhone] = useState("");
+
+  const calculateAgeFromYmd = (value: string): number | null => {
+    if (!value) return null;
+    const [yStr, mStr, dStr] = value.split("-");
+    const y = Number(yStr);
+    const m = Number(mStr);
+    const d = Number(dStr);
+    if (!y || !m || !d) return null;
+    const dob = new Date(y, m - 1, d);
+    if (isNaN(dob.getTime())) return null;
+    const today = new Date();
+    let age = today.getFullYear() - dob.getFullYear();
+    const monthDiff = today.getMonth() - dob.getMonth();
+    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < dob.getDate())) {
+      age--;
+    }
+    return age;
+  };
 
   useEffect(() => {
     const onOutsideClick = (e: MouseEvent) => {
@@ -87,6 +122,11 @@ export default function Register() {
         setError(t("auth.dateOfBirthRequired"));
         return;
       }
+      const age = calculateAgeFromYmd(dateOfBirth);
+      if (age === null || age < 18) {
+        setError(t("auth.ageRestriction18"));
+        return;
+      }
       if (!phoneNumber.trim()) {
         setError(t("auth.phoneNumberRequired"));
         return;
@@ -98,6 +138,15 @@ export default function Register() {
       }
       if (!contactFirstName.trim() || !contactLastName.trim()) {
         setError(t("auth.contactNameRequired"));
+        return;
+      }
+      if (!contactDateOfBirth) {
+        setError(t("auth.dateOfBirthRequired"));
+        return;
+      }
+      const age = calculateAgeFromYmd(contactDateOfBirth);
+      if (age === null || age < 18) {
+        setError(t("auth.ageRestriction18"));
         return;
       }
       if (!contactPhoneNumber.trim()) {
@@ -180,6 +229,7 @@ export default function Register() {
           companyCategory: parseInt(companyCategory, 10),
           infoForStaff: infoForStaff.trim() || t("auth.infoForStaffDefault"),
         };
+        registerData.contactDateOfBirth = contactDateOfBirth;
         registerData.branch = {
           name: branchName.trim(),
           address: branchAddress.trim(),
@@ -288,10 +338,42 @@ export default function Register() {
             <input
               type="password"
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              onChange={(e) => {
+                const val = e.target.value;
+                setPassword(val);
+                setPasswordStrength(getPasswordStrength(val));
+              }}
               required
               minLength={6}
             />
+            <div className="mt-1">
+              <div className="h-1.5 w-full rounded-full bg-gray-200 overflow-hidden">
+                <div
+                  className={
+                    "h-full transition-all duration-200 " +
+                    (passwordStrength === 0
+                      ? "w-0"
+                      : passwordStrength === 1
+                        ? "w-1/4 bg-red-500"
+                        : passwordStrength === 2
+                          ? "w-1/2 bg-yellow-400"
+                          : passwordStrength === 3
+                            ? "w-3/4 bg-yellow-400"
+                            : "w-full bg-green-500")
+                  }
+                />
+              </div>
+              <div className="mt-1 text-xs text-gray-600">
+                {t("profile.passwordStrength")}{" "}
+                <span className="font-medium">
+                  {t(
+                    `profile.passwordStrength${
+                      ["None", "Weak", "Fair", "Good", "Strong"][passwordStrength]
+                    }`
+                  )}
+                </span>
+              </div>
+            </div>
           </label>
           <label>
             {t("auth.confirmPassword")}
@@ -398,6 +480,16 @@ export default function Register() {
                   />
                 </label>
               </div>
+              <DatePicker
+                name="contactDateOfBirth"
+                value={contactDateOfBirth}
+                onChange={setContactDateOfBirth}
+                label={t("auth.dateOfBirth")}
+                className="auth-date-wrap"
+                openUpward
+                disableFutureDates
+                disablePastDates={false}
+              />
               <label>
                 {t("auth.contactPhoneNumber")} <span className="text-red-500">*</span>
                 <input

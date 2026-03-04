@@ -6,7 +6,7 @@ import { jobsApi } from "../api/client";
 import JobsMapModal from "../components/JobsMapModal";
 import JobScheduleModal from "../components/JobScheduleModal";
 import CustomerProfileModal from "../components/CustomerProfileModal";
-import { MapPin, Clock, Users, Banknote, Calendar, Briefcase, Map, Search } from "lucide-react";
+import { MapPin, Clock, Users, Banknote, Calendar, Briefcase, Map, Search, TrendingUp } from "lucide-react";
 import { getBusinessTotal, roundMoney } from "../utils/salary";
 
 /** Minutes from "HH:mm". Returns NaN if invalid. */
@@ -48,7 +48,7 @@ function getCardDisplayTotal(row: JobRow, viewerIsStaff: boolean): number | null
 export default function DashboardJoburi() {
   const { t } = useTranslation();
   const { user } = useAuth();
-  const { jobsAdded, openPostJobModal, removeJob } = useContext(DashboardContext);
+  const { jobsAdded, openPostJobModal, removeJob, refreshJobs } = useContext(DashboardContext);
   const [showMapModal, setShowMapModal] = useState(false);
   const [scheduleJob, setScheduleJob] = useState<JobRow | null>(null);
   const [customerProfileModal, setCustomerProfileModal] = useState<{
@@ -118,6 +118,7 @@ export default function DashboardJoburi() {
   const [checkInOutLoading, setCheckInOutLoading] = useState<string | null>(null);
   const [checkInOutConfirm, setCheckInOutConfirm] = useState<{ type: "checkin" | "checkout"; time: string } | null>(null);
   const [checkInOutError, setCheckInOutError] = useState<string | null>(null);
+  const [promoteLoadingId, setPromoteLoadingId] = useState<string | null>(null);
   const [confirmCheckIn, setConfirmCheckIn] = useState<{ applicationId: string; workDate?: string; jobId?: string } | null>(null);
   const [confirmCheckOut, setConfirmCheckOut] = useState<{ applicationId: string; workDate?: string; jobId?: string } | null>(null);
   const optimisticStorageKey = `work2now_optimistic_sessions_${user?.id ?? ""}`;
@@ -1110,6 +1111,12 @@ export default function DashboardJoburi() {
                     </div>
                   </>
                 )}
+                {row.isPromoted && (
+                  <span className="absolute top-3 left-3 flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-gray-900/80 text-white backdrop-blur-sm">
+                    <TrendingUp className="w-3.5 h-3.5" />
+                    {t("dashboard.promovareBooster", "Promovare Booster")}
+                  </span>
+                )}
                 <span className="absolute top-3 right-3 px-3 py-1 rounded-full text-xs font-medium bg-white/25 text-white backdrop-blur-sm">
                   {getJobSlotBadge(row)}
                 </span>
@@ -1135,7 +1142,28 @@ export default function DashboardJoburi() {
 
               {/* Body: titlu + rânduri cu icoane */}
               <div className="p-4 sm:p-5 flex-1 flex flex-col min-h-0">
-                <h2 className="text-lg font-bold text-gray-900 mb-1 leading-tight">{row.job}</h2>
+                <div className="flex items-start justify-between gap-2 mb-1">
+                  <h2 className="text-lg font-bold text-gray-900 leading-tight flex-1 min-w-0">{row.job}</h2>
+                  {isCustomer && row.id && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (!row.id || promoteLoadingId) return;
+                        setPromoteLoadingId(row.id);
+                        jobsApi.setPromoted(row.id, !row.isPromoted)
+                          .then(() => refreshJobs())
+                          .catch(() => {})
+                          .finally(() => setPromoteLoadingId(null));
+                      }}
+                      disabled={!!promoteLoadingId}
+                      className={`shrink-0 flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-colors ${row.isPromoted ? "bg-primary text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}
+                    >
+                      <TrendingUp className="w-3.5 h-3.5" />
+                      {promoteLoadingId === row.id ? "..." : (row.isPromoted ? t("dashboard.promovareBoosterOn", "Booster ON") : t("dashboard.promovareBoosterOff", "Booster"))}
+                    </button>
+                  )}
+                </div>
                 <ul className="space-y-2.5 flex-1">
                   <li className="flex items-center gap-3 text-gray-600 text-sm">
                     <span className="flex-shrink-0 w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center">

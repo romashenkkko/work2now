@@ -1,4 +1,10 @@
-/** URL-ul API: setează VITE_API_URL în .env când accesezi de pe alt PC (ex. http://192.168.1.5:5600/api). */
+/**
+ * Baza URL pentru API.
+ *
+ * - Dacă VITE_API_URL este setat (production / hosting custom) → îl folosim ca absolut.
+ * - În rest → folosim mereu `/api` pe același host și port ca frontend-ul,
+ *   iar Vite sau serverul Node se ocupă de proxy/route.
+ */
 function getApiBase(): string {
   if (typeof window === "undefined") return "/api";
   const envUrl = import.meta.env.VITE_API_URL;
@@ -6,11 +12,8 @@ function getApiBase(): string {
     const base = envUrl.trim().replace(/\/+$/, "");
     return base.endsWith("/api") ? base : `${base}/api`;
   }
-  const host = window.location.hostname;
-  if (host === "localhost" || host === "127.0.0.1") return "/api";
-  // Use VITE_API_PORT from environment or default to 5600
-  const apiPort = import.meta.env.VITE_API_PORT || "5600";
-  return `http://${host}:${apiPort}/api`;
+  // Same-origin: frontend și backend pe același host:port (Vite proxy sau Node servește build-ul)
+  return "/api";
 }
 
 function getToken(): string | null {
@@ -36,6 +39,9 @@ export async function api<T>(path: string, options: RequestInit = {}): Promise<T
   }
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
+    if (res.status === 403 && (data as { code?: string }).code === "ACCOUNT_BLOCKED") {
+      window.dispatchEvent(new CustomEvent("account-blocked"));
+    }
     const serverDown =
       res.status === 500 || res.status === 502 || res.status === 503;
     const defaultMsg =
@@ -53,7 +59,7 @@ export async function api<T>(path: string, options: RequestInit = {}): Promise<T
 
 export const authApi = {
   login: (email: string, password: string) =>
-    api<{ token: string; user: { id: number; name: string; email: string; role?: string; avatar?: string } }>("/auth/login", {
+    api<{ token: string; user: { id: number; name: string; email: string; role?: string; avatar?: string; isActive?: boolean } }>("/auth/login", {
       method: "POST",
       body: JSON.stringify({ email, password }),
     }),
@@ -94,7 +100,7 @@ export const authApi = {
     };
   }) =>
     api<{ message: string }>("/auth/register", { method: "POST", body: JSON.stringify(body) }),
-  me: () => api<{ id: number; name: string; email: string; role: string; avatar?: string }>("/auth/me"),
+  me: () => api<{ id: number; name: string; email: string; role: string; avatar?: string; isActive?: boolean }>("/auth/me"),
   updateProfile: (data: { name?: string; avatar?: string | null }) =>
     api<{ id: number; name: string; email: string; role: string; avatar?: string }>("/auth/me", {
       method: "PATCH",
@@ -107,7 +113,13 @@ export const authApi = {
     }),
   /** Lista conturi (doar admin) */
   users: () =>
-    api<{ users: { id: number; name: string; email: string; role: string }[] }>("/auth/users"),
+    api<{ users: { id: number; name: string; email: string; role: string; isActive?: boolean; phone?: string }[] }>("/auth/users"),
+  /** Admin: blochează/deblochează cont (active = true deblochează, false blochează). Folosește POST cu userId în body. */
+  setUserStatus: (userId: string, active: boolean) =>
+    api<{ ok: boolean; active: boolean }>("/auth/users/set-status", {
+      method: "POST",
+      body: JSON.stringify({ userId: String(userId).trim(), active }),
+    }),
 };
 
 export type JobPayload = {
@@ -257,6 +269,12 @@ export const jobsApi = {
         ...(geo ? { lat: geo.lat, lng: geo.lng } : {}),
       }),
     }),
+  /** Customer/Admin: set job promoted (booster) on/off */
+  setPromoted: (jobId: string, promoted: boolean) =>
+    api<{ ok: boolean; promoted: boolean }>(`/jobs/${jobId}/promote`, {
+      method: "PATCH",
+      body: JSON.stringify({ promoted }),
+    }),
   /** Customer/Business: get general statistics (employees count, job categories distribution, branches distribution) */
   getStatistics: () =>
     api<{
@@ -264,6 +282,20 @@ export const jobsApi = {
       categoriesByJobCount: Array<{ code: number; title: string; count: number }>;
       branchesByJobCount: Array<{ branchId: string; branchName: string; count: number }>;
     }>("/jobs/statistics"),
+  /** Admin only: salary by domain/region, financial, company ranking */
+  getAdminStatistics: () =>
+    api<{
+      totalUsers: number;
+      activeUsers: number;
+      inactiveUsers: number;
+      totalJobs: number;
+      totalApplications: number;
+      salaryByDomain: Array<{ categoryCode: number; categoryTitle: string; avgHourly: number; minHourly: number; maxHourly: number; jobCount: number }>;
+      salaryByRegion: Array<{ region: string; avgHourly: number; jobCount: number }>;
+      salaryByDomainAndRegion: Array<{ region: string; categoryCode: number; categoryTitle: string; avgHourly: number; jobCount: number }>;
+      financial: { totalBase: number; taxesCollected: number; profit: number };
+      companyRanking: Array<{ rank: number; companyName: string; userId: string; acceptedCount: number }>;
+    }>("/jobs/admin/statistics"),
 };
 
 export type ReviewItem = {

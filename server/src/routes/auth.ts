@@ -9,6 +9,26 @@ import { sendOTP, verifyOTP } from "../twilio";
 const router = Router();
 const JWT_SECRET = process.env.JWT_SECRET || "default-secret-change-me";
 
+function calculateAgeFromIsoOrYmd(value: string | undefined | null): number | null {
+  if (!value) return null;
+  const [datePart] = String(value).split("T");
+  if (!datePart) return null;
+  const [yStr, mStr, dStr] = datePart.split("-");
+  const y = Number(yStr);
+  const m = Number(mStr);
+  const d = Number(dStr);
+  if (!y || !m || !d) return null;
+  const dob = new Date(y, m - 1, d);
+  if (isNaN(dob.getTime())) return null;
+  const today = new Date();
+  let age = today.getFullYear() - dob.getFullYear();
+  const monthDiff = today.getMonth() - dob.getMonth();
+  if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < dob.getDate())) {
+    age--;
+  }
+  return age;
+}
+
 /** Fallback în memorie când MySQL nu e disponibil (doar development) */
 type MemoryUser = { id: number; name: string; email: string; password_hash: string; role: string; avatar?: string | null };
 const memoryUsers: MemoryUser[] = [];
@@ -77,7 +97,25 @@ function useMemoryFallback(): boolean {
 
 router.post("/register", async (req: Request, res: Response): Promise<void> => {
   const body = req.body ?? {};
-  const { name = "", email = "", password = "", role = "user", employeeProfile, businessProfile, branch } = body;
+  const {
+    name = "",
+    email = "",
+    password = "",
+    role = "user",
+    employeeProfile,
+    businessProfile,
+    branch,
+    contactDateOfBirth,
+  } = body as {
+    name?: string;
+    email?: string;
+    password?: string;
+    role?: string;
+    employeeProfile?: { firstName?: string; lastName?: string; dateOfBirth?: string; aboutMe?: string; profilePictureFileId?: string | null };
+    businessProfile?: { companyName?: string; contactFirstName?: string; contactLastName?: string; companyCategory?: number; infoForStaff?: string };
+    branch?: { name?: string; address?: string; city?: string; country?: string; phoneNumber?: string };
+    contactDateOfBirth?: string;
+  };
   
   // For backward compatibility, use name if firstName/lastName not provided
   const nameTrim = String(name).trim();
@@ -118,6 +156,11 @@ router.post("/register", async (req: Request, res: Response): Promise<void> => {
       res.status(400).json({ error: "Data nașterii este obligatorie pentru staff." });
       return;
     }
+    const age = calculateAgeFromIsoOrYmd(employeeProfile.dateOfBirth);
+    if (age === null || age < 18) {
+      res.status(400).json({ error: "Trebuie să ai cel puțin 18 ani pentru a crea un cont de staff (18+)." });
+      return;
+    }
   }
   
   if (allowedRole === "customer") {
@@ -135,6 +178,15 @@ router.post("/register", async (req: Request, res: Response): Promise<void> => {
     }
     if (!branch || !branch.name?.trim() || !branch.address?.trim() || !branch.city?.trim() || !branch.phoneNumber?.trim()) {
       res.status(400).json({ error: "Toate câmpurile filialei sunt obligatorii." });
+      return;
+    }
+    const age = calculateAgeFromIsoOrYmd(contactDateOfBirth);
+    if (age === null) {
+      res.status(400).json({ error: "Data nașterii este obligatorie pentru customer." });
+      return;
+    }
+    if (age < 18) {
+      res.status(400).json({ error: "Trebuie să ai cel puțin 18 ani pentru a crea un cont de customer (18+)." });
       return;
     }
   }
@@ -240,14 +292,14 @@ router.post("/login", async (req: Request, res: Response): Promise<void> => {
   try {
     // Query new schema: join with profile tables to get name/avatar
     const [rows] = await db.query(
-      `SELECT u.Id, u.Email, u.PasswordHash, u.Role,
+      `SELECT u.Id, u.Email, u.PasswordHash, u.Role, COALESCE(u.IsActive, 1) AS IsActive,
               CASE
                 WHEN bp.UserId IS NOT NULL THEN COALESCE(bp.CompanyName, 'User')
                 WHEN ep.UserId IS NOT NULL THEN TRIM(CONCAT(COALESCE(ep.Name, ''), ' ', COALESCE(ep.Surname, '')))
                 ELSE 'User'
               END as name,
               COALESCE(ep.Surname, '') as surname,
-              COALESCE(ep.ProfilePictureFileId, NULL) as avatar,
+              COALESCE(u.Avatar, ep.ProfilePictureFileId, NULL) as avatar,
               CASE
                 WHEN u.Role = 3 THEN 'admin'
                 WHEN bp.UserId IS NOT NULL THEN 'customer'
@@ -260,15 +312,15 @@ router.post("/login", async (req: Request, res: Response): Promise<void> => {
        LEFT JOIN business_profiles bp ON u.Id = bp.UserId
        WHERE u.Email = ?`,
       [emailTrim]
-    ) as [{ Id: string; Email: string; PasswordHash: string; Role: number; name: string; surname: string; avatar?: string | null; resolved_role: string }[], unknown];
+    ) as [{ Id: string; Email: string; PasswordHash: string; Role: number; IsActive: number; name: string; surname: string; avatar?: string | null; resolved_role: string }[], unknown];
     const user = Array.isArray(rows) ? rows[0] : undefined;
     if (!user || !(await bcrypt.compare(String(passStr), user.PasswordHash))) {
       res.status(401).json({ error: "Email sau parola incorecta." });
       return;
     }
-    // Map Role INT to string for backward compatibility
+    const isActive = Number(user.IsActive) !== 0;
     const roleStr = String(user.resolved_role || "").trim() || "staff";
-    const fullName = user.name; // Already contains full name (company name for business, full name for employees)
+    const fullName = user.name;
     const token = jwt.sign(
       { userId: user.Id, email: emailTrim } as JwtPayload,
       JWT_SECRET,
@@ -281,7 +333,8 @@ router.post("/login", async (req: Request, res: Response): Promise<void> => {
         name: fullName, 
         email: emailTrim, 
         role: roleStr, 
-        avatar: user.avatar ?? undefined 
+        avatar: user.avatar ?? undefined,
+        isActive 
       } 
     });
   } catch (e) {
@@ -376,14 +429,14 @@ router.get("/me", authMiddleware, async (req: Request, res: Response): Promise<v
   try {
     // Query new schema: join with profile tables to get name/avatar
     const [rows] = await db.query(
-      `SELECT u.Id, u.Email, u.Role,
+      `SELECT u.Id, u.Email, u.Role, COALESCE(u.IsActive, 1) AS IsActive,
               CASE
                 WHEN bp.UserId IS NOT NULL THEN COALESCE(bp.CompanyName, 'User')
                 WHEN ep.UserId IS NOT NULL THEN TRIM(CONCAT(COALESCE(ep.Name, ''), ' ', COALESCE(ep.Surname, '')))
                 ELSE 'User'
               END as name,
               COALESCE(ep.Surname, '') as surname,
-              COALESCE(ep.ProfilePictureFileId, u.Avatar, NULL) as avatar,
+              COALESCE(u.Avatar, ep.ProfilePictureFileId, NULL) as avatar,
               CASE
                 WHEN u.Role = 3 THEN 'admin'
                 WHEN bp.UserId IS NOT NULL THEN 'customer'
@@ -396,18 +449,19 @@ router.get("/me", authMiddleware, async (req: Request, res: Response): Promise<v
        LEFT JOIN business_profiles bp ON u.Id = bp.UserId
        WHERE u.Id = ?`,
       [user.userId]
-    ) as [{ Id: string; Email: string; Role: number; name: string; surname: string; avatar?: string | null; resolved_role: string }[], unknown];
+    ) as [{ Id: string; Email: string; Role: number; IsActive: number; name: string; surname: string; avatar?: string | null; resolved_role: string }[], unknown];
     const u = Array.isArray(rows) ? rows[0] : undefined;
     if (u) {
       const roleStr = String(u.resolved_role || "").trim() || "staff";
-      const fullName = u.name; // Already contains full name (company name for business, full name for employees)
-      res.json({ id: u.Id, name: fullName, email: u.Email, role: roleStr, avatar: u.avatar ?? undefined });
+      const fullName = u.name;
+      const isActive = Number(u.IsActive) !== 0;
+      res.json({ id: u.Id, name: fullName, email: u.Email, role: roleStr, avatar: u.avatar ?? undefined, isActive });
       return;
     }
     const mem = memoryUsers.find((m) => String(m.id) === user.userId);
     if (mem) {
       const role = typeof mem.role === "string" ? mem.role.toLowerCase().trim() : (mem.role ?? "user");
-      res.json({ id: String(mem.id), name: mem.name, email: mem.email, role, avatar: mem.avatar });
+      res.json({ id: String(mem.id), name: mem.name, email: mem.email, role, avatar: mem.avatar, isActive: true });
       return;
     }
     res.status(404).json({ error: "Utilizator negasit." });
@@ -416,7 +470,7 @@ router.get("/me", authMiddleware, async (req: Request, res: Response): Promise<v
       const mem = memoryUsers.find((m) => String(m.id) === user.userId);
       if (mem) {
         const role = typeof mem.role === "string" ? mem.role.toLowerCase().trim() : (mem.role ?? "user");
-        res.json({ id: String(mem.id), name: mem.name, email: mem.email, role, avatar: mem.avatar });
+        res.json({ id: String(mem.id), name: mem.name, email: mem.email, role, avatar: mem.avatar, isActive: true });
         return;
       }
     }
@@ -480,9 +534,11 @@ router.patch("/me", authMiddleware, async (req: Request, res: Response): Promise
         
         if (avatar !== undefined) {
           if (userRole === UserRole.Employee) {
+            await conn.query("UPDATE users SET Avatar = ? WHERE Id = ?", [avatar, user.userId]);
+            const shortAvatar = typeof avatar === "string" && avatar.length <= 36 ? avatar : null;
             await conn.query(
               "UPDATE employee_profiles SET ProfilePictureFileId = ? WHERE UserId = ?",
-              [avatar, user.userId]
+              [shortAvatar, user.userId]
             );
           } else if (userRole === UserRole.Business) {
             await conn.query("UPDATE users SET Avatar = ? WHERE Id = ?", [avatar, user.userId]);
@@ -501,7 +557,7 @@ router.patch("/me", authMiddleware, async (req: Request, res: Response): Promise
                   ELSE 'User'
                 END as name,
                 COALESCE(ep.Surname, '') as surname,
-                COALESCE(ep.ProfilePictureFileId, u.Avatar, NULL) as avatar,
+                COALESCE(u.Avatar, ep.ProfilePictureFileId, NULL) as avatar,
                 CASE
                   WHEN u.Role = 3 THEN 'admin'
                   WHEN bp.UserId IS NOT NULL THEN 'customer'
@@ -569,7 +625,11 @@ router.get("/users", authMiddleware, async (req: Request, res: Response): Promis
   try {
     // Query all users with profile data
     const [allRows] = await db.query(
-      `SELECT u.Id as id, u.Email as email, u.Role,
+      `SELECT u.Id as id, u.Email as email, u.Role, COALESCE(u.IsActive, 1) AS IsActive,
+              COALESCE(
+                (SELECT b.PhoneNumber FROM branches b INNER JOIN business_profiles bp ON bp.Id = b.BusinessProfileId AND bp.UserId = u.Id LIMIT 1),
+                ''
+              ) AS phone,
               CASE
                 WHEN bp.UserId IS NOT NULL THEN COALESCE(bp.CompanyName, 'User')
                 WHEN ep.UserId IS NOT NULL THEN TRIM(CONCAT(COALESCE(ep.Name, ''), ' ', COALESCE(ep.Surname, '')))
@@ -587,12 +647,13 @@ router.get("/users", authMiddleware, async (req: Request, res: Response): Promis
        LEFT JOIN employee_profiles ep ON u.Id = ep.UserId
        LEFT JOIN business_profiles bp ON u.Id = bp.UserId
        ORDER BY u.CreatedAt`
-    ) as [{ id: string; email: string; Role: number; name: string; surname: string; resolved_role: string }[], unknown];
+    ) as [{ id?: string; Id?: string; email: string; Role: number; IsActive: number; phone?: string; name: string; surname: string; resolved_role: string }[], unknown];
     if (Array.isArray(allRows)) {
       const users = allRows.map((u) => {
         const roleStr = String(u.resolved_role || "").trim() || "staff";
-        const fullName = u.name; // Already contains full name (company name for business, full name for employees)
-        return { id: u.id, name: fullName, email: u.email, role: roleStr };
+        const fullName = u.name;
+        const userId = (u as { id?: string; Id?: string }).id ?? (u as { id?: string; Id?: string }).Id;
+        return { id: userId, name: fullName, email: u.email, role: roleStr, isActive: Number(u.IsActive) !== 0, phone: String(u.phone ?? "").trim() || undefined };
       });
       res.json({ users });
       return;
@@ -601,8 +662,49 @@ router.get("/users", authMiddleware, async (req: Request, res: Response): Promis
     /* DB indisponibil */
   }
   res.json({
-    users: memoryUsers.map((u) => ({ id: u.id, name: u.name, email: u.email, role: u.role })),
+    users: memoryUsers.map((u) => ({ id: u.id, name: u.name, email: u.email, role: u.role, isActive: true, phone: undefined })),
   });
+});
+
+/** POST /api/auth/users/set-status - admin: blochează/deblochează cont (IsActive). userId în body, evită 404 pe PATCH cu :id în path. */
+router.post("/users/set-status", authMiddleware, async (req: Request, res: Response): Promise<void> => {
+  const { user } = req as Request & { user: JwtPayload };
+  const targetId = String(req.body?.userId ?? req.body?.id ?? "").trim();
+  const active = req.body?.active === true;
+  if (!targetId) {
+    res.status(400).json({ error: "ID utilizator lipsă. Trimite userId în body." });
+    return;
+  }
+  let isAdmin = false;
+  try {
+    const [rows] = await db.query("SELECT Role FROM users WHERE Id = ?", [user.userId]) as [{ Role: number }[], unknown];
+    const current = Array.isArray(rows) ? rows[0] : undefined;
+    if (current?.Role === UserRole.Admin) isAdmin = true;
+  } catch (_) {}
+  if (!isAdmin) {
+    const mem = memoryUsers.find((m) => String(m.id) === user.userId);
+    if (mem?.role === "admin") isAdmin = true;
+  }
+  if (!isAdmin) {
+    res.status(403).json({ error: "Doar administratorii pot bloca/debloca conturi." });
+    return;
+  }
+  if (targetId === user.userId) {
+    res.status(400).json({ error: "Nu vă puteți bloca contul propriu." });
+    return;
+  }
+  try {
+    const [existing] = await db.query("SELECT Id FROM users WHERE Id = ?", [targetId]) as [{ Id: string }[], unknown];
+    if (!Array.isArray(existing) || !existing[0]) {
+      res.status(404).json({ error: "Utilizator negăsit." });
+      return;
+    }
+    await db.query("UPDATE users SET IsActive = ? WHERE Id = ?", [active ? 1 : 0, targetId]);
+    res.json({ ok: true, active });
+  } catch (e) {
+    console.error("POST /auth/users/set-status error:", e);
+    if (!res.headersSent) res.status(500).json({ error: "Eroare la actualizarea statusului." });
+  }
 });
 
 /** POST /api/auth/send-otp - Send OTP to phone number */

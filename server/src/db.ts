@@ -300,6 +300,14 @@ export async function initDatabase(): Promise<void> {
     `);
     await ensureInnoDB(conn, "users");
     await ensureColumn(conn, "users", "Avatar", "VARCHAR(500) NULL");
+    await ensureColumn(conn, "users", "IsActive", "TINYINT(1) NOT NULL DEFAULT 1");
+    await ensureColumn(conn, "users", "LastActiveAt", "DATETIME NULL");
+    await ensureColumn(conn, "users", "PhoneNumber", "VARCHAR(50) NULL");
+    try {
+      await conn.query("ALTER TABLE `users` MODIFY COLUMN `Avatar` MEDIUMTEXT NULL");
+    } catch (_) {
+      /* Ignore if already MEDIUMTEXT or DB doesn't support */
+    }
 
     await conn.query(`
       CREATE TABLE IF NOT EXISTS \`employee_profiles\` (
@@ -450,6 +458,7 @@ export async function initDatabase(): Promise<void> {
     // NEW columns for salary/category logic (idempotent)
     await ensureColumn(conn, "jobs", "job_category_code", "INT NULL");
     await ensureColumn(conn, "jobs", "hourly_rate_base", "DECIMAL(10,2) NULL");
+    await ensureColumn(conn, "jobs", "is_promoted", "TINYINT(1) NOT NULL DEFAULT 0");
     
     // Migration: Add Title column (max 30 chars) and migrate data from job column
     await ensureColumn(conn, "jobs", "Title", "VARCHAR(30) NULL");

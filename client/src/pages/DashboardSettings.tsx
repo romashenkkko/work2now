@@ -1,4 +1,4 @@
-import { useState, useContext } from "react";
+import { useState, useContext, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { Lock, Eye, EyeOff, MapPin, Briefcase } from "lucide-react";
 import StarRating from "../components/StarRating";
@@ -601,6 +601,11 @@ function ProfileInfoSection({
   const [avatar, setAvatar] = useState<string | null>(user?.avatar ?? null);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+
+  // Sincronizează avatarul din context când user se actualizează (ex. după login/refresh)
+  useEffect(() => {
+    if (user?.avatar != null) setAvatar(user.avatar);
+  }, [user?.avatar]);
 
   const currentAvatar = avatar || avatarOptions[0];
 

@@ -13,7 +13,7 @@ const RATING_ICON = (
   </svg>
 );
 
-type JobItem = { id: string; job: string; location: string; jobType?: string };
+type JobItem = { id: string; job: string; location: string; jobType?: string; isPromoted?: boolean };
 
 export default function DashboardHomeStaff() {
   const { t } = useTranslation();
@@ -52,6 +52,7 @@ export default function DashboardHomeStaff() {
             job: String((j as any).job ?? ""),
             location: String((j as any).location ?? ""),
             jobType: (j as any).jobType != null ? String((j as any).jobType) : undefined,
+            isPromoted: !!(j as any).isPromoted,
           }));
         setRecommendedJobs(list);
         setApplicationsByJob(appRes.byJob ?? {});
@@ -433,7 +434,6 @@ export default function DashboardHomeStaff() {
             <div className="min-w-0 flex-1">
               <h3 className="text-xs sm:text-sm font-medium text-gray-500 mb-1 truncate">{t("dashboard.statsMyApplications")}</h3>
               <p className="text-xl sm:text-2xl font-bold text-gray-900">{pendingCount}</p>
-              <span className="text-xs sm:text-sm text-gray-500 truncate block">{t("dashboard.statsMyApplicationsMeta")}</span>
             </div>
           </article>
           <article className="p-4 sm:p-6 rounded-xl sm:rounded-2xl bg-white border border-gray-200 shadow-sm flex items-start gap-3 sm:gap-4">
@@ -443,7 +443,6 @@ export default function DashboardHomeStaff() {
             <div className="min-w-0 flex-1">
               <h3 className="text-xs sm:text-sm font-medium text-gray-500 mb-1 truncate">{t("dashboard.statsAcceptedJobs") || "Joburi acceptate"}</h3>
               <p className="text-xl sm:text-2xl font-bold text-gray-900">{acceptedJobsCount}</p>
-              <span className="text-xs sm:text-sm text-gray-500 truncate block">{t("dashboard.statsAcceptedJobsMeta") || "joburi active"}</span>
             </div>
           </article>
           <article className="p-4 sm:p-6 rounded-xl sm:rounded-2xl bg-white border border-gray-200 shadow-sm flex items-start gap-3 sm:gap-4">
@@ -452,9 +451,6 @@ export default function DashboardHomeStaff() {
             </div>
             <div className="min-w-0 flex-1">
               <h3 className="text-xs sm:text-sm font-medium text-gray-500 mb-1 truncate">{t("dashboard.statsMyRating")}</h3>
-              <p className="text-xl sm:text-2xl font-bold text-gray-900">
-                {userRating && userRating.count > 0 ? Number(userRating.average).toFixed(1) : "—"}
-              </p>
               <div className="flex items-center gap-1.5 mt-2">
                 <StarRating value={userRating?.average ?? 0} size={18} />
                 {userRating && userRating.count > 0 && (
@@ -643,7 +639,14 @@ export default function DashboardHomeStaff() {
                       className="p-3 sm:p-4 flex items-center justify-between gap-3 hover:bg-gray-50/50"
                     >
                       <div className="min-w-0">
-                        <p className="font-semibold text-gray-900 text-sm sm:text-base truncate">{j.job}</p>
+                        <p className="font-semibold text-gray-900 text-sm sm:text-base truncate flex items-center gap-2">
+                          {j.job}
+                          {j.isPromoted && (
+                            <span className="shrink-0 px-1.5 py-0.5 rounded text-xs font-medium bg-gray-800 text-white">
+                              {t("dashboard.promovareBoosterShort", "Booster")}
+                            </span>
+                          )}
+                        </p>
                         <span className="text-xs sm:text-sm text-gray-500">
                           {j.location}{j.jobType ? ` · ${j.jobType}` : ""}
                         </span>

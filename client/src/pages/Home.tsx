@@ -107,33 +107,46 @@ export default function Home() {
         />
         <div className="hero-section__fade absolute left-0 right-0 bottom-0 h-16 md:h-20 z-[1] pointer-events-none bg-gradient-to-b from-transparent via-white/40 to-[#f3efff]/90" />
 
-        <div className="container relative z-[2] mx-auto px-4 py-20 md:py-28 max-w-[1100px]">
-          <div className="grid md:grid-cols-[1.1fr_1fr] gap-12 md:gap-20 items-center">
-            <div className="hero-content">
-              <p className="hero-eyebrow animate-fade-in-up opacity-100" style={{ animationDelay: "0.1s", animationFillMode: "forwards" }}>
+        <div className="container relative z-[2] mx-auto px-4 sm:px-5 py-10 sm:py-14 md:py-28 max-w-[1100px]">
+          <div className="grid grid-cols-1 md:grid-cols-[1.1fr_1fr] gap-8 sm:gap-10 md:gap-20 items-center">
+            <div className="hero-content order-1 text-center md:text-left">
+              <p className="hero-eyebrow animate-fade-in-up opacity-100 mx-auto md:mx-0" style={{ animationDelay: "0.1s", animationFillMode: "forwards" }}>
                 {t("hero.eyebrow")}
               </p>
               <h1 className="hero-title animate-fade-in-up opacity-100" style={{ animationDelay: "0.2s", animationFillMode: "forwards" }}>
-                {t("hero.title")}
+                {(() => {
+                  const title = t("hero.title");
+                  const parts = title.split("2");
+                  if (parts.length === 2) {
+                    return (
+                      <>
+                        {parts[0]}
+                        <span className="hero-title__two">2</span>
+                        {parts[1]}
+                      </>
+                    );
+                  }
+                  return title;
+                })()}
               </h1>
-              <p className="hero-lead animate-fade-in-up opacity-100" style={{ animationDelay: "0.35s", animationFillMode: "forwards" }}>
+              <p className="hero-lead animate-fade-in-up opacity-100 mx-auto md:mx-0" style={{ animationDelay: "0.35s", animationFillMode: "forwards" }}>
                 {t("hero.lead")}
               </p>
-              <div className="hero-actions animate-fade-in-up opacity-100" style={{ animationDelay: "0.5s", animationFillMode: "forwards" }}>
-                <Link to="/about" className="hero-btn hero-btn--primary">
+              <div className="hero-actions animate-fade-in-up opacity-100 flex flex-col sm:flex-row flex-wrap justify-center md:justify-start gap-3 sm:gap-3" style={{ animationDelay: "0.5s", animationFillMode: "forwards" }}>
+                <Link to="/about" className="hero-btn hero-btn--primary w-full sm:w-auto min-w-0">
                   {t("hero.details")}
                 </Link>
-                <Link to="/how-it-works" className="hero-btn hero-btn--secondary">
+                <Link to="/how-it-works" className="hero-btn hero-btn--secondary w-full sm:w-auto min-w-0">
                   {t("hero.howItWorks")}
                 </Link>
               </div>
             </div>
-            <div className="relative min-h-[320px] md:min-h-[420px] flex items-center justify-center">
-              <div className="relative flex justify-center items-center w-full">
+            <div className="relative min-h-[200px] sm:min-h-[280px] md:min-h-[420px] flex items-center justify-center order-2">
+              <div className="relative flex justify-center items-center w-full max-w-[280px] sm:max-w-[340px] md:max-w-none mx-auto">
                 <img
                   src="/Illustration/White human coffe.png"
                   alt="Work2Now"
-                  className="relative z-[1] w-full max-w-[380px] object-contain drop-shadow-[0_20px_40px_rgba(122,99,241,0.15)] hover:-translate-y-1 hover:scale-[1.02] transition-transform duration-300"
+                  className="relative z-[1] w-full max-w-[380px] object-contain object-bottom drop-shadow-[0_20px_40px_rgba(122,99,241,0.15)] hover:-translate-y-1 hover:scale-[1.02] transition-transform duration-300"
                 />
               </div>
             </div>
@@ -142,71 +155,96 @@ export default function Home() {
       </section>
 
       {/* Stats – Work2Now în cifre cu ilustrații */}
-      <section ref={statsInView.ref} className="stats-section py-20 md:py-24">
+      <section ref={statsInView.ref} className="stats-section py-12 sm:py-16 md:py-24">
         <div className="container mx-auto px-4 max-w-[1100px]">
           <h2
-            className={`stats-section__title text-center text-[#1e1c2f] mb-14 md:mb-16 ${statsInView.inView ? "animate-fade-up" : "opacity-0 translate-y-5"}`}
+            className={`stats-section__title text-center text-[#1e1c2f] mb-8 sm:mb-10 md:mb-16 ${statsInView.inView ? "animate-fade-up" : "opacity-0 translate-y-5"}`}
             style={statsInView.inView ? { animationDelay: "0s", animationFillMode: "both" } : undefined}
           >
             {t("stats.title")}
           </h2>
-          <div className="flex flex-col sm:flex-row flex-wrap justify-center items-stretch gap-12 md:gap-16 sm:gap-8">
+          <div className="stats-grid grid grid-cols-1 sm:grid-cols-3 gap-x-6 gap-y-8 sm:gap-x-8 sm:gap-y-6 md:gap-x-12 md:gap-y-8 lg:gap-16 justify-items-center items-center max-w-2xl sm:max-w-none mx-auto">
             {[
               { value: "500+", labelKey: "jobs", illustration: "jobs" },
               { value: "2.000+", labelKey: "workers", illustration: "workers" },
               { value: "150+", labelKey: "companies", illustration: "companies" },
             ].map((stat, i) => (
               <div
-                key={stat.labelKey}
-                className={`stats-item text-center flex-1 min-w-[140px] max-w-[220px] sm:max-w-none ${statsInView.inView ? "animate-fade-up" : "opacity-0 translate-y-5"}`}
+                key={`illus-${stat.labelKey}`}
+                className={`stats-item__illus w-full flex justify-center items-center ${i === 0 ? "order-1" : i === 1 ? "order-4" : "order-7"} sm:order-none ${stat.labelKey === "companies" ? "stats-item__illus--companies" : ""} ${statsInView.inView ? "animate-fade-up" : "opacity-0 translate-y-5"}`}
                 style={statsInView.inView ? { animationDelay: `${0.05 + i * 0.1}s`, animationFillMode: "both" } : undefined}
               >
-                <div className="stats-item__illus">
-                  {stat.illustration === "jobs" && <StatsIllusJobs />}
-                  {stat.illustration === "workers" && <StatsIllusWorkers />}
-                </div>
-                <p className="stats-item__value">{stat.value}</p>
-                <p className="stats-item__label">{t(`stats.${stat.labelKey}`)}</p>
+                {stat.illustration === "jobs" && <StatsIllusJobs />}
+                {stat.illustration === "workers" && <StatsIllusWorkers />}
+                {stat.illustration === "companies" && (
+                  <img src="/Illustration/Hands.png" alt="" className="stats-illus stats-illus--pretty object-contain" aria-hidden />
+                )}
               </div>
+            ))}
+            {[
+              { value: "500+", labelKey: "jobs" },
+              { value: "2.000+", labelKey: "workers" },
+              { value: "150+", labelKey: "companies" },
+            ].map((stat, i) => (
+              <p
+                key={`value-${stat.labelKey}`}
+                className={`stats-item__value w-full text-center ${i === 0 ? "order-2" : i === 1 ? "order-5" : "order-8"} sm:order-none ${statsInView.inView ? "animate-fade-up" : "opacity-0 translate-y-5"}`}
+                style={statsInView.inView ? { animationDelay: `${0.1 + i * 0.1}s`, animationFillMode: "both" } : undefined}
+              >
+                {stat.value}
+              </p>
+            ))}
+            {[
+              { labelKey: "jobs" },
+              { labelKey: "workers" },
+              { labelKey: "companies" },
+            ].map((stat, i) => (
+              <p
+                key={`label-${stat.labelKey}`}
+                className={`stats-item__label w-full text-center ${i === 0 ? "order-3" : i === 1 ? "order-6" : "order-9"} sm:order-none ${statsInView.inView ? "animate-fade-up" : "opacity-0 translate-y-5"}`}
+                style={statsInView.inView ? { animationDelay: `${0.15 + i * 0.1}s`, animationFillMode: "both" } : undefined}
+              >
+                {t(`stats.${stat.labelKey}`)}
+              </p>
             ))}
           </div>
         </div>
       </section>
 
-      {/* Features – PHP style: 2x2 grid, first card violet (feature-primary) */}
-      <section ref={featuresInView.ref} className="py-24 bg-transparent">
-        <div className="container mx-auto px-4 max-w-[1100px]">
+      {/* Features – De ce Work2Now? – 2x2 grid, responsive */}
+      <section ref={featuresInView.ref} className="py-12 sm:py-16 md:py-24 bg-transparent">
+        <div className="container mx-auto px-4 sm:px-5 max-w-[1100px]">
           <h2
-            className={`text-3xl md:text-4xl font-extrabold text-[#1e1c2f] mb-6 ${featuresInView.inView ? "animate-fade-up" : "opacity-0 translate-y-5"}`}
+            className={`text-center text-2xl sm:text-3xl md:text-4xl font-extrabold text-[#1e1c2f] mb-4 sm:mb-6 ${featuresInView.inView ? "animate-fade-up" : "opacity-0 translate-y-5"}`}
             style={featuresInView.inView ? { animationFillMode: "both" } : undefined}
           >
             {t("features.title")}
           </h2>
           <p
-            className={`text-center text-[#4d5874] text-lg mb-12 max-w-2xl mx-auto ${featuresInView.inView ? "animate-fade-up" : "opacity-0 translate-y-5"}`}
+            className={`text-center text-[#4d5874] text-base sm:text-lg mb-8 sm:mb-12 max-w-2xl mx-auto px-1 ${featuresInView.inView ? "animate-fade-up" : "opacity-0 translate-y-5"}`}
             style={featuresInView.inView ? { animationDelay: "0.08s", animationFillMode: "both" } : undefined}
           >
             {t("features.subtitle")}
           </p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-7 max-w-[1000px] mx-auto">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 sm:gap-7 max-w-[1000px] mx-auto">
             {features.map((f, i) => (
               <div
                 key={f.key}
-                className={`rounded-[28px] p-8 md:p-10 border-2 border-[rgba(224,216,247,0.6)] backdrop-blur-xl text-left flex flex-col ${f.primary
+                className={`rounded-2xl sm:rounded-[28px] p-6 sm:p-8 md:p-10 border-2 border-[rgba(224,216,247,0.6)] backdrop-blur-xl text-left flex flex-col ${f.primary
                   ? "bg-gradient-to-br from-[#7a63f1] to-[#9d7bff] text-white shadow-[0_20px_40px_rgba(75,60,120,0.12)]"
                   : "card-soft"
                 } ${featuresInView.inView ? "animate-fade-up" : "opacity-0 translate-y-5"}`}
                 style={featuresInView.inView ? { animationDelay: `${0.12 + i * 0.1}s`, animationFillMode: "both" } : undefined}
               >
-                <div className="w-20 h-20 flex items-center justify-center mb-6">
+                <div className="w-16 h-16 sm:w-20 sm:h-20 flex items-center justify-center mb-4 sm:mb-6">
                   {f.icon === "img" && f.img ? (
                     <img src={f.img} alt="" className="w-full h-full object-contain brightness-110" />
                   ) : (
-                    <span className="text-4xl drop-shadow-md">{f.icon}</span>
+                    <span className="text-3xl sm:text-4xl drop-shadow-md">{f.icon}</span>
                   )}
                 </div>
-                <h3 className={`font-bold text-lg mb-3 ${f.primary ? "text-white" : "text-[#1e1c2f]"}`}>{t(`features.${f.key}`)}</h3>
-                <p className={f.primary ? "text-white/95 text-base leading-relaxed" : "text-[#6b748a] text-base leading-relaxed"}>{t(`features.${f.desc}`)}</p>
+                <h3 className={`font-bold text-base sm:text-lg mb-2 sm:mb-3 ${f.primary ? "text-white" : "text-[#1e1c2f]"}`}>{t(`features.${f.key}`)}</h3>
+                <p className={`${f.primary ? "text-white/95" : "text-[#6b748a]"} text-sm sm:text-base leading-relaxed`}>{t(`features.${f.desc}`)}</p>
               </div>
             ))}
           </div>
