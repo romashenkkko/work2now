@@ -64,6 +64,7 @@ const pool = mysql.createPool({
   user: DB_USER,
   password: DB_PASSWORD,
   database: DB_NAME,
+  port: DB_PORT ? Number(DB_PORT) : 3306,
   waitForConnections: true,
   connectionLimit: 10,
   queueLimit: 0,
@@ -247,13 +248,16 @@ export async function initDatabase(): Promise<void> {
   let conn: mysql.Connection | null = null;
 
   try {
+    const port = DB_PORT ? Number(DB_PORT) : 3306;
+    console.log(`[DB] Attempting connection to ${DB_HOST}:${port} as ${DB_USER} (database: ${DB_NAME})`);
+    
     conn = await mysql.createConnection({
       host: DB_HOST,
       user: DB_USER,
       password: DB_PASSWORD,
       charset: "utf8mb4",
       multipleStatements: false,
-      port: DB_PORT ? Number(DB_PORT) : undefined,
+      port: port,
     });
 
     // Ensure DB exists and use it

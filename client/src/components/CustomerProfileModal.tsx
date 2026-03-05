@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
-import { Star, Mail, User, MessageSquare, X } from "lucide-react";
+import { Mail, User, MessageSquare, X } from "lucide-react";
 import StarRating from "./StarRating";
 import { ratingsApi, type ReviewItem } from "../api/client";
 
