@@ -1,11 +1,19 @@
 import { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
-import { Mail, User, MessageSquare, X } from "lucide-react";
+import { Mail, User, MessageSquare, X, Calendar } from "lucide-react";
 import StarRating from "./StarRating";
 import { ratingsApi, type ReviewItem } from "../api/client";
 
 const DEFAULT_AVATAR = "/Illustration/AvatarWhiteGuy.png";
+
+function avatarSrc(url: string | undefined): string | undefined {
+  if (!url || !url.trim()) return undefined;
+  const s = url.trim();
+  if (s.startsWith("data:") || s.startsWith("http://") || s.startsWith("https://")) return s;
+  if (s.startsWith("/")) return typeof window !== "undefined" ? `${window.location.origin}${s}` : s;
+  return s;
+}
 
 export type CustomerProfileModalProps = {
   open: boolean;
@@ -183,15 +191,50 @@ export default function CustomerProfileModal({
                       className="review-card-anim bg-white rounded-2xl p-4 sm:p-5 shadow-[0_1px_3px_rgba(0,0,0,0.06)] border border-gray-100"
                       style={{ animationDelay: `${i * 60}ms` }}
                     >
-                      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                        <StarRating value={r.score} size={18} />
-                        {r.otherPartyName && <span className="text-sm font-semibold text-[#333]">— {r.otherPartyName}</span>}
-                        {r.jobTitle && <span className="text-sm text-gray-500">{r.jobTitle}</span>}
+                      <div className="flex items-start gap-3">
+                        <div className="flex-shrink-0 w-10 h-10 rounded-full bg-primary/10 border-2 border-primary/20 flex items-center justify-center overflow-hidden">
+                          {avatarSrc(r.otherPartyAvatar) ? (
+                            <img
+                              src={avatarSrc(r.otherPartyAvatar)!}
+                              alt=""
+                              className="w-full h-full object-cover"
+                              onError={(e) => {
+                                e.currentTarget.style.display = "none";
+                                e.currentTarget.nextElementSibling?.classList.remove("hidden");
+                              }}
+                            />
+                          ) : null}
+                          <span className={`text-primary font-semibold text-sm ${avatarSrc(r.otherPartyAvatar) ? "hidden" : ""}`}>
+                            {(r.otherPartyName || "?").charAt(0).toUpperCase()}
+                          </span>
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                            <StarRating value={r.score} size={18} />
+                            {r.otherPartyRole && (
+                              <span className="text-xs font-medium text-primary px-2 py-0.5 rounded-full bg-primary/15 border border-primary/25">
+                                {r.otherPartyRole === "staff" ? t("dashboard.roleStaff") : r.otherPartyRole === "admin" ? t("dashboard.roleAdmin") : t("dashboard.roleCustomer")}
+                              </span>
+                            )}
+                          </div>
+                          {r.otherPartyName && (
+                            <p className="text-sm font-medium text-gray-800 mt-1">
+                              {t("dashboard.reviewBy", "Recenzie de la")}: <span className="font-semibold text-[#333]">{r.otherPartyName}</span>
+                              {r.jobTitle && <span className="text-gray-500 font-normal"> — {r.jobTitle}</span>}
+                            </p>
+                          )}
+                          {r.createdAt && (
+                            <p className="text-xs text-gray-500 flex items-center gap-1 mt-1">
+                              <Calendar className="w-3.5 h-3.5 shrink-0" />
+                              {new Date(r.createdAt).toLocaleString("ro-RO", { dateStyle: "medium", timeStyle: "short" })}
+                            </p>
+                          )}
+                        </div>
                       </div>
                       {r.comment && (
-                        <p className="text-sm text-gray-700 flex items-start gap-1 mt-2">
-                          <MessageSquare className="w-4 h-4 shrink-0 mt-0.5" />
-                          {r.comment}
+                        <p className="text-sm text-gray-700 flex items-start gap-1.5 mt-2">
+                          <MessageSquare className="w-4 h-4 shrink-0 mt-0.5 text-primary/70" />
+                          <span>{r.comment}</span>
                         </p>
                       )}
                     </li>

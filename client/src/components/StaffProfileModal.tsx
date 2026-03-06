@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
-import { Star, Mail, User, MessageSquare, X, LayoutGrid } from "lucide-react";
+import { Star, Mail, User, MessageSquare, X, LayoutGrid, Calendar } from "lucide-react";
 import StarRating from "./StarRating";
 import { ratingsApi, experiencesApi, type ReviewItem, type Experience } from "../api/client";
 import { JobTitleIcon, JOB_TITLE_OPTIONS } from "../pages/DashboardLayout";
@@ -503,6 +503,12 @@ export default function StaffProfileModal({
                           {r.otherPartyName && (
                             <p className="text-sm font-medium text-gray-800 mt-1">
                               {t("dashboard.reviewBy", "Recenzie de la")}: <span className="font-semibold text-[#333]">{r.otherPartyName}</span>
+                            </p>
+                          )}
+                          {r.createdAt && (
+                            <p className="text-xs text-gray-500 flex items-center gap-1 mt-1">
+                              <Calendar className="w-3.5 h-3.5 shrink-0" />
+                              {new Date(r.createdAt).toLocaleString("ro-RO", { dateStyle: "medium", timeStyle: "short" })}
                             </p>
                           )}
                         </div>
