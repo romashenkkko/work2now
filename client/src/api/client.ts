@@ -246,7 +246,7 @@ export const jobsApi = {
       ratingScore?: number;
     }> }>("/jobs/my-applications/list"),
   applications: () =>
-    api<{ applications: Record<string, { id: string; jobId: string; staffId: string; staffName: string; staffEmail?: string; status: string; checkedInAt?: string; checkedOutAt?: string; workSessions?: { workDate: string; checkedInAt?: string; checkedOutAt?: string }[] }[]> }>("/jobs/applications"),
+    api<{ applications: Record<string, { id: string; jobId: string; staffId: string; staffName: string; staffEmail?: string; staffAvatar?: string; status: string; checkedInAt?: string; checkedOutAt?: string; businessConfirmedAt?: string; isBusinessConfirmed?: boolean; workSessions?: { workDate: string; checkedInAt?: string; checkedOutAt?: string }[]; ratingScore?: number }[]> }>("/jobs/applications"),
   setApplicationStatus: (applicationId: string, status: "accepted" | "refused") =>
     api<{ ok: boolean }>(`/jobs/applications/${applicationId}`, {
       method: "PATCH",

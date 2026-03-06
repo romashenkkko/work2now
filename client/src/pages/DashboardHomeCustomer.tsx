@@ -1,11 +1,12 @@
-import { useState, useContext, useMemo, useEffect, useRef, useCallback } from "react";
+import { useState, useContext, useMemo, useEffect, useCallback } from "react";
+import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "../hooks/useAuth";
-import { DashboardContext } from "./DashboardLayout";
+import { DashboardContext, type JobRow } from "./DashboardLayout";
 import { jobsApi } from "../api/client";
 import StarRating from "../components/StarRating";
+import { getBusinessTotal, roundMoney, BUSINESS_TAX_RATE, BUSINESS_MAINTENANCE_RATE } from "../utils/salary";
 
-type ReportPeriod = "week" | "month" | "year";
 
 function PieChart({ data, t }: { data: Array<{ code: number | string; title: string; count: number }>; t: (key: string) => string }) {
   const total = data.reduce((sum, d) => sum + d.count, 0);
@@ -81,45 +82,7 @@ function hoursBetween(start: string, end: string): number {
   return Math.max(0, (b - a) / (1000 * 60 * 60));
 }
 
-function toYMD(d: Date): string {
-  return d.toISOString().slice(0, 10);
-}
 
-function getDaysAgo(n: number): Date {
-  const d = new Date();
-  d.setDate(d.getDate() - n);
-  d.setHours(0, 0, 0, 0);
-  return d;
-}
-
-const MONTH_NAMES_LONG = ["Ianuarie", "Februarie", "Martie", "Aprilie", "Mai", "Iunie", "Iulie", "August", "Septembrie", "Octombrie", "Noiembrie", "Decembrie"] as const;
-const WEEKDAY_HEADERS = ["Lun", "Mar", "Mie", "Joi", "Vin", "Sâm", "Dum"] as const;
-
-/** Returnează zilele pentru grid calendar (lună): prima zi e Luni, goluri la început. */
-function getCalendarDaysForMonth(year: number, month: number): (number | null)[] {
-  const first = new Date(year, month, 1);
-  const last = new Date(year, month + 1, 0);
-  const startWeekday = (first.getDay() + 6) % 7;
-  const days: (number | null)[] = [];
-  for (let i = 0; i < startWeekday; i++) days.push(null);
-  for (let d = 1; d <= last.getDate(); d++) days.push(d);
-  return days;
-}
-
-/** Lista de zile (YMD) între date și endDate (inclusive). Dacă endDate lipsește, returnează doar [date]. */
-function getScheduledDates(dateYmd: string, endDateYmd?: string): string[] {
-  const start = new Date(dateYmd + "T12:00:00");
-  if (!endDateYmd || endDateYmd === dateYmd) return [dateYmd];
-  const end = new Date(endDateYmd + "T12:00:00");
-  if (end < start) return [dateYmd];
-  const out: string[] = [];
-  const d = new Date(start);
-  while (d <= end) {
-    out.push(toYMD(d));
-    d.setDate(d.getDate() + 1);
-  }
-  return out;
-}
 
 const STATS_ICONS = {
   applications: (
@@ -134,7 +97,48 @@ const STATS_ICONS = {
   ),
 };
 
-type AppWithSessions = { status: string; staffId?: string; staffName?: string; workSessions?: { workDate: string; checkedInAt?: string; checkedOutAt?: string }[]; checkedInAt?: string; checkedOutAt?: string };
+type AppWithSessions = { 
+  id?: string;
+  jobId?: string;
+  status: string; 
+  staffId?: string; 
+  staffName?: string; 
+  staffEmail?: string;
+  staffAvatar?: string;
+  workSessions?: { workDate: string; checkedInAt?: string; checkedOutAt?: string }[]; 
+  checkedInAt?: string; 
+  checkedOutAt?: string;
+  businessConfirmedAt?: string;
+  isBusinessConfirmed?: boolean;
+};
+
+/** Calculate total price paid for an application based on work sessions */
+function calculatePricePaid(
+  app: AppWithSessions,
+  job: JobRow | undefined
+): number | null {
+  if (!job?.hourlyRateBase) return null;
+  const hourlyRate = Number(job.hourlyRateBase);
+  if (!Number.isFinite(hourlyRate) || hourlyRate <= 0) return null;
+
+  // Calculate from work sessions if available
+  let totalHours = 0;
+  if (app.workSessions && app.workSessions.length > 0) {
+    app.workSessions.forEach((session) => {
+      if (session.checkedInAt && session.checkedOutAt) {
+        const hours = hoursBetween(session.checkedInAt, session.checkedOutAt);
+        totalHours += hours;
+      }
+    });
+  } else if (app.checkedInAt && app.checkedOutAt) {
+    // Fallback to application-level check-in/out
+    totalHours = hoursBetween(app.checkedInAt, app.checkedOutAt);
+  }
+
+  if (totalHours <= 0) return null;
+  const baseTotal = hourlyRate * totalHours;
+  return roundMoney(getBusinessTotal(baseTotal));
+}
 
 export default function DashboardHomeCustomer() {
   const { t } = useTranslation();
@@ -142,42 +146,13 @@ export default function DashboardHomeCustomer() {
   const { openPostJobModal, jobsAdded, removeJob, userRating } = useContext(DashboardContext);
   const [toast] = useState<string | null>(null);
   const [applicationsByJob, setApplicationsByJob] = useState<Record<string, AppWithSessions[]>>({});
-  const [reportPeriod] = useState<ReportPeriod>("week");
-  const [selectedJobIdForReport, setSelectedJobIdForReport] = useState<string | null>(null);
-  const [selectedDateForReport, setSelectedDateForReport] = useState<string | null>(null);
-  const [selectedStaffIdForReport, setSelectedStaffIdForReport] = useState<string | null>(null);
-  const [jobDropdownOpen, setJobDropdownOpen] = useState(false);
-  const jobDropdownRef = useRef<HTMLDivElement>(null);
-  const [calendarViewMonth, setCalendarViewMonth] = useState(0);
-  const [calendarViewYear, setCalendarViewYear] = useState(new Date().getFullYear());
-  const [animatingDay, setAnimatingDay] = useState<string | null>(null);
+  const [jobsArchiveExpanded, setJobsArchiveExpanded] = useState(false);
+  const [selectedApplication, setSelectedApplication] = useState<{ job: JobRow; application: AppWithSessions } | null>(null);
   const [generalStats, setGeneralStats] = useState<{ 
     totalEmployees: number; 
     categoriesByJobCount: Array<{ code: number; title: string; count: number }>;
     branchesByJobCount: Array<{ branchId: string; branchName: string; count: number }>;
   } | null>(null);
-  const [statsLoading, setStatsLoading] = useState(false);
-
-  useEffect(() => {
-    if (!selectedJobIdForReport || jobsAdded.length === 0) return;
-    const job = jobsAdded.find((j, i) => ("id" in j && j.id != null ? String(j.id) : `job-${i}`) === selectedJobIdForReport) as { date?: string; endDate?: string } | undefined;
-    const dateStr = (job?.date || "").trim();
-    if (dateStr) {
-      const d = new Date(dateStr + "T12:00:00");
-      if (!isNaN(d.getTime())) {
-        setCalendarViewMonth(d.getMonth());
-        setCalendarViewYear(d.getFullYear());
-      }
-    }
-  }, [selectedJobIdForReport, jobsAdded]);
-
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (jobDropdownRef.current && !jobDropdownRef.current.contains(e.target as Node)) setJobDropdownOpen(false);
-    };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
 
   const fetchApplications = useCallback(() => {
     jobsApi
@@ -186,12 +161,18 @@ export default function DashboardHomeCustomer() {
         const map: Record<string, AppWithSessions[]> = {};
         Object.entries(r.applications ?? {}).forEach(([jobId, list]) => {
           map[jobId] = (list || []).map((a) => ({
+            id: a.id,
+            jobId: a.jobId ?? jobId,
             status: a.status,
             staffId: a.staffId ?? "",
             staffName: a.staffName ?? "",
+            staffEmail: a.staffEmail,
+            staffAvatar: a.staffAvatar,
             workSessions: a.workSessions ?? [],
             checkedInAt: a.checkedInAt,
             checkedOutAt: a.checkedOutAt,
+            businessConfirmedAt: a.businessConfirmedAt,
+            isBusinessConfirmed: a.isBusinessConfirmed ?? false,
           }));
         });
         setApplicationsByJob(map);
@@ -206,41 +187,26 @@ export default function DashboardHomeCustomer() {
 
   const fetchGeneralStats = useCallback(() => {
     if (!user?.id) return;
-    setStatsLoading(true);
     jobsApi
       .getStatistics()
       .then((stats) => {
         setGeneralStats(stats);
       })
-      .catch(() => setGeneralStats(null))
-      .finally(() => setStatsLoading(false));
+      .catch(() => setGeneralStats(null));
   }, [user?.id]);
 
   useEffect(() => {
     fetchGeneralStats();
   }, [fetchGeneralStats]);
 
-  // Reîncarcă aplicațiile (inclusiv workSessions/check-in) când customer selectează un job pentru raport
+  // Set up periodic refresh every 10 seconds to catch check-ins/check-outs
   useEffect(() => {
-    if (!selectedJobIdForReport || !user?.id) return;
-    fetchApplications();
-  }, [selectedJobIdForReport, user?.id, fetchApplications]);
-
-  // La revenirea pe tab, reîncarcă datele raportului dacă e selectat un job
-  // Also set up periodic refresh every 10 seconds when viewing a report to catch check-ins
-  useEffect(() => {
-    if (!selectedJobIdForReport || !user?.id) return;
-    const onFocus = () => fetchApplications();
-    window.addEventListener("focus", onFocus);
-    // Set up periodic refresh every 10 seconds when viewing a report
+    if (!user?.id) return;
     const intervalId = setInterval(() => {
       fetchApplications();
     }, 10000); // Refresh every 10 seconds
-    return () => {
-      window.removeEventListener("focus", onFocus);
-      clearInterval(intervalId);
-    };
-  }, [selectedJobIdForReport, user?.id, fetchApplications]);
+    return () => clearInterval(intervalId);
+  }, [user?.id, fetchApplications]);
 
   const allJobs = useMemo(() => [...jobsAdded], [jobsAdded]);
 
@@ -258,48 +224,6 @@ export default function DashboardHomeCustomer() {
     return Math.min(100, Math.round((filled / totalSlots) * 100));
   }, [allJobs]);
 
-  const _reportStats = useMemo(() => {
-    const now = new Date();
-    const periodStart =
-      reportPeriod === "week" ? getDaysAgo(7) : reportPeriod === "month" ? getDaysAgo(30) : getDaysAgo(365);
-    let totalHours = 0;
-    const weekDayLabels = ["Sat", "Sun", "Mon", "Tue", "Wed", "Thu", "Fri"];
-    const hoursByDay: Record<string, number> = {};
-    weekDayLabels.forEach((d) => { hoursByDay[d] = 0; });
-    const activityBarsMonth = [0, 0, 0, 0];
-    const activityBarsYear = Array(12).fill(0) as number[];
-    let completedJobs = 0;
-    Object.values(applicationsByJob).forEach((apps) => {
-      if (apps.some((a) => String(a.status).toLowerCase() === "accepted")) completedJobs += 1;
-      apps.forEach((a) => {
-        (a.workSessions ?? []).forEach((s) => {
-          const workDate = (s.workDate || "").slice(0, 10);
-          if (!workDate) return;
-          const sessionStart = new Date(workDate).getTime();
-          if (sessionStart < periodStart.getTime() || sessionStart > now.getTime()) return;
-          if (s.checkedInAt && s.checkedOutAt) {
-            const h = hoursBetween(s.checkedInAt, s.checkedOutAt);
-            totalHours += h;
-            if (reportPeriod === "week") {
-              const d = new Date(workDate + "T12:00:00");
-              const dayKey = weekDayLabels[d.getDay()];
-              if (dayKey) hoursByDay[dayKey] = (hoursByDay[dayKey] ?? 0) + h;
-            } else if (reportPeriod === "month") {
-              const weekIndex = Math.min(3, Math.floor((sessionStart - periodStart.getTime()) / (7 * 24 * 60 * 60 * 1000)));
-              activityBarsMonth[weekIndex] += h;
-            } else {
-              const d = new Date(workDate + "T12:00:00");
-              activityBarsYear[d.getMonth()] += h;
-            }
-          }
-        });
-      });
-    });
-    const activityBars = reportPeriod === "week" ? weekDayLabels.map((d) => hoursByDay[d] ?? 0) : reportPeriod === "month" ? activityBarsMonth : activityBarsYear;
-    const activityLabels = reportPeriod === "week" ? weekDayLabels : reportPeriod === "month" ? [t("dashboard.week") + " 1", t("dashboard.week") + " 2", t("dashboard.week") + " 3", t("dashboard.week") + " 4"] : ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-    return { totalHours: Math.round(totalHours * 10) / 10, completedJobs, activityBars, activityLabels };
-  }, [applicationsByJob, reportPeriod, t]);
-  void _reportStats; // reserved for future report charts
 
   const statsWithValues = useMemo(
     () => [
@@ -308,6 +232,105 @@ export default function DashboardHomeCustomer() {
     ],
     [totalApplications, ratingValue, ratingReviews]
   );
+
+  // Compute jobs with no accepted applications
+  const jobsWithNoAcceptances = useMemo(() => {
+    const noAcceptances: JobRow[] = [];
+    allJobs.forEach((job, i) => {
+      const jobId = ("id" in job && job.id != null ? String(job.id) : `job-${i}`);
+      const apps = applicationsByJob[jobId] ?? [];
+      
+      // Check if job has any accepted applications
+      const hasAcceptedApp = apps.some((app) => {
+        const status = String(app.status).toLowerCase();
+        return status === "accepted";
+      });
+      
+      // If no accepted applications, this job belongs in "Posted Jobs (No Acceptances)"
+      if (!hasAcceptedApp) {
+        noAcceptances.push(job);
+      }
+    });
+    return noAcceptances;
+  }, [allJobs, applicationsByJob]);
+
+  // Compute active jobs (jobs with accepted applications that are pending or in progress)
+  const activeJobs = useMemo(() => {
+    const active: JobRow[] = [];
+    allJobs.forEach((job, i) => {
+      const jobId = ("id" in job && job.id != null ? String(job.id) : `job-${i}`);
+      const apps = applicationsByJob[jobId] ?? [];
+      
+      // Must have at least one accepted application
+      const hasAcceptedApp = apps.some((app) => {
+        const status = String(app.status).toLowerCase();
+        return status === "accepted";
+      });
+      
+      if (!hasAcceptedApp) return; // Skip jobs with no accepted applications
+      
+      // Check if job has any active applications
+      // Active: applications that don't have check-in/check-out OR have only check-in without checkout
+      const hasActiveApp = apps.some((app) => {
+        const status = String(app.status).toLowerCase();
+        if (status === "pending") return true; // Pending applications are always active
+        if (status === "accepted") {
+          const isConfirmed = app.isBusinessConfirmed || !!app.businessConfirmedAt;
+          if (isConfirmed) return false; // Confirmed applications are archived
+          
+          // Check work sessions first
+          if (app.workSessions && app.workSessions.length > 0) {
+            // If any session has check-in but no check-out, it's active
+            return app.workSessions.some((s) => s.checkedInAt && !s.checkedOutAt);
+          }
+          
+          // Fallback to application-level check-in/check-out
+          // Active if: no check-in at all, OR has check-in but no check-out
+          return !app.checkedInAt || (app.checkedInAt && !app.checkedOutAt);
+        }
+        return false;
+      });
+      
+      if (hasActiveApp) {
+        active.push(job);
+      }
+    });
+    return active;
+  }, [allJobs, applicationsByJob]);
+
+  const archivedJobs = useMemo(() => {
+    const archived: JobRow[] = [];
+    allJobs.forEach((job, i) => {
+      const jobId = ("id" in job && job.id != null ? String(job.id) : `job-${i}`);
+      const apps = applicationsByJob[jobId] ?? [];
+      
+      // If no applications, skip (not archived)
+      if (apps.length === 0) return;
+      
+      // Check if all applications are archived (have check-out or are confirmed)
+      const allArchived = apps.every((app) => {
+        const status = String(app.status).toLowerCase();
+        if (status === "pending") return false; // Pending applications are not archived
+        
+        const isConfirmed = app.isBusinessConfirmed || !!app.businessConfirmedAt;
+        if (isConfirmed) return true; // Confirmed applications are archived
+        
+        // Check work sessions first
+        if (app.workSessions && app.workSessions.length > 0) {
+          // All sessions must have check-out
+          return app.workSessions.every((s) => s.checkedOutAt);
+        }
+        
+        // Fallback to application-level: must have check-out
+        return !!app.checkedOutAt;
+      });
+      
+      if (allArchived) {
+        archived.push(job);
+      }
+    });
+    return archived;
+  }, [allJobs, applicationsByJob]);
 
   return (
     <>
@@ -324,6 +347,329 @@ export default function DashboardHomeCustomer() {
         </div>
       </header>
 
+      {/* Active Jobs Section - Aplicații În Proces */}
+      <section className="mb-6 md:mb-8">
+        <div className="bg-white rounded-xl sm:rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+          <div className="p-3 sm:p-4 border-b border-gray-200">
+            <h2 className="font-bold text-gray-900 text-sm sm:text-base">Aplicații În Proces</h2>
+            <p className="text-xs text-gray-500 mt-1">Joburi cu angajați acceptați, fără check-in/check-out sau doar cu check-in</p>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[640px]">
+              <thead>
+                <tr className="text-left text-xs sm:text-sm text-gray-500 border-b border-gray-200 bg-gray-50/80">
+                  <th className="p-3 sm:p-4 font-medium">{t("dashboard.jobName")}</th>
+                  <th className="p-3 sm:p-4 font-medium">{t("dashboard.location")}</th>
+                  <th className="p-3 sm:p-4 font-medium">{t("dashboard.jobTitle")}</th>
+                  <th className="p-3 sm:p-4 font-medium">{t("dashboard.status")}</th>
+                  <th className="p-3 sm:p-4 font-medium">{t("dashboard.date")}</th>
+                  <th className="p-3 sm:p-4 font-medium">{t("dashboard.time")}</th>
+                  <th className="p-3 sm:p-4 font-medium">{t("dashboard.actions")}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {activeJobs.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="p-8 sm:p-12 text-center">
+                      <p className="text-gray-500 text-sm sm:text-base mb-4">{t("dashboard.noActiveJobs") || "Nu există joburi active"}</p>
+                      <button
+                        type="button"
+                        onClick={openPostJobModal}
+                        className="inline-flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-gray-900 text-white font-medium hover:bg-gray-800 transition-colors"
+                      >
+                        <span className="text-lg leading-none">+</span>
+                        {t("dashboard.postJob")}
+                      </button>
+                    </td>
+                  </tr>
+                ) : (
+                  activeJobs.map((row, i) => {
+                    const jobId = ("id" in row && row.id != null ? String(row.id) : `job-${i}`);
+                    const apps = applicationsByJob[jobId] ?? [];
+                    const firstApp = apps.length > 0 ? apps[0] : null;
+                    const handleRowClick = () => {
+                      if (firstApp) {
+                        setSelectedApplication({ job: row, application: firstApp });
+                      }
+                    };
+                    return (
+                      <tr 
+                        key={jobId} 
+                        onClick={handleRowClick}
+                        className={`border-b border-gray-100 hover:bg-gray-50/50 ${firstApp ? "cursor-pointer" : ""}`}
+                      >
+                        <td className="p-3 sm:p-4 font-medium text-gray-900 text-sm">{row.job}</td>
+                        <td className="p-3 sm:p-4 text-gray-600 text-sm">{row.location}</td>
+                        <td className="p-3 sm:p-4 text-gray-600 text-xs sm:text-sm">
+                          {"jobType" in row && row.jobType
+                            ? row.jobType === "one-day"
+                              ? t("dashboard.oneDayJob")
+                              : row.jobType === "multi-day"
+                                ? t("dashboard.multiDayJob")
+                                : t("dashboard.fullTimeRecruitment")
+                            : "—"}
+                        </td>
+                        <td className="p-3 sm:p-4">
+                          <span className={`px-2 py-1 rounded-lg text-xs font-medium ${row.statusClass}`}>{row.status}</span>
+                        </td>
+                        <td className="p-3 sm:p-4 text-gray-600 text-sm">{row.date}</td>
+                        <td className="p-3 sm:p-4 text-gray-600 text-sm">
+                          {row.startTime && row.endTime ? `${row.startTime} – ${row.endTime}` : "—"}
+                        </td>
+                        <td className="p-3 sm:p-4" onClick={(e) => e.stopPropagation()}>
+                          {row.id && (
+                            <button
+                              type="button"
+                              onClick={() => removeJob(row.id!)}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium text-red-600 border border-red-200 bg-red-50/80 hover:bg-red-100 hover:border-red-300 transition-colors"
+                              aria-label={t("dashboard.delete")}
+                            >
+                              <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6M8 6h8M7 6V4a2 2 0 012-2h6a2 2 0 012 2v2" />
+                              </svg>
+                              {t("dashboard.delete")}
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+          {jobsWithNoAcceptances.length > 0 && (
+            <div className="p-3 sm:p-4 border-t border-gray-100">
+              <button
+                type="button"
+                onClick={openPostJobModal}
+                className="inline-flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-gray-900 text-white font-medium hover:bg-gray-800 transition-colors text-sm"
+              >
+                <span className="text-lg leading-none">+</span>
+                {t("dashboard.postJob")}
+              </button>
+            </div>
+          )}
+        </div>
+      </section>
+
+      {/* Posted Jobs (No Acceptances) Section - Aplicații Deschise */}
+      <section className="mb-6 md:mb-8">
+        <div className="bg-white rounded-xl sm:rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+          <div className="p-3 sm:p-4 border-b border-gray-200">
+            <h2 className="font-bold text-gray-900 text-sm sm:text-base">Aplicații Deschise</h2>
+            <p className="text-xs text-gray-500 mt-1">Joburi postate care nu au încă angajați acceptați</p>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[640px]">
+              <thead>
+                <tr className="text-left text-xs sm:text-sm text-gray-500 border-b border-gray-200 bg-gray-50/80">
+                  <th className="p-3 sm:p-4 font-medium">{t("dashboard.jobName")}</th>
+                  <th className="p-3 sm:p-4 font-medium">{t("dashboard.location")}</th>
+                  <th className="p-3 sm:p-4 font-medium">{t("dashboard.jobTitle")}</th>
+                  <th className="p-3 sm:p-4 font-medium">{t("dashboard.status")}</th>
+                  <th className="p-3 sm:p-4 font-medium">{t("dashboard.date")}</th>
+                  <th className="p-3 sm:p-4 font-medium">{t("dashboard.time")}</th>
+                  <th className="p-3 sm:p-4 font-medium">{t("dashboard.actions")}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {jobsWithNoAcceptances.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="p-8 sm:p-12 text-center">
+                      <p className="text-gray-500 text-sm sm:text-base mb-4">{t("dashboard.noPostedJobsNoAcceptances") || "Nu există joburi postate fără acceptări"}</p>
+                      <button
+                        type="button"
+                        onClick={openPostJobModal}
+                        className="inline-flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-gray-900 text-white font-medium hover:bg-gray-800 transition-colors"
+                      >
+                        <span className="text-lg leading-none">+</span>
+                        {t("dashboard.postJob")}
+                      </button>
+                    </td>
+                  </tr>
+                ) : (
+                  jobsWithNoAcceptances.map((row, i) => {
+                    // Match jobId the same way as in useMemo calculations
+                    const jobId = ("id" in row && row.id != null ? String(row.id) : `job-${i}`);
+                    const apps = applicationsByJob[jobId] ?? [];
+                    // Get first application (even if pending) to show in modal
+                    const firstApp = apps.length > 0 ? apps[0] : null;
+                    const handleRowClick = () => {
+                      // Always open modal if there's an application (including pending)
+                      if (firstApp) {
+                        setSelectedApplication({ job: row, application: firstApp });
+                      }
+                    };
+                    return (
+                      <tr 
+                        key={jobId} 
+                        onClick={handleRowClick}
+                        className={`border-b border-gray-100 hover:bg-gray-50/50 transition-colors ${firstApp ? "cursor-pointer" : ""}`}
+                      >
+                        <td className="p-3 sm:p-4 font-medium text-gray-900 text-sm">{row.job}</td>
+                        <td className="p-3 sm:p-4 text-gray-600 text-sm">{row.location}</td>
+                        <td className="p-3 sm:p-4 text-gray-600 text-xs sm:text-sm">
+                          {"jobType" in row && row.jobType
+                            ? row.jobType === "one-day"
+                              ? t("dashboard.oneDayJob")
+                              : row.jobType === "multi-day"
+                                ? t("dashboard.multiDayJob")
+                                : t("dashboard.fullTimeRecruitment")
+                            : "—"}
+                        </td>
+                        <td className="p-3 sm:p-4">
+                          <span className={`px-2 py-1 rounded-lg text-xs font-medium ${row.statusClass}`}>{row.status}</span>
+                        </td>
+                        <td className="p-3 sm:p-4 text-gray-600 text-sm">{row.date}</td>
+                        <td className="p-3 sm:p-4 text-gray-600 text-sm">
+                          {row.startTime && row.endTime ? `${row.startTime} – ${row.endTime}` : "—"}
+                        </td>
+                        <td className="p-3 sm:p-4" onClick={(e) => e.stopPropagation()}>
+                          {row.id && (
+                            <button
+                              type="button"
+                              onClick={() => removeJob(row.id!)}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium text-red-600 border border-red-200 bg-red-50/80 hover:bg-red-100 hover:border-red-300 transition-colors"
+                              aria-label={t("dashboard.delete")}
+                            >
+                              <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6M8 6h8M7 6V4a2 2 0 012-2h6a2 2 0 012 2v2" />
+                              </svg>
+                              {t("dashboard.delete")}
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+          {activeJobs.length > 0 && (
+            <div className="p-3 sm:p-4 border-t border-gray-100">
+              <button
+                type="button"
+                onClick={openPostJobModal}
+                className="inline-flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-gray-900 text-white font-medium hover:bg-gray-800 transition-colors text-sm"
+              >
+                <span className="text-lg leading-none">+</span>
+                {t("dashboard.postJob")}
+              </button>
+            </div>
+          )}
+        </div>
+      </section>
+
+      {/* Jobs Archive Section */}
+      <section className="mb-6 md:mb-8">
+        <div className="bg-white rounded-xl sm:rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+          <button
+            type="button"
+            onClick={() => setJobsArchiveExpanded(!jobsArchiveExpanded)}
+            className="w-full p-3 sm:p-4 border-b border-gray-200 flex items-center justify-between hover:bg-gray-50 transition-colors"
+          >
+            <div className="flex items-center gap-3">
+              <span className="flex-shrink-0 w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" /></svg>
+              </span>
+              <div className="text-left">
+                <h2 className="font-bold text-gray-900 text-sm sm:text-base">Aplicații Închise și Arhivate</h2>
+                <p className="text-xs text-gray-500 mt-0.5">Joburi finalizate cu check-out completat</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              {archivedJobs.length > 0 && (
+                <span className="px-2.5 py-1 rounded-lg bg-primary/10 text-primary text-xs font-semibold">
+                  {archivedJobs.length}
+                </span>
+              )}
+              <svg className={`w-5 h-5 text-gray-400 transition-transform ${jobsArchiveExpanded ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+            </div>
+          </button>
+          {jobsArchiveExpanded && (
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[640px]">
+                <thead>
+                  <tr className="text-left text-xs sm:text-sm text-gray-500 border-b border-gray-200 bg-gray-50/80">
+                    <th className="p-3 sm:p-4 font-medium">{t("dashboard.jobName")}</th>
+                    <th className="p-3 sm:p-4 font-medium">{t("dashboard.location")}</th>
+                    <th className="p-3 sm:p-4 font-medium">{t("dashboard.jobTitle")}</th>
+                    <th className="p-3 sm:p-4 font-medium">{t("dashboard.status")}</th>
+                    <th className="p-3 sm:p-4 font-medium">{t("dashboard.date")}</th>
+                    <th className="p-3 sm:p-4 font-medium">{t("dashboard.time")}</th>
+                    <th className="p-3 sm:p-4 font-medium">{t("dashboard.actions")}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {archivedJobs.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="p-8 sm:p-12 text-center">
+                        <p className="text-gray-500 text-sm sm:text-base">{t("dashboard.noArchivedJobs") || "Nu există joburi arhivate"}</p>
+                      </td>
+                    </tr>
+                  ) : (
+                    archivedJobs.map((row, i) => {
+                      const jobId = ("id" in row && row.id != null ? String(row.id) : `job-${i}`);
+                      const apps = applicationsByJob[jobId] ?? [];
+                      const firstApp = apps.length > 0 ? apps[0] : null;
+                      const handleRowClick = () => {
+                        if (firstApp) {
+                          setSelectedApplication({ job: row, application: firstApp });
+                        }
+                      };
+                      return (
+                        <tr 
+                          key={jobId} 
+                          onClick={handleRowClick}
+                          className={`border-b border-gray-100 hover:bg-gray-50/50 ${firstApp ? "cursor-pointer" : ""}`}
+                        >
+                          <td className="p-3 sm:p-4 font-medium text-gray-900 text-sm">{row.job}</td>
+                          <td className="p-3 sm:p-4 text-gray-600 text-sm">{row.location}</td>
+                          <td className="p-3 sm:p-4 text-gray-600 text-xs sm:text-sm">
+                            {"jobType" in row && row.jobType
+                              ? row.jobType === "one-day"
+                                ? t("dashboard.oneDayJob")
+                                : row.jobType === "multi-day"
+                                  ? t("dashboard.multiDayJob")
+                                  : t("dashboard.fullTimeRecruitment")
+                              : "—"}
+                          </td>
+                          <td className="p-3 sm:p-4">
+                            <span className={`px-2 py-1 rounded-lg text-xs font-medium ${row.statusClass}`}>{row.status}</span>
+                          </td>
+                          <td className="p-3 sm:p-4 text-gray-600 text-sm">{row.date}</td>
+                          <td className="p-3 sm:p-4 text-gray-600 text-sm">
+                            {row.startTime && row.endTime ? `${row.startTime} – ${row.endTime}` : "—"}
+                          </td>
+                          <td className="p-3 sm:p-4" onClick={(e) => e.stopPropagation()}>
+                            {row.id && (
+                              <button
+                                type="button"
+                                onClick={() => removeJob(row.id!)}
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium text-red-600 border border-red-200 bg-red-50/80 hover:bg-red-100 hover:border-red-300 transition-colors"
+                                aria-label={t("dashboard.delete")}
+                              >
+                                <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6M8 6h8M7 6V4a2 2 0 012-2h6a2 2 0 012 2v2" />
+                                </svg>
+                                {t("dashboard.delete")}
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </section>
+
+      {/* Statistics Section - Moved to Bottom */}
       <section className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-6 mb-6 md:mb-8">
         {statsWithValues.map((s) => {
           const isRating = "isRating" in s && s.isRating;
@@ -351,96 +697,6 @@ export default function DashboardHomeCustomer() {
         })}
       </section>
 
-      <section className="mb-6 md:mb-8">
-        <div className="bg-white rounded-xl sm:rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-          <div className="p-3 sm:p-4 border-b border-gray-200">
-            <h2 className="font-bold text-gray-900 text-sm sm:text-base">{t("dashboard.jobsToday")}</h2>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[640px]">
-              <thead>
-                <tr className="text-left text-xs sm:text-sm text-gray-500 border-b border-gray-200 bg-gray-50/80">
-                  <th className="p-3 sm:p-4 font-medium">{t("dashboard.jobName")}</th>
-                  <th className="p-3 sm:p-4 font-medium">{t("dashboard.location")}</th>
-                  <th className="p-3 sm:p-4 font-medium">{t("dashboard.jobTitle")}</th>
-                  <th className="p-3 sm:p-4 font-medium">{t("dashboard.status")}</th>
-                  <th className="p-3 sm:p-4 font-medium">{t("dashboard.date")}</th>
-                  <th className="p-3 sm:p-4 font-medium">{t("dashboard.time")}</th>
-                  <th className="p-3 sm:p-4 font-medium">{t("dashboard.actions")}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {allJobs.length === 0 ? (
-                  <tr>
-                    <td colSpan={7} className="p-8 sm:p-12 text-center">
-                      <p className="text-gray-500 text-sm sm:text-base mb-4">{t("dashboard.noJobsFound")}</p>
-                      <button
-                        type="button"
-                        onClick={openPostJobModal}
-                        className="inline-flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-gray-900 text-white font-medium hover:bg-gray-800 transition-colors"
-                      >
-                        <span className="text-lg leading-none">+</span>
-                        {t("dashboard.postJob")}
-                      </button>
-                    </td>
-                  </tr>
-                ) : (
-                  allJobs.map((row, i) => (
-                    <tr key={("id" in row && row.id != null ? String(row.id) : `job-${i}-${row.job}-${row.location}`)} className="border-b border-gray-100 hover:bg-gray-50/50">
-                      <td className="p-3 sm:p-4 font-medium text-gray-900 text-sm">{row.job}</td>
-                      <td className="p-3 sm:p-4 text-gray-600 text-sm">{row.location}</td>
-                      <td className="p-3 sm:p-4 text-gray-600 text-xs sm:text-sm">
-                        {"jobType" in row && row.jobType
-                          ? row.jobType === "one-day"
-                            ? t("dashboard.oneDayJob")
-                            : row.jobType === "multi-day"
-                              ? t("dashboard.multiDayJob")
-                              : t("dashboard.fullTimeRecruitment")
-                          : "—"}
-                      </td>
-                      <td className="p-3 sm:p-4">
-                        <span className={`px-2 py-1 rounded-lg text-xs font-medium ${row.statusClass}`}>{row.status}</span>
-                      </td>
-                      <td className="p-3 sm:p-4 text-gray-600 text-sm">{row.date}</td>
-                      <td className="p-3 sm:p-4 text-gray-600 text-sm">
-                        {row.startTime && row.endTime ? `${row.startTime} – ${row.endTime}` : "—"}
-                      </td>
-                      <td className="p-3 sm:p-4">
-                        {row.id && (
-                          <button
-                            type="button"
-                            onClick={() => removeJob(row.id!)}
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium text-red-600 border border-red-200 bg-red-50/80 hover:bg-red-100 hover:border-red-300 transition-colors"
-                            aria-label={t("dashboard.delete")}
-                          >
-                            <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6M8 6h8M7 6V4a2 2 0 012-2h6a2 2 0 012 2v2" />
-                            </svg>
-                            {t("dashboard.delete")}
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-          {allJobs.length > 0 && (
-            <div className="p-3 sm:p-4 border-t border-gray-100">
-              <button
-                type="button"
-                onClick={openPostJobModal}
-                className="inline-flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-gray-900 text-white font-medium hover:bg-gray-800 transition-colors text-sm"
-              >
-                <span className="text-lg leading-none">+</span>
-                {t("dashboard.postJob")}
-              </button>
-            </div>
-          )}
-        </div>
-      </section>
-
       {/* Job fill rate, Reports, Activity report */}
       <section className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6 mb-6 md:mb-8">
         {/* Job fill rate */}
@@ -456,492 +712,433 @@ export default function DashboardHomeCustomer() {
             </div>
           </div>
         </div>
-      </section>
-
-      {/* Raport pe job: select job → număr angajați + check-in/check-out cu ore */}
-      <section className="mb-6 md:mb-8">
-        <div className="bg-white rounded-2xl border border-gray-200/80 shadow-[0_4px_24px_rgba(0,0,0,0.06)] overflow-visible min-h-[420px] report-card-enter">
-          <div className="bg-gradient-to-br from-[#faf8ff] via-white to-[#f5f3ff] px-5 sm:px-6 py-5 border-b border-gray-100">
-            <div className="flex items-start gap-3">
-              <span className="flex-shrink-0 w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
-              </span>
-              <div>
-                <h2 className="font-bold text-gray-900 text-lg tracking-tight">{t("dashboard.reportByJob")}</h2>
-                <p className="text-sm text-gray-500 mt-0.5">{t("dashboard.reportByJobDesc")}</p>
+        {/* People Hired */}
+        {generalStats && (
+          <div className="bg-white rounded-xl sm:rounded-2xl border border-gray-200 shadow-sm p-4 sm:p-6">
+            <h3 className="text-sm font-semibold text-gray-900 mb-4">{t("dashboard.peopleHired") || "Oameni angajați"}</h3>
+            <div className="flex items-center justify-center">
+              <div className="text-center">
+                <p className="text-4xl sm:text-5xl font-bold text-primary mb-2">{generalStats.totalEmployees ?? 0}</p>
+                <p className="text-sm text-gray-500">{t("dashboard.totalEmployeesWorked") || "angajați au lucrat"}</p>
               </div>
             </div>
           </div>
-          <div className="p-5 sm:p-6 space-y-6">
-            <div className="rounded-xl bg-gray-50/80 border border-gray-100 p-4 sm:p-5">
-              <label className="block">
-                <span className="text-sm font-semibold text-gray-700">{t("dashboard.selectJob")}</span>
-                <div ref={jobDropdownRef} className="mt-2 relative w-full max-w-xl">
-                  <button
-                    type="button"
-                    onClick={() => setJobDropdownOpen((v) => !v)}
-                    aria-expanded={jobDropdownOpen}
-                    aria-haspopup="listbox"
-                    className={`w-full flex items-center justify-between gap-3 px-4 py-3 rounded-xl border text-left font-medium shadow-sm transition-all ${selectedJobIdForReport ? "border-primary bg-primary/5 text-gray-900" : "border-gray-200 bg-white text-gray-900 hover:border-gray-300"} focus:ring-2 focus:ring-primary/30 focus:border-primary`}
-                  >
-                    <span className="truncate">
-                      {selectedJobIdForReport
-                        ? (() => {
-                            const j = allJobs.find((job, i) => ("id" in job && job.id != null ? String(job.id) : `job-${i}`) === selectedJobIdForReport);
-                            return j ? `${j.job} — ${j.location}` : t("dashboard.noJobSelected");
-                          })()
-                        : t("dashboard.noJobSelected")}
-                    </span>
-                    <svg className={`w-5 h-5 flex-shrink-0 text-gray-400 transition-transform ${jobDropdownOpen ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
-                  </button>
-                  {jobDropdownOpen && (
-                    <div
-                      role="listbox"
-                      aria-label={t("dashboard.selectJob")}
-                      className="absolute left-0 right-0 top-full z-[100] mt-1 max-h-64 overflow-y-auto rounded-xl border border-gray-200 bg-white shadow-lg py-1 dropdown-enter origin-top"
-                    >
-                      <button
-                        type="button"
-                        role="option"
-                        aria-selected={!selectedJobIdForReport}
-                        onMouseDown={(e) => { e.preventDefault(); setSelectedJobIdForReport(null); setSelectedDateForReport(null); setSelectedStaffIdForReport(null); setJobDropdownOpen(false); }}
-                        className={`block w-full text-left px-4 py-2.5 text-sm font-medium transition-colors ${!selectedJobIdForReport ? "bg-primary/10 text-primary" : "text-gray-700 hover:bg-gray-50"}`}
-                      >
-                        {t("dashboard.noJobSelected")}
-                      </button>
-                      {allJobs.map((j, i) => {
-                        const id = "id" in j && j.id != null ? String(j.id) : `job-${i}`;
-                        const selected = selectedJobIdForReport === id;
-                        return (
-                          <button
-                            key={id}
-                            type="button"
-                            role="option"
-                            aria-selected={selected}
-                            onMouseDown={(e) => { e.preventDefault(); setSelectedJobIdForReport(id); setSelectedDateForReport(null); setSelectedStaffIdForReport(null); setJobDropdownOpen(false); }}
-                            className={`block w-full text-left px-4 py-2.5 text-sm font-medium transition-colors truncate ${selected ? "bg-primary/10 text-primary" : "text-gray-700 hover:bg-gray-50"}`}
-                          >
-                            {j.job} — {j.location}
-                          </button>
-                        );
-                      })}
+        )}
+        {/* Job Categories Pie Chart */}
+        {generalStats && generalStats.categoriesByJobCount.length > 0 && (
+          <div className="bg-white rounded-xl sm:rounded-2xl border border-gray-200 shadow-sm p-4 sm:p-6">
+            <h3 className="text-sm font-semibold text-gray-900 mb-4">{t("dashboard.jobCategoriesDistribution") || "Distribuția joburilor pe categorii"}</h3>
+            <div className="flex flex-col sm:flex-row gap-6 items-center sm:items-start">
+              {/* Pie Chart */}
+              <div className="flex-shrink-0">
+                <PieChart data={generalStats.categoriesByJobCount} t={t} />
+              </div>
+              {/* Legend */}
+              <div className="flex-1 space-y-2 min-w-0">
+                {generalStats.categoriesByJobCount.map((cat, idx) => {
+                  const colors = [
+                    "rgb(122 99 241)", // primary
+                    "rgb(139 92 246)", // purple-500
+                    "rgb(168 85 247)", // purple-400
+                    "rgb(192 132 252)", // purple-300
+                    "rgb(217 70 239)", // fuchsia-500
+                    "rgb(236 72 153)", // pink-500
+                    "rgb(251 113 133)", // rose-400
+                    "rgb(249 115 22)", // orange-500
+                  ];
+                  const color = colors[idx % colors.length];
+                  const total = generalStats.categoriesByJobCount.reduce((sum, c) => sum + c.count, 0);
+                  const percentage = total > 0 ? Math.round((cat.count / total) * 100) : 0;
+                  return (
+                    <div key={cat.code} className="flex items-center gap-3">
+                      <div className="w-4 h-4 rounded flex-shrink-0" style={{ backgroundColor: color }} />
+                      <span className="text-sm text-gray-700 flex-1 truncate">{cat.title}</span>
+                      <span className="text-sm font-semibold text-gray-900">{cat.count}</span>
+                      <span className="text-xs text-gray-500">({percentage}%)</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        )}
+      </section>
+
+      {/* Branches Pie Chart */}
+      {generalStats && generalStats.branchesByJobCount.length > 0 && (
+        <section className="mb-6 md:mb-8">
+          <div className="bg-white rounded-xl sm:rounded-2xl border border-gray-200 shadow-sm p-4 sm:p-6">
+            <h3 className="text-sm font-semibold text-gray-900 mb-4">{t("dashboard.branchesDistribution") || "Distribuția joburilor pe filiale"}</h3>
+            <div className="flex flex-col sm:flex-row gap-6 items-center sm:items-start">
+              {/* Pie Chart */}
+              <div className="flex-shrink-0">
+                <PieChart 
+                  data={generalStats.branchesByJobCount.map((b, idx) => ({ code: idx, title: b.branchName, count: b.count }))} 
+                  t={t} 
+                />
+              </div>
+              {/* Legend */}
+              <div className="flex-1 space-y-2 min-w-0">
+                {generalStats.branchesByJobCount.map((branch, idx) => {
+                  const colors = [
+                    "rgb(122 99 241)", // primary
+                    "rgb(139 92 246)", // purple-500
+                    "rgb(168 85 247)", // purple-400
+                    "rgb(192 132 252)", // purple-300
+                    "rgb(217 70 239)", // fuchsia-500
+                    "rgb(236 72 153)", // pink-500
+                    "rgb(251 113 133)", // rose-400
+                    "rgb(249 115 22)", // orange-500
+                  ];
+                  const color = colors[idx % colors.length];
+                  const total = generalStats.branchesByJobCount.reduce((sum, b) => sum + b.count, 0);
+                  const percentage = total > 0 ? Math.round((branch.count / total) * 100) : 0;
+                  return (
+                    <div key={branch.branchId} className="flex items-center gap-3">
+                      <div className="w-4 h-4 rounded flex-shrink-0" style={{ backgroundColor: color }} />
+                      <span className="text-sm text-gray-700 flex-1 truncate">{branch.branchName}</span>
+                      <span className="text-sm font-semibold text-gray-900">{branch.count}</span>
+                      <span className="text-xs text-gray-500">({percentage}%)</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        </section>
+      )}
+
+      </div>
+
+      {/* Application Details Modal */}
+      {selectedApplication && (
+        <ApplicationDetailsModal
+          open={!!selectedApplication}
+          onClose={() => setSelectedApplication(null)}
+          job={selectedApplication.job}
+          application={selectedApplication.application}
+        />
+      )}
+    </>
+  );
+}
+
+/** Application Details Modal Component */
+function ApplicationDetailsModal({
+  open,
+  onClose,
+  job,
+  application,
+}: {
+  open: boolean;
+  onClose: () => void;
+  job: JobRow;
+  application: AppWithSessions;
+}) {
+  const { t } = useTranslation();
+
+  useEffect(() => {
+    if (!open) return;
+    const onEscape = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", onEscape);
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", onEscape);
+      document.body.style.overflow = "";
+    };
+  }, [open, onClose]);
+
+  if (!open) return null;
+
+  // Calculate salary details
+  const hourlyRate = job.hourlyRateBase != null ? Number(job.hourlyRateBase) : null;
+  const hasRate = hourlyRate != null && Number.isFinite(hourlyRate) && hourlyRate > 0;
+
+  // Calculate total hours from work sessions
+  let totalHours = 0;
+  const workSessionsDetails: Array<{ date: string; checkIn?: string; checkOut?: string; hours: number }> = [];
+  
+  if (application.workSessions && application.workSessions.length > 0) {
+    application.workSessions.forEach((session) => {
+      if (session.checkedInAt && session.checkedOutAt) {
+        const hours = hoursBetween(session.checkedInAt, session.checkedOutAt);
+        totalHours += hours;
+        workSessionsDetails.push({
+          date: session.workDate || "—",
+          checkIn: session.checkedInAt,
+          checkOut: session.checkedOutAt,
+          hours,
+        });
+      } else if (session.checkedInAt) {
+        workSessionsDetails.push({
+          date: session.workDate || "—",
+          checkIn: session.checkedInAt,
+          hours: 0,
+        });
+      }
+    });
+  } else if (application.checkedInAt && application.checkedOutAt) {
+    // Fallback to application-level check-in/out
+    totalHours = hoursBetween(application.checkedInAt, application.checkedOutAt);
+    workSessionsDetails.push({
+      date: job.date || "—",
+      checkIn: application.checkedInAt,
+      checkOut: application.checkedOutAt,
+      hours: totalHours,
+    });
+  } else if (application.checkedInAt) {
+    workSessionsDetails.push({
+      date: job.date || "—",
+      checkIn: application.checkedInAt,
+      hours: 0,
+    });
+  }
+
+  const baseSalary = hasRate && totalHours > 0 ? hourlyRate! * totalHours : null;
+  const taxAmount = baseSalary != null ? roundMoney(baseSalary * BUSINESS_TAX_RATE) : null;
+  const maintenanceAmount = baseSalary != null ? roundMoney(baseSalary * BUSINESS_MAINTENANCE_RATE) : null;
+  const totalSalaryPaid = baseSalary != null ? roundMoney(getBusinessTotal(baseSalary)) : null;
+  const taxPerHour = hasRate ? roundMoney(hourlyRate! * BUSINESS_TAX_RATE) : null;
+
+  const formatDateTime = (iso?: string) => {
+    if (!iso) return "—";
+    return new Date(iso).toLocaleString("ro-MD", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  };
+
+  const formatTime = (iso?: string) => {
+    if (!iso) return "—";
+    return new Date(iso).toLocaleTimeString("ro-MD", { hour: "2-digit", minute: "2-digit" });
+  };
+
+  const modalContent = (
+    <div
+      className="modal-backdrop-anim fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50"
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="application-details-title"
+    >
+      <div
+        className="modal-panel-anim bg-white rounded-2xl shadow-xl max-w-3xl max-h-[95vh] w-full flex flex-col"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex-shrink-0 bg-white border-b border-gray-100 px-4 sm:px-6 py-4 flex items-center justify-between">
+          <h2 id="application-details-title" className="text-lg sm:text-xl font-bold text-gray-900">
+            Detalii Aplicație
+          </h2>
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-2 rounded-full hover:bg-gray-100 text-gray-600 transition-colors"
+            aria-label="Închide"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Content - Scrollable */}
+        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 sm:p-6 space-y-6">
+          {/* Job Information */}
+          <div className="space-y-4">
+            <h3 className="text-base font-semibold text-gray-900 border-b border-gray-200 pb-2">
+              Informații Job
+            </h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <p className="text-xs text-gray-500 mb-1">{t("dashboard.jobName") || "Nume Job"}</p>
+                <p className="text-sm font-medium text-gray-900">{job.job || "—"}</p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-500 mb-1">{t("dashboard.location") || "Locație"}</p>
+                <p className="text-sm font-medium text-gray-900">{job.location || "—"}</p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-500 mb-1">{t("dashboard.date") || "Data"}</p>
+                <p className="text-sm font-medium text-gray-900">{job.date || "—"}</p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-500 mb-1">{t("dashboard.time") || "Ora"}</p>
+                <p className="text-sm font-medium text-gray-900">
+                  {job.startTime && job.endTime ? `${job.startTime} – ${job.endTime}` : "—"}
+                </p>
+              </div>
+              {job.jobCategoryTitle && (
+                <div>
+                  <p className="text-xs text-gray-500 mb-1">{t("dashboard.category") || "Categorie"}</p>
+                  <p className="text-sm font-medium text-gray-900">{job.jobCategoryTitle}</p>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Staff Information */}
+          <div className="space-y-4">
+            <h3 className="text-base font-semibold text-gray-900 border-b border-gray-200 pb-2">
+              Informații Angajat
+            </h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <p className="text-xs text-gray-500 mb-1">{t("dashboard.staffName") || "Nume Angajat"}</p>
+                <p className="text-sm font-medium text-gray-900">{application.staffName || "—"}</p>
+              </div>
+              {application.staffEmail && (
+                <div>
+                  <p className="text-xs text-gray-500 mb-1">{t("dashboard.email") || "Email"}</p>
+                  <p className="text-sm font-medium text-gray-900">{application.staffEmail}</p>
+                </div>
+              )}
+              <div>
+                <p className="text-xs text-gray-500 mb-1">{t("dashboard.status") || "Status"}</p>
+                <span className={`inline-block px-2 py-1 rounded-lg text-xs font-medium ${
+                  application.status === "accepted" ? "bg-green-100 text-green-700" :
+                  application.status === "pending" ? "bg-amber-100 text-amber-700" :
+                  "bg-red-100 text-red-700"
+                }`}>
+                  {application.status === "accepted" ? (t("dashboard.accepted") || "Acceptat") :
+                   application.status === "pending" ? (t("dashboard.pending") || "În așteptare") :
+                   (t("dashboard.refused") || "Refuzat")}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Check-in/Check-out Information */}
+          <div className="space-y-4">
+            <h3 className="text-base font-semibold text-gray-900 border-b border-gray-200 pb-2">
+              Informații Prezență
+            </h3>
+            {workSessionsDetails.length > 0 ? (
+              <div className="space-y-3">
+                {workSessionsDetails.map((session, idx) => (
+                  <div key={idx} className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                    <p className="text-xs text-gray-500 mb-2">{t("dashboard.workDate") || "Data lucrării"}: {session.date}</p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <p className="text-xs text-gray-500 mb-1">{t("dashboard.checkInTime") || "Check-in"}</p>
+                        <p className="text-sm font-medium text-gray-900">{formatTime(session.checkIn)}</p>
+                        {session.checkIn && (
+                          <p className="text-xs text-gray-400 mt-0.5">{formatDateTime(session.checkIn)}</p>
+                        )}
+                      </div>
+                      <div>
+                        <p className="text-xs text-gray-500 mb-1">{t("dashboard.checkOutTime") || "Check-out"}</p>
+                        <p className="text-sm font-medium text-gray-900">{formatTime(session.checkOut) || "—"}</p>
+                        {session.checkOut && (
+                          <p className="text-xs text-gray-400 mt-0.5">{formatDateTime(session.checkOut)}</p>
+                        )}
+                      </div>
+                      {session.hours > 0 && (
+                        <div className="sm:col-span-2">
+                          <p className="text-xs text-gray-500 mb-1">{t("dashboard.hoursWorked") || "Ore lucrate"}</p>
+                          <p className="text-sm font-medium text-gray-900">{session.hours.toFixed(2)} {t("dashboard.hours") || "ore"}</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-gray-500">{t("dashboard.noCheckInOut") || "Nu există informații de check-in/check-out"}</p>
+            )}
+          </div>
+
+          {/* Salary Information */}
+          {hasRate && (
+            <div className="space-y-4">
+              <h3 className="text-base font-semibold text-gray-900 border-b border-gray-200 pb-2">
+                Informații Salariu
+              </h3>
+              <div className="bg-gradient-to-br from-primary/5 to-primary/10 rounded-xl p-4 sm:p-6 space-y-4 border border-primary/20">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-xs text-gray-600 mb-1">{t("dashboard.hourlyRate") || "Rată orară"}</p>
+                    <p className="text-lg font-bold text-gray-900">{hourlyRate!.toFixed(2)} MDL/ora</p>
+                  </div>
+                  {taxPerHour != null && (
+                    <div>
+                      <p className="text-xs text-gray-600 mb-1">{t("dashboard.taxPerHour") || "Taxă pe oră"}</p>
+                      <p className="text-lg font-bold text-gray-900">{taxPerHour.toFixed(2)} MDL/ora</p>
+                      <p className="text-xs text-gray-500 mt-0.5">({(BUSINESS_TAX_RATE * 100).toFixed(0)}% din rată)</p>
+                    </div>
+                  )}
+                  {totalHours > 0 && (
+                    <div>
+                      <p className="text-xs text-gray-600 mb-1">{t("dashboard.totalHours") || "Total ore"}</p>
+                      <p className="text-lg font-bold text-gray-900">{totalHours.toFixed(2)} {t("dashboard.hours") || "ore"}</p>
                     </div>
                   )}
                 </div>
-              </label>
-            </div>
-            {!selectedJobIdForReport && (
-              <div className="report-content-enter">
-                {statsLoading ? (
-                  <div className="py-12 text-center">
-                    <p className="text-gray-500 text-sm">{t("dashboard.loading") || "Se încarcă..."}</p>
-                  </div>
-                ) : (
-                  <div className="space-y-6">
-                    {/* General Statistics Cards */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
-                      {/* Job Fill Rate */}
-                      <div className="bg-white rounded-xl sm:rounded-2xl border border-gray-200 shadow-sm p-4 sm:p-6">
-                        <h3 className="text-sm font-semibold text-gray-900 mb-4">{t("dashboard.jobFillRate")}</h3>
-                        <div className="flex justify-center">
-                          <div className="relative w-32 h-32 sm:w-40 sm:h-40">
-                            <svg className="w-full h-full -rotate-90" viewBox="0 0 100 100">
-                              <circle cx="50" cy="50" r="42" fill="none" stroke="rgb(229 231 235)" strokeWidth="10" />
-                              <circle cx="50" cy="50" r="42" fill="none" stroke="rgb(122 99 241)" strokeWidth="10" strokeDasharray={`${jobFillRate * 2.64} 264`} strokeLinecap="round" />
-                            </svg>
-                            <span className="absolute inset-0 flex items-center justify-center text-xl sm:text-2xl font-bold text-gray-900">{jobFillRate}%</span>
-                          </div>
-                        </div>
-                      </div>
-                      {/* People Hired */}
-                      <div className="bg-white rounded-xl sm:rounded-2xl border border-gray-200 shadow-sm p-4 sm:p-6">
-                        <h3 className="text-sm font-semibold text-gray-900 mb-4">{t("dashboard.peopleHired") || "Oameni angajați"}</h3>
-                        <div className="flex items-center justify-center">
-                          <div className="text-center">
-                            <p className="text-4xl sm:text-5xl font-bold text-primary mb-2">{generalStats?.totalEmployees ?? 0}</p>
-                            <p className="text-sm text-gray-500">{t("dashboard.totalEmployeesWorked") || "angajați au lucrat"}</p>
-                          </div>
-                        </div>
-                      </div>
+                {baseSalary != null && (
+                  <div className="pt-4 border-t border-primary/20 space-y-3">
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm text-gray-600">{t("dashboard.baseSalary") || "Salariu de bază"}</span>
+                      <span className="text-sm font-semibold text-gray-900">{baseSalary.toFixed(2)} MDL</span>
                     </div>
-                    {/* Job Categories Pie Chart */}
-                    {generalStats && generalStats.categoriesByJobCount.length > 0 && (
-                      <div className="bg-white rounded-xl sm:rounded-2xl border border-gray-200 shadow-sm p-4 sm:p-6">
-                        <h3 className="text-sm font-semibold text-gray-900 mb-4">{t("dashboard.jobCategoriesDistribution") || "Distribuția joburilor pe categorii"}</h3>
-                        <div className="flex flex-col sm:flex-row gap-6 items-center sm:items-start">
-                          {/* Pie Chart */}
-                          <div className="flex-shrink-0">
-                            <PieChart data={generalStats.categoriesByJobCount} t={t} />
-                          </div>
-                          {/* Legend */}
-                          <div className="flex-1 space-y-2 min-w-0">
-                            {generalStats.categoriesByJobCount.map((cat, idx) => {
-                              const colors = [
-                                "rgb(122 99 241)", // primary
-                                "rgb(139 92 246)", // purple-500
-                                "rgb(168 85 247)", // purple-400
-                                "rgb(192 132 252)", // purple-300
-                                "rgb(217 70 239)", // fuchsia-500
-                                "rgb(236 72 153)", // pink-500
-                                "rgb(251 113 133)", // rose-400
-                                "rgb(249 115 22)", // orange-500
-                              ];
-                              const color = colors[idx % colors.length];
-                              const total = generalStats.categoriesByJobCount.reduce((sum, c) => sum + c.count, 0);
-                              const percentage = total > 0 ? Math.round((cat.count / total) * 100) : 0;
-                              return (
-                                <div key={cat.code} className="flex items-center gap-3">
-                                  <div className="w-4 h-4 rounded flex-shrink-0" style={{ backgroundColor: color }} />
-                                  <span className="text-sm text-gray-700 flex-1 truncate">{cat.title}</span>
-                                  <span className="text-sm font-semibold text-gray-900">{cat.count}</span>
-                                  <span className="text-xs text-gray-500">({percentage}%)</span>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </div>
+                    {taxAmount != null && (
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm text-gray-600">{t("dashboard.taxAmount") || "Taxă"} ({(BUSINESS_TAX_RATE * 100).toFixed(0)}%)</span>
+                        <span className="text-sm font-semibold text-gray-900">{taxAmount.toFixed(2)} MDL</span>
                       </div>
                     )}
-                    {/* Branches Pie Chart */}
-                    {generalStats && generalStats.branchesByJobCount.length > 0 && (
-                      <div className="bg-white rounded-xl sm:rounded-2xl border border-gray-200 shadow-sm p-4 sm:p-6">
-                        <h3 className="text-sm font-semibold text-gray-900 mb-4">{t("dashboard.branchesDistribution") || "Distribuția joburilor pe filiale"}</h3>
-                        <div className="flex flex-col sm:flex-row gap-6 items-center sm:items-start">
-                          {/* Pie Chart */}
-                          <div className="flex-shrink-0">
-                            <PieChart 
-                              data={generalStats.branchesByJobCount.map((b, idx) => ({ code: idx, title: b.branchName, count: b.count }))} 
-                              t={t} 
-                            />
-                          </div>
-                          {/* Legend */}
-                          <div className="flex-1 space-y-2 min-w-0">
-                            {generalStats.branchesByJobCount.map((branch, idx) => {
-                              const colors = [
-                                "rgb(122 99 241)", // primary
-                                "rgb(139 92 246)", // purple-500
-                                "rgb(168 85 247)", // purple-400
-                                "rgb(192 132 252)", // purple-300
-                                "rgb(217 70 239)", // fuchsia-500
-                                "rgb(236 72 153)", // pink-500
-                                "rgb(251 113 133)", // rose-400
-                                "rgb(249 115 22)", // orange-500
-                              ];
-                              const color = colors[idx % colors.length];
-                              const total = generalStats.branchesByJobCount.reduce((sum, b) => sum + b.count, 0);
-                              const percentage = total > 0 ? Math.round((branch.count / total) * 100) : 0;
-                              return (
-                                <div key={branch.branchId} className="flex items-center gap-3">
-                                  <div className="w-4 h-4 rounded flex-shrink-0" style={{ backgroundColor: color }} />
-                                  <span className="text-sm text-gray-700 flex-1 truncate">{branch.branchName}</span>
-                                  <span className="text-sm font-semibold text-gray-900">{branch.count}</span>
-                                  <span className="text-xs text-gray-500">({percentage}%)</span>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </div>
+                    {maintenanceAmount != null && (
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm text-gray-600">{t("dashboard.maintenanceFee") || "Taxă întreținere"} ({(BUSINESS_MAINTENANCE_RATE * 100).toFixed(0)}%)</span>
+                        <span className="text-sm font-semibold text-gray-900">{maintenanceAmount.toFixed(2)} MDL</span>
+                      </div>
+                    )}
+                    {totalSalaryPaid != null && (
+                      <div className="flex justify-between items-center pt-3 border-t border-primary/20">
+                        <span className="text-base font-semibold text-gray-900">{t("dashboard.totalSalaryPaid") || "Total plătit"}</span>
+                        <span className="text-xl font-bold text-primary">{totalSalaryPaid.toFixed(2)} MDL</span>
                       </div>
                     )}
                   </div>
                 )}
+                {totalHours === 0 && (
+                  <p className="text-sm text-amber-600">{t("dashboard.noHoursWorkedYet") || "Nu au fost înregistrate ore lucrate încă"}</p>
+                )}
               </div>
-            )}
-            {selectedJobIdForReport && (
-            <div className="report-content-enter">
-            {(() => {
-              const job = allJobs.find((j, i) => ("id" in j && j.id != null ? String(j.id) : `job-${i}`) === selectedJobIdForReport) as { date?: string; endDate?: string; startTime?: string; endTime?: string; peopleNeeded?: string; jobType?: string } | undefined;
-              const apps = applicationsByJob[selectedJobIdForReport] ?? [];
-              const accepted = apps.filter((a) => String(a.status).toLowerCase() === "accepted");
-              const jobDate = (job?.date || "").trim();
-              const jobEndDate = (job?.endDate || "").trim();
-              const jobType = job?.jobType as "one-day" | "multi-day" | "full-time" | undefined;
-              // Determine if this is a one-day job
-              const isOneDayJob = jobType === "one-day" || (!jobEndDate || jobEndDate === jobDate);
-              const scheduledDates = jobDate ? getScheduledDates(jobDate, jobEndDate || undefined) : [];
-              const scheduledStartTime = (job?.startTime || "").trim() || "—";
-              const scheduledEndTime = (job?.endTime || "").trim() || "—";
-              type Row = { staffId: string; staffName: string; workDate: string; scheduledCheckIn: string; scheduledCheckOut: string; actualCheckIn?: string; actualCheckOut?: string };
-              const rows: Row[] = [];
-              accepted.forEach((a) => {
-                const sessionsByDate: Record<string, { checkedInAt?: string; checkedOutAt?: string }> = {};
-                // First, populate from workSessions if available
-                (a.workSessions ?? []).forEach((s) => {
-                  const d = (s.workDate || "").slice(0, 10);
-                  if (d) sessionsByDate[d] = { checkedInAt: s.checkedInAt, checkedOutAt: s.checkedOutAt };
-                });
-                // Fallback: if workSessions is empty but checkedInAt/checkedOutAt exist, use them
-                if ((a.workSessions ?? []).length === 0 && (a.checkedInAt || a.checkedOutAt)) {
-                  const checkedInDate = a.checkedInAt ? a.checkedInAt.slice(0, 10) : null;
-                  const checkedOutDate = a.checkedOutAt ? a.checkedOutAt.slice(0, 10) : null;
-                  const sessionDate = checkedInDate || checkedOutDate;
-                  if (sessionDate) {
-                    if (scheduledDates.includes(sessionDate)) {
-                      // Use the matching scheduled date
-                      sessionsByDate[sessionDate] = { checkedInAt: a.checkedInAt, checkedOutAt: a.checkedOutAt };
-                    } else if (!isOneDayJob) {
-                      // For multi-day jobs, also include check-in dates that don't match scheduled dates
-                      sessionsByDate[sessionDate] = { checkedInAt: a.checkedInAt, checkedOutAt: a.checkedOutAt };
-                    } else if (isOneDayJob && jobDate) {
-                      // For one-day jobs, map check-in/out to the scheduled jobDate
-                      sessionsByDate[jobDate] = { checkedInAt: a.checkedInAt, checkedOutAt: a.checkedOutAt };
-                    }
-                  }
-                }
-                // For one-day jobs: show only ONE row per employee (the scheduled date)
-                // But use check-in/out times from any date (workSessions or checkedInAt/checkedOutAt)
-                if (isOneDayJob && jobDate) {
-                  // Find the actual check-in/out times from any session date
-                  let actualCheckIn: string | undefined;
-                  let actualCheckOut: string | undefined;
-                  
-                  // First try to get from the scheduled date
-                  if (sessionsByDate[jobDate]) {
-                    actualCheckIn = sessionsByDate[jobDate].checkedInAt;
-                    actualCheckOut = sessionsByDate[jobDate].checkedOutAt;
-                  } else {
-                    // If not found, get from any available session (for one-day jobs, there should only be one)
-                    const sessionDates = Object.keys(sessionsByDate);
-                    if (sessionDates.length > 0) {
-                      const firstSession = sessionsByDate[sessionDates[0]];
-                      actualCheckIn = firstSession?.checkedInAt;
-                      actualCheckOut = firstSession?.checkedOutAt;
-                    } else {
-                      // Last resort: use checkedInAt/checkedOutAt directly
-                      actualCheckIn = a.checkedInAt;
-                      actualCheckOut = a.checkedOutAt;
-                    }
-                  }
-                  
-                  rows.push({
-                    staffId: a.staffId ?? "",
-                    staffName: a.staffName ?? "—",
-                    workDate: jobDate,
-                    scheduledCheckIn: scheduledStartTime,
-                    scheduledCheckOut: scheduledEndTime,
-                    actualCheckIn,
-                    actualCheckOut,
-                  });
-                } else {
-                  // For multi-day jobs: show rows for each scheduled date
-                  scheduledDates.forEach((workDate) => {
-                    const session = sessionsByDate[workDate];
-                    rows.push({
-                      staffId: a.staffId ?? "",
-                      staffName: a.staffName ?? "—",
-                      workDate,
-                      scheduledCheckIn: scheduledStartTime,
-                      scheduledCheckOut: scheduledEndTime,
-                      actualCheckIn: session?.checkedInAt,
-                      actualCheckOut: session?.checkedOutAt,
-                    });
-                  });
-                  // Also create rows for any check-in/out dates that don't match scheduled dates (for multi-day jobs)
-                  Object.keys(sessionsByDate).forEach((workDate) => {
-                    if (!scheduledDates.includes(workDate)) {
-                      const session = sessionsByDate[workDate];
-                      rows.push({
-                        staffId: a.staffId ?? "",
-                        staffName: a.staffName ?? "—",
-                        workDate,
-                        scheduledCheckIn: scheduledStartTime,
-                        scheduledCheckOut: scheduledEndTime,
-                        actualCheckIn: session?.checkedInAt,
-                        actualCheckOut: session?.checkedOutAt,
-                      });
-                    }
-                  });
-                }
-              });
-              rows.sort((a, b) => a.workDate.localeCompare(b.workDate) || (a.staffName || "").localeCompare(b.staffName || ""));
-              let filteredRows = selectedDateForReport ? rows.filter((r) => r.workDate === selectedDateForReport) : rows;
-              if (selectedStaffIdForReport) filteredRows = filteredRows.filter((r) => r.staffId === selectedStaffIdForReport);
-              const formatTime = (iso?: string) => (iso ? new Date(iso).toLocaleTimeString("ro-MD", { hour: "2-digit", minute: "2-digit" }) : null);
-              const notYetDone = t("dashboard.notYetDone");
-              const CheckIcon = () => (
-                <svg className="w-4 h-4 text-emerald-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
-              );
-              const ClockIcon = () => (
-                <svg className="w-4 h-4 text-amber-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-              );
-              const StatusCell = ({ value }: { value?: string }) => {
-                const time = formatTime(value);
-                if (time) return <span className="inline-flex items-center gap-1.5 text-gray-700"><CheckIcon /><span>{time}</span></span>;
-                return <span className="inline-flex items-center gap-1.5 text-amber-600 font-medium"><ClockIcon /><span>{notYetDone}</span></span>;
-              };
-              const displayedEmployeeCount = accepted.length;
-              return (
-                <>
-                  <div className="flex flex-wrap items-center gap-4 mb-2">
-                    <div className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-primary/10 border border-primary/20">
-                      <span className="text-sm font-semibold text-primary">{t("dashboard.numberOfEmployees")}</span>
-                      <span className="text-sm font-bold text-gray-900">{displayedEmployeeCount}</span>
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
-                    {accepted.length >= 2 && (
-                      <div className="rounded-xl bg-gray-50/80 border border-gray-100 p-4 sm:p-5 min-h-[200px] flex flex-col">
-                        <h4 className="text-sm font-semibold text-gray-800 mb-3 flex items-center gap-2">
-                          <span className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" /></svg>
-                          </span>
-                          {t("dashboard.selectEmployee")}
-                        </h4>
-                        <div className="flex flex-col gap-2 flex-1 min-h-0 overflow-y-auto pr-1">
-                          <button
-                            type="button"
-                            onClick={() => setSelectedStaffIdForReport(null)}
-                            className={`flex items-center justify-between w-full px-4 py-3 rounded-xl text-left text-sm font-medium transition-all ${selectedStaffIdForReport === null ? "bg-primary text-white shadow-sm" : "bg-white border border-gray-200 text-gray-800 hover:border-primary/30 hover:bg-primary/5"}`}
-                          >
-                            <span>{t("dashboard.allEmployees")}</span>
-                            <svg className="w-4 h-4 flex-shrink-0 opacity-80" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
-                          </button>
-                          {accepted.map((a) => (
-                            <button
-                              key={a.staffId ?? a.staffName ?? ""}
-                              type="button"
-                              onClick={() => setSelectedStaffIdForReport(a.staffId ?? null)}
-                              className={`flex items-center justify-between w-full px-4 py-3 rounded-xl text-left text-sm font-medium transition-all ${selectedStaffIdForReport === (a.staffId ?? "") ? "bg-primary text-white shadow-sm" : "bg-white border border-gray-200 text-gray-800 hover:border-primary/30 hover:bg-primary/5"}`}
-                            >
-                              <span>{a.staffName || "—"}</span>
-                              <svg className="w-4 h-4 flex-shrink-0 opacity-80" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                    {scheduledDates.length > 0 && (() => {
-                      const scheduledSet = new Set(scheduledDates);
-                      const days = getCalendarDaysForMonth(calendarViewYear, calendarViewMonth);
-                      const hasPrevMonth = scheduledDates.some((ymd) => {
-                        const [y, m] = ymd.split("-").map(Number);
-                        const month0 = m - 1;
-                        return y < calendarViewYear || (y === calendarViewYear && month0 < calendarViewMonth);
-                      });
-                      const hasNextMonth = scheduledDates.some((ymd) => {
-                        const [y, m] = ymd.split("-").map(Number);
-                        const month0 = m - 1;
-                        return y > calendarViewYear || (y === calendarViewYear && month0 > calendarViewMonth);
-                      });
-                      return (
-                        <div className="rounded-xl bg-gray-50/80 border border-gray-100 p-4 max-w-[260px] flex flex-col">
-                          <h4 className="text-sm font-semibold text-gray-800 mb-2 flex items-center gap-2">
-                            <span className="w-7 h-7 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
-                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
-                            </span>
-                            {t("dashboard.selectDay")}
-                          </h4>
-                          <button
-                            type="button"
-                            onClick={() => setSelectedDateForReport(null)}
-                            className={`flex items-center justify-between w-full px-3 py-2 rounded-lg text-left text-sm font-medium transition-all mb-2.5 ${selectedDateForReport === null ? "bg-primary text-white shadow-sm" : "bg-white border border-gray-200 text-gray-800 hover:border-primary/30 hover:bg-primary/5"}`}
-                          >
-                            <span>{t("dashboard.allDays")}</span>
-                            <svg className="w-4 h-4 flex-shrink-0 opacity-80" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
-                          </button>
-                          <div className="flex items-center justify-between gap-2 mb-2">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                if (calendarViewMonth === 0) { setCalendarViewMonth(11); setCalendarViewYear(calendarViewYear - 1); }
-                                else setCalendarViewMonth(calendarViewMonth - 1);
-                              }}
-                              className="p-1.5 rounded-lg text-gray-500 hover:bg-white hover:text-primary transition-colors disabled:opacity-40 disabled:pointer-events-none"
-                              disabled={!hasPrevMonth}
-                              aria-label={t("dashboard.prevMonth")}
-                            >
-                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
-                            </button>
-                            <span className="text-sm font-bold text-gray-900 capitalize">{MONTH_NAMES_LONG[calendarViewMonth]} {calendarViewYear}</span>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                if (calendarViewMonth === 11) { setCalendarViewMonth(0); setCalendarViewYear(calendarViewYear + 1); }
-                                else setCalendarViewMonth(calendarViewMonth + 1);
-                              }}
-                              className="p-1.5 rounded-lg text-gray-500 hover:bg-white hover:text-primary transition-colors disabled:opacity-40 disabled:pointer-events-none"
-                              disabled={!hasNextMonth}
-                              aria-label={t("dashboard.nextMonth")}
-                            >
-                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
-                            </button>
-                          </div>
-                          <div className="grid grid-cols-7 gap-1 text-center">
-                            {WEEKDAY_HEADERS.map((h) => (
-                              <div key={h} className="py-1 text-[10px] font-semibold text-gray-500">{h}</div>
-                            ))}
-                            {days.map((day, idx) => {
-                              if (day === null) return <div key={`e-${idx}`} />;
-                              const ymd = `${calendarViewYear}-${String(calendarViewMonth + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-                              const isScheduled = scheduledSet.has(ymd);
-                              const isSelected = selectedDateForReport === ymd;
-                              const playSelectAnimation = isSelected && animatingDay === ymd;
-                              return (
-                                <button
-                                  key={ymd}
-                                  type="button"
-                                  disabled={!isScheduled}
-                                  onClick={() => {
-                                    if (!isScheduled) return;
-                                    setAnimatingDay(ymd);
-                                    setSelectedDateForReport(ymd);
-                                  }}
-                                  onAnimationEnd={() => playSelectAnimation && setAnimatingDay(null)}
-                                  className={`min-w-0 w-full aspect-square rounded-lg text-xs font-medium transition-all ${!isScheduled ? "text-gray-300 cursor-default" : isSelected ? "bg-primary text-white shadow-sm" : "text-gray-700 hover:bg-primary/10 hover:text-primary"} ${playSelectAnimation ? "calendar-day-select" : ""}`}
-                                >
-                                  {day}
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      );
-                    })()}
-                  </div>
-                  <div className="mt-6 overflow-x-auto rounded-xl border border-gray-100 bg-white shadow-sm">
-                    {filteredRows.length === 0 ? (
-                      <div className="py-12 px-6 text-center">
-                        <p className="text-gray-500 text-sm">
-                          {selectedDateForReport ? t("dashboard.noSessionsForSelectedDay") : t("dashboard.noSessionsForJob")}
-                        </p>
-                      </div>
-                    ) : (
-                      <table className="w-full min-w-[640px]">
-                        <thead>
-                          <tr className="text-left text-xs sm:text-sm text-gray-500 bg-gray-50/80 border-b border-gray-100">
-                            <th className="p-4 font-semibold text-gray-700">{t("dashboard.staffName")}</th>
-                            <th className="p-4 font-semibold text-gray-700">{t("dashboard.date")}</th>
-                            <th className="p-4 font-semibold text-gray-700">{t("dashboard.scheduledCheckIn")}</th>
-                            <th className="p-4 font-semibold text-gray-700">{t("dashboard.scheduledCheckOut")}</th>
-                            <th className="p-4 font-semibold text-gray-700">{t("dashboard.checkInTime")}</th>
-                            <th className="p-4 font-semibold text-gray-700">{t("dashboard.checkOutTime")}</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {filteredRows.map((row, idx) => (
-                            <tr key={idx} className={`border-b border-gray-50 last:border-0 ${idx % 2 === 0 ? "bg-white" : "bg-gray-50/40"} hover:bg-primary/5 transition-colors`}>
-                              <td className="p-4 font-medium text-gray-900 text-sm">{row.staffName}</td>
-                              <td className="p-4 text-gray-600 text-sm">{row.workDate || "—"}</td>
-                              <td className="p-4 text-gray-600 text-sm">{row.scheduledCheckIn}</td>
-                              <td className="p-4 text-gray-600 text-sm">{row.scheduledCheckOut}</td>
-                              <td className="p-4 text-sm"><StatusCell value={row.actualCheckIn} /></td>
-                              <td className="p-4 text-sm"><StatusCell value={row.actualCheckOut} /></td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    )}
-                  </div>
-                </>
-              );
-            })()}
             </div>
-            )}
-          </div>
-        </div>
-      </section>
+          )}
 
+          {/* Confirmation Date */}
+          {application.businessConfirmedAt && (
+            <div className="space-y-2">
+              <h3 className="text-base font-semibold text-gray-900 border-b border-gray-200 pb-2">
+                Confirmare
+              </h3>
+              <p className="text-sm text-gray-600">
+                {t("dashboard.confirmedOn") || "Confirmat la"}: <span className="font-medium text-gray-900">{formatDateTime(application.businessConfirmedAt)}</span>
+              </p>
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="flex-shrink-0 bg-white border-t border-gray-100 px-4 sm:px-6 py-4 flex justify-end">
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-4 py-2 rounded-xl bg-gray-900 text-white font-medium hover:bg-gray-800 transition-colors"
+          >
+            Închide
+          </button>
+        </div>
       </div>
-    </>
+    </div>
   );
+
+  // Render modal to document.body via portal to ensure viewport-centered positioning
+  return typeof document !== 'undefined' ? createPortal(modalContent, document.body) : null;
 }
