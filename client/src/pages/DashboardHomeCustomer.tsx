@@ -227,11 +227,19 @@ export default function DashboardHomeCustomer() {
   }, [selectedJobIdForReport, user?.id, fetchApplications]);
 
   // La revenirea pe tab, reîncarcă datele raportului dacă e selectat un job
+  // Also set up periodic refresh every 10 seconds when viewing a report to catch check-ins
   useEffect(() => {
     if (!selectedJobIdForReport || !user?.id) return;
     const onFocus = () => fetchApplications();
     window.addEventListener("focus", onFocus);
-    return () => window.removeEventListener("focus", onFocus);
+    // Set up periodic refresh every 10 seconds when viewing a report
+    const intervalId = setInterval(() => {
+      fetchApplications();
+    }, 10000); // Refresh every 10 seconds
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      clearInterval(intervalId);
+    };
   }, [selectedJobIdForReport, user?.id, fetchApplications]);
 
   const allJobs = useMemo(() => [...jobsAdded], [jobsAdded]);
@@ -642,11 +650,14 @@ export default function DashboardHomeCustomer() {
             {selectedJobIdForReport && (
             <div className="report-content-enter">
             {(() => {
-              const job = allJobs.find((j, i) => ("id" in j && j.id != null ? String(j.id) : `job-${i}`) === selectedJobIdForReport) as { date?: string; endDate?: string; startTime?: string; endTime?: string; peopleNeeded?: string } | undefined;
+              const job = allJobs.find((j, i) => ("id" in j && j.id != null ? String(j.id) : `job-${i}`) === selectedJobIdForReport) as { date?: string; endDate?: string; startTime?: string; endTime?: string; peopleNeeded?: string; jobType?: string } | undefined;
               const apps = applicationsByJob[selectedJobIdForReport] ?? [];
               const accepted = apps.filter((a) => String(a.status).toLowerCase() === "accepted");
               const jobDate = (job?.date || "").trim();
               const jobEndDate = (job?.endDate || "").trim();
+              const jobType = job?.jobType as "one-day" | "multi-day" | "full-time" | undefined;
+              // Determine if this is a one-day job
+              const isOneDayJob = jobType === "one-day" || (!jobEndDate || jobEndDate === jobDate);
               const scheduledDates = jobDate ? getScheduledDates(jobDate, jobEndDate || undefined) : [];
               const scheduledStartTime = (job?.startTime || "").trim() || "—";
               const scheduledEndTime = (job?.endTime || "").trim() || "—";
@@ -654,32 +665,93 @@ export default function DashboardHomeCustomer() {
               const rows: Row[] = [];
               accepted.forEach((a) => {
                 const sessionsByDate: Record<string, { checkedInAt?: string; checkedOutAt?: string }> = {};
+                // First, populate from workSessions if available
                 (a.workSessions ?? []).forEach((s) => {
                   const d = (s.workDate || "").slice(0, 10);
                   if (d) sessionsByDate[d] = { checkedInAt: s.checkedInAt, checkedOutAt: s.checkedOutAt };
                 });
-                // Fallback: if workSessions is empty but checkedInAt/checkedOutAt exist, use them for matching dates
+                // Fallback: if workSessions is empty but checkedInAt/checkedOutAt exist, use them
                 if ((a.workSessions ?? []).length === 0 && (a.checkedInAt || a.checkedOutAt)) {
                   const checkedInDate = a.checkedInAt ? a.checkedInAt.slice(0, 10) : null;
                   const checkedOutDate = a.checkedOutAt ? a.checkedOutAt.slice(0, 10) : null;
-                  // Use the date from check-in or check-out, whichever exists
                   const sessionDate = checkedInDate || checkedOutDate;
-                  if (sessionDate && scheduledDates.includes(sessionDate)) {
-                    sessionsByDate[sessionDate] = { checkedInAt: a.checkedInAt, checkedOutAt: a.checkedOutAt };
+                  if (sessionDate) {
+                    if (scheduledDates.includes(sessionDate)) {
+                      // Use the matching scheduled date
+                      sessionsByDate[sessionDate] = { checkedInAt: a.checkedInAt, checkedOutAt: a.checkedOutAt };
+                    } else if (!isOneDayJob) {
+                      // For multi-day jobs, also include check-in dates that don't match scheduled dates
+                      sessionsByDate[sessionDate] = { checkedInAt: a.checkedInAt, checkedOutAt: a.checkedOutAt };
+                    } else if (isOneDayJob && jobDate) {
+                      // For one-day jobs, map check-in/out to the scheduled jobDate
+                      sessionsByDate[jobDate] = { checkedInAt: a.checkedInAt, checkedOutAt: a.checkedOutAt };
+                    }
                   }
                 }
-                scheduledDates.forEach((workDate) => {
-                  const session = sessionsByDate[workDate];
+                // For one-day jobs: show only ONE row per employee (the scheduled date)
+                // But use check-in/out times from any date (workSessions or checkedInAt/checkedOutAt)
+                if (isOneDayJob && jobDate) {
+                  // Find the actual check-in/out times from any session date
+                  let actualCheckIn: string | undefined;
+                  let actualCheckOut: string | undefined;
+                  
+                  // First try to get from the scheduled date
+                  if (sessionsByDate[jobDate]) {
+                    actualCheckIn = sessionsByDate[jobDate].checkedInAt;
+                    actualCheckOut = sessionsByDate[jobDate].checkedOutAt;
+                  } else {
+                    // If not found, get from any available session (for one-day jobs, there should only be one)
+                    const sessionDates = Object.keys(sessionsByDate);
+                    if (sessionDates.length > 0) {
+                      const firstSession = sessionsByDate[sessionDates[0]];
+                      actualCheckIn = firstSession?.checkedInAt;
+                      actualCheckOut = firstSession?.checkedOutAt;
+                    } else {
+                      // Last resort: use checkedInAt/checkedOutAt directly
+                      actualCheckIn = a.checkedInAt;
+                      actualCheckOut = a.checkedOutAt;
+                    }
+                  }
+                  
                   rows.push({
                     staffId: a.staffId ?? "",
                     staffName: a.staffName ?? "—",
-                    workDate,
+                    workDate: jobDate,
                     scheduledCheckIn: scheduledStartTime,
                     scheduledCheckOut: scheduledEndTime,
-                    actualCheckIn: session?.checkedInAt,
-                    actualCheckOut: session?.checkedOutAt,
+                    actualCheckIn,
+                    actualCheckOut,
                   });
-                });
+                } else {
+                  // For multi-day jobs: show rows for each scheduled date
+                  scheduledDates.forEach((workDate) => {
+                    const session = sessionsByDate[workDate];
+                    rows.push({
+                      staffId: a.staffId ?? "",
+                      staffName: a.staffName ?? "—",
+                      workDate,
+                      scheduledCheckIn: scheduledStartTime,
+                      scheduledCheckOut: scheduledEndTime,
+                      actualCheckIn: session?.checkedInAt,
+                      actualCheckOut: session?.checkedOutAt,
+                    });
+                  });
+                  // Also create rows for any check-in/out dates that don't match scheduled dates (for multi-day jobs)
+                  Object.keys(sessionsByDate).forEach((workDate) => {
+                    if (!scheduledDates.includes(workDate)) {
+                      const session = sessionsByDate[workDate];
+                      rows.push({
+                        staffId: a.staffId ?? "",
+                        staffName: a.staffName ?? "—",
+                        workDate,
+                        scheduledCheckIn: scheduledStartTime,
+                        scheduledCheckOut: scheduledEndTime,
+                        actualCheckIn: session?.checkedInAt,
+                        actualCheckOut: session?.checkedOutAt,
+                      });
+                    }
+                  });
+                }
               });
               rows.sort((a, b) => a.workDate.localeCompare(b.workDate) || (a.staffName || "").localeCompare(b.staffName || ""));
               let filteredRows = selectedDateForReport ? rows.filter((r) => r.workDate === selectedDateForReport) : rows;

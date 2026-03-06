@@ -234,6 +234,33 @@ router.get("/categories", async (_req: Request, res: Response): Promise<void> =>
   }
 });
 
+/** GET /api/jobs/raioane - list/search raioane (districts/municipalities) */
+router.get("/raioane", async (req: Request, res: Response): Promise<void> => {
+  try {
+    const search = String(req.query.search ?? "").trim();
+    let query = "SELECT id, name, type FROM raioane";
+    const params: unknown[] = [];
+    
+    if (search) {
+      query += " WHERE name LIKE ? ORDER BY name";
+      params.push(`%${search}%`);
+    } else {
+      query += " ORDER BY type, name";
+    }
+    
+    const [rows] = await db.query(query, params) as [Record<string, unknown>[], unknown];
+    const raioane = (Array.isArray(rows) ? rows : []).map((r) => ({
+      id: Number(r.id ?? 0),
+      name: String(r.name ?? ""),
+      type: String(r.type ?? "raion"),
+    }));
+    res.json({ raioane });
+  } catch (err) {
+    console.error("GET /api/jobs/raioane error:", err);
+    res.status(500).json({ error: "Eroare la încărcarea raioanelor." });
+  }
+});
+
 /** GET /api/jobs - customer/business: doar joburile proprii; staff/admin: toate joburile */
 router.get("/", authMiddleware, async (req: ReqWithUser, res: Response): Promise<void> => {
   const userId = req.user?.userId;
@@ -338,6 +365,24 @@ router.post("/", authMiddleware, async (req: ReqWithUser, res: Response): Promis
       return;
     }
   
+  // ✅ NEW: raion_id and localitate for precise region tracking
+  const raionId = (b as any).raionId != null ? toNumber((b as any).raionId) : null;
+  const localitate = (b as any).localitate != null ? String((b as any).localitate).trim().slice(0, 200) : null;
+  
+  // Validate raion_id is required and exists
+  if (raionId == null || raionId <= 0) {
+    res.status(400).json({ error: "raionId is required and must be a positive number." });
+    return;
+  }
+  const [raionRows] = await db.query(
+    "SELECT id FROM raioane WHERE id = ? LIMIT 1",
+    [raionId]
+  ) as [Record<string, unknown>[], unknown];
+  if (!Array.isArray(raionRows) || raionRows.length === 0) {
+    res.status(400).json({ error: "Invalid raionId (not found in raioane table)." });
+    return;
+  }
+  
   if (!jobTitle || jobTitle.length === 0) {
     res.status(400).json({ error: "Titlul jobului este obligatoriu (maxim 30 caractere)." });
     return;
@@ -398,9 +443,11 @@ router.post("/", authMiddleware, async (req: ReqWithUser, res: Response): Promis
             estimated_salary,
             image_url,
             job_category_code,
-            hourly_rate_base
+            hourly_rate_base,
+            raion_id,
+            localitate
          )
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           userId,
           jobTitle, // Use custom title (max 30 chars)
@@ -418,6 +465,8 @@ router.post("/", authMiddleware, async (req: ReqWithUser, res: Response): Promis
           imageUrl,
           jobCategoryCode,
           hourlyRateBase,
+          raionId,
+          localitate,
         ]
       ) as [{ insertId: number }, unknown];
   
@@ -1258,22 +1307,25 @@ router.get("/admin/statistics", authMiddleware, async (req: ReqWithUser, res: Re
       jobCount: r.job_count != null ? Number(r.job_count) : 0,
     }));
 
-    // Region = branch city when job location matches; else 'Alte'. Salary by region (avg hourly, count)
+    // Salary by region: use raion_id if available, otherwise fallback to old logic
     const [salaryByRegionRows] = await db.query(
       `SELECT
-         COALESCE(region_city, 'Alte') AS region,
-         AVG(hourly_rate_base) AS avg_hourly,
+         COALESCE(r.name, region_city, 'Alte') AS region,
+         AVG(j.hourly_rate_base) AS avg_hourly,
          COUNT(*) AS job_count
-       FROM (
-         SELECT j.id, j.hourly_rate_base,
+       FROM jobs j
+       LEFT JOIN raioane r ON r.id = j.raion_id
+       LEFT JOIN (
+         SELECT j2.id,
            (SELECT b.City FROM branches b
-            INNER JOIN business_profiles bp ON bp.Id = b.BusinessProfileId AND bp.UserId = j.user_id
-            WHERE (j.location LIKE CONCAT('%', b.City, '%') OR b.City LIKE CONCAT('%', j.location, '%'))
+            INNER JOIN business_profiles bp ON bp.Id = b.BusinessProfileId AND bp.UserId = j2.user_id
+            WHERE (j2.location LIKE CONCAT('%', b.City, '%') OR b.City LIKE CONCAT('%', j2.location, '%'))
             LIMIT 1) AS region_city
-         FROM jobs j
-         WHERE j.hourly_rate_base IS NOT NULL
-       ) AS t
-       GROUP BY COALESCE(region_city, 'Alte')
+         FROM jobs j2
+         WHERE j2.raion_id IS NULL
+       ) AS fallback ON fallback.id = j.id
+       WHERE j.hourly_rate_base IS NOT NULL
+       GROUP BY COALESCE(r.name, fallback.region_city, 'Alte')
        ORDER BY avg_hourly DESC`
     ) as [Record<string, unknown>[], unknown];
     const salaryByRegion = (Array.isArray(salaryByRegionRows) ? salaryByRegionRows : []).map((r) => ({
@@ -1282,16 +1334,17 @@ router.get("/admin/statistics", authMiddleware, async (req: ReqWithUser, res: Re
       jobCount: r.job_count != null ? Number(r.job_count) : 0,
     }));
 
-    // Salary by domain AND region (avg hourly, count)
+    // Salary by domain AND region (avg hourly, count): use raion_id if available
     const [salaryByDomainRegionRows] = await db.query(
       `SELECT
-         COALESCE(r.region_city, 'Alte') AS region,
+         COALESCE(r.name, fallback.region_city, 'Alte') AS region,
          COALESCE(j.job_category_code, 0) AS category_code,
          COALESCE(jc.Title, 'Fără categorie') AS category_title,
          AVG(j.hourly_rate_base) AS avg_hourly,
          COUNT(j.id) AS job_count
        FROM jobs j
        LEFT JOIN job_categories jc ON jc.Code = j.job_category_code
+       LEFT JOIN raioane r ON r.id = j.raion_id
        LEFT JOIN (
          SELECT j2.id,
            (SELECT b.City FROM branches b
@@ -1299,9 +1352,10 @@ router.get("/admin/statistics", authMiddleware, async (req: ReqWithUser, res: Re
             WHERE (j2.location LIKE CONCAT('%', b.City, '%') OR b.City LIKE CONCAT('%', j2.location, '%'))
             LIMIT 1) AS region_city
          FROM jobs j2
-       ) AS r ON r.id = j.id
+         WHERE j2.raion_id IS NULL
+       ) AS fallback ON fallback.id = j.id
        WHERE j.hourly_rate_base IS NOT NULL
-       GROUP BY COALESCE(r.region_city, 'Alte'), j.job_category_code, jc.Title
+       GROUP BY COALESCE(r.name, fallback.region_city, 'Alte'), j.job_category_code, jc.Title
        ORDER BY region, category_title`
     ) as [Record<string, unknown>[], unknown];
     const salaryByDomainAndRegion = (Array.isArray(salaryByDomainRegionRows) ? salaryByDomainRegionRows : []).map((r) => ({

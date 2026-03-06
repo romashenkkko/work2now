@@ -435,6 +435,87 @@ export async function initDatabase(): Promise<void> {
     // -------------------------
     // 3) Optional app tables
     // -------------------------
+    
+    // Raioane table: 32 raioane + 13 municipii + 2 unități teritoriale autonome
+    await conn.query(`
+      CREATE TABLE IF NOT EXISTS \`raioane\` (
+        \`id\` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        \`name\` VARCHAR(100) NOT NULL UNIQUE,
+        \`type\` ENUM('raion', 'municipiu', 'unitate_autonoma') NOT NULL DEFAULT 'raion',
+        \`created_at\` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX \`idx_raioane_name\` (\`name\`),
+        INDEX \`idx_raioane_type\` (\`type\`)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
+    `);
+    await ensureInnoDB(conn, "raioane");
+    
+    // Populate raioane table with Moldova's administrative divisions
+    const raioaneList = [
+      // 32 Raioane
+      { name: "Anenii Noi", type: "raion" },
+      { name: "Basarabeasca", type: "raion" },
+      { name: "Briceni", type: "raion" },
+      { name: "Cahul", type: "raion" },
+      { name: "Cantemir", type: "raion" },
+      { name: "Calarasi", type: "raion" },
+      { name: "Causeni", type: "raion" },
+      { name: "Cimislia", type: "raion" },
+      { name: "Criuleni", type: "raion" },
+      { name: "Donduseni", type: "raion" },
+      { name: "Drochia", type: "raion" },
+      { name: "Dubasari", type: "raion" },
+      { name: "Edinet", type: "raion" },
+      { name: "Falesti", type: "raion" },
+      { name: "Floresti", type: "raion" },
+      { name: "Glodeni", type: "raion" },
+      { name: "Hincesti", type: "raion" },
+      { name: "Ialoveni", type: "raion" },
+      { name: "Leova", type: "raion" },
+      { name: "Nisporeni", type: "raion" },
+      { name: "Ocnita", type: "raion" },
+      { name: "Orhei", type: "raion" },
+      { name: "Rezina", type: "raion" },
+      { name: "Riscani", type: "raion" },
+      { name: "Singerei", type: "raion" },
+      { name: "Soroca", type: "raion" },
+      { name: "Straseni", type: "raion" },
+      { name: "Soldanesti", type: "raion" },
+      { name: "Stefan Voda", type: "raion" },
+      { name: "Taraclia", type: "raion" },
+      { name: "Telenesti", type: "raion" },
+      { name: "Ungheni", type: "raion" },
+      // 13 Municipii
+      { name: "Chisinau", type: "municipiu" },
+      { name: "Balti", type: "municipiu" },
+      { name: "Tiraspol", type: "municipiu" },
+      { name: "Bender", type: "municipiu" },
+      { name: "Ribnita", type: "municipiu" },
+      { name: "Cahul", type: "municipiu" },
+      { name: "Ungheni", type: "municipiu" },
+      { name: "Soroca", type: "municipiu" },
+      { name: "Orhei", type: "municipiu" },
+      { name: "Comrat", type: "municipiu" },
+      { name: "Ceadir-Lunga", type: "municipiu" },
+      { name: "Vulcanesti", type: "municipiu" },
+      { name: "Taraclia", type: "municipiu" },
+      // 2 Unitati teritoriale autonome
+      { name: "Gagauzia", type: "unitate_autonoma" },
+      { name: "Stinga Nistrului", type: "unitate_autonoma" },
+    ];
+    
+    // Insert raioane if table is empty
+    const [raioaneCountRows] = await conn.query("SELECT COUNT(*) AS c FROM `raioane`") as [Record<string, unknown>[], unknown];
+    const raioaneCount = Number((Array.isArray(raioaneCountRows) ? raioaneCountRows[0] : null)?.c ?? 0);
+    if (raioaneCount === 0) {
+      for (const raion of raioaneList) {
+        await conn.query(
+          "INSERT INTO `raioane` (`name`, `type`) VALUES (?, ?) ON DUPLICATE KEY UPDATE `name` = `name`",
+          [raion.name, raion.type]
+        );
+      }
+      console.log(`[DB] Inserted ${raioaneList.length} raioane into database`);
+    }
+    
     await conn.query(`
       CREATE TABLE IF NOT EXISTS \`jobs\` (
         \`id\` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -539,6 +620,35 @@ export async function initDatabase(): Promise<void> {
     }
     if (!(await columnExists(conn, "jobs", "check_in_radius_m"))) {
       await conn.query("ALTER TABLE `jobs` ADD COLUMN `check_in_radius_m` INT NULL");
+    }
+    
+    // Add raion_id and localitate columns for precise region tracking
+    if (!(await columnExists(conn, "jobs", "raion_id"))) {
+      await conn.query("ALTER TABLE `jobs` ADD COLUMN `raion_id` INT UNSIGNED NULL");
+    }
+    if (!(await columnExists(conn, "jobs", "localitate"))) {
+      await conn.query("ALTER TABLE `jobs` ADD COLUMN `localitate` VARCHAR(200) NULL");
+    }
+    
+    // Add foreign key constraint for raion_id
+    if (!(await fkExists(conn, "jobs", "fk_jobs_raion_id_raioane_id"))) {
+      try {
+        await conn.query(`
+          ALTER TABLE \`jobs\`
+          ADD CONSTRAINT \`fk_jobs_raion_id_raioane_id\`
+          FOREIGN KEY (\`raion_id\`) REFERENCES \`raioane\`(\`id\`)
+          ON DELETE SET NULL
+        `);
+      } catch (e) {
+        console.warn("[DB] Could not add FK fk_jobs_raion_id_raioane_id:", e);
+      }
+    }
+    
+    // Add index for raion_id for faster statistics queries
+    try {
+      await conn.query("CREATE INDEX IF NOT EXISTS `idx_jobs_raion_id` ON `jobs` (`raion_id`)");
+    } catch (e) {
+      // Index might already exist, ignore
     }
 
     await conn.query(`

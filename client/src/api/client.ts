@@ -143,6 +143,10 @@ export type JobPayload = {
   checkInLat?: number;
   checkInLng?: number;
   checkInRadiusM?: number;
+  
+  // ✅ NEW: region tracking for precise statistics
+  raionId?: number;          // ID from raioane table
+  localitate?: string;       // City/village name (max 200 chars)
 
 };
 
@@ -296,6 +300,11 @@ export const jobsApi = {
       financial: { totalBase: number; taxesCollected: number; profit: number };
       companyRanking: Array<{ rank: number; companyName: string; userId: string; acceptedCount: number }>;
     }>("/jobs/admin/statistics"),
+  /** Get raioane (districts/municipalities) with optional search */
+  getRaioane: (search?: string) =>
+    api<{
+      raioane: Array<{ id: number; name: string; type: string }>;
+    }>(`/jobs/raioane${search ? `?search=${encodeURIComponent(search)}` : ""}`),
 };
 
 export type ReviewItem = {
