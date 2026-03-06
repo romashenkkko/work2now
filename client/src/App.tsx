@@ -14,6 +14,7 @@ import DashboardAplicatii from "./pages/DashboardAplicatii";
 import DashboardRapoarte from "./pages/DashboardRapoarte";
 import DashboardMesaje from "./pages/DashboardMesaje";
 import DashboardSettings from "./pages/DashboardSettings";
+import DashboardSubscription from "./pages/DashboardSubscription";
 import EmployeeOnboarding from "./pages/EmployeeOnboarding";
 import About from "./pages/About";
 import HowItWorks from "./pages/HowItWorks";
@@ -32,6 +33,7 @@ export default function App() {
         <Route path="rapoarte" element={<DashboardRapoarte />} />
         <Route path="calendar" element={<Navigate to="/dashboard" replace />} />
         <Route path="mesaje" element={<DashboardMesaje />} />
+        <Route path="subscription" element={<DashboardSubscription />} />
         <Route path="settings" element={<DashboardSettings />} />
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Route>

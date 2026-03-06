@@ -14,6 +14,7 @@ router.post("/", authMiddleware, async (req: ReqWithUser, res: Response): Promis
   let score = b.score != null ? Number(b.score) : NaN;
   const comment = typeof b.comment === "string" ? b.comment.trim().slice(0, 2000) : null;
   const photoUrl = typeof b.photoUrl === "string" && b.photoUrl.trim() ? b.photoUrl.trim().slice(0, 2000) : null;
+  const jobTitle = typeof b.jobTitle === "string" && b.jobTitle.trim() ? b.jobTitle.trim().slice(0, 255) : null;
   if (!userId || !applicationId || applicationId.trim() === "") {
     res.status(400).json({ error: "applicationId este obligatoriu." });
     return;
@@ -48,7 +49,7 @@ router.post("/", authMiddleware, async (req: ReqWithUser, res: Response): Promis
     [applicationId]
   ) as [Record<string, unknown>[], unknown];
   const app = Array.isArray(appRows) && appRows[0] ? appRows[0] : null;
-  if (!app || !app.completed_at) {
+  if (!app || !app.checked_out_at) {
     res.status(404).json({ error: "Aplicație negăsită sau lucrul nu e finalizat." });
     return;
   }
@@ -91,8 +92,8 @@ router.post("/", authMiddleware, async (req: ReqWithUser, res: Response): Promis
     const raterIdForDb = String(raterId);
     const ratedIdForDb = String(ratedId);
     await conn.query(
-      "INSERT INTO ratings (application_id, rater_id, rated_id, score, comment, photo_url) VALUES (?, ?, ?, ?, ?, ?)",
-      [applicationId, raterIdForDb, ratedIdForDb, score, comment || null, photoUrl || null]
+      "INSERT INTO ratings (application_id, rater_id, rated_id, score, comment, photo_url, job_title) VALUES (?, ?, ?, ?, ?, ?, ?)",
+      [applicationId, raterIdForDb, ratedIdForDb, score, comment || null, photoUrl || null, jobTitle]
     );
     await conn.commit();
     res.status(201).json({ ok: true });
@@ -150,7 +151,7 @@ router.get("/me", authMiddleware, async (req: ReqWithUser, res: Response): Promi
   });
   const [givenRows] = await db.query(
     `SELECT r.id, r.application_id, r.score, r.comment, r.photo_url, r.created_at,
-            j.job AS job_title,
+            COALESCE(r.job_title, j.Title) AS job_title,
             COALESCE(bp.CompanyName, TRIM(CONCAT(ep.Name, ' ', ep.Surname)), a.staff_name, u.Email) AS other_name
      FROM ratings r
      JOIN applications a ON a.id = r.application_id
@@ -164,12 +165,12 @@ router.get("/me", authMiddleware, async (req: ReqWithUser, res: Response): Promi
   ) as [Record<string, unknown>[], unknown];
   const [receivedRows] = await db.query(
     `SELECT r.id, r.application_id, r.score, r.comment, r.photo_url, r.created_at,
-            j.job AS job_title,
+            COALESCE(r.job_title, j.Title) AS job_title,
             COALESCE(bp.CompanyName, TRIM(CONCAT(ep.Name, ' ', ep.Surname)), a.staff_name, u.Email) AS other_name
      FROM ratings r
      JOIN applications a ON a.id = r.application_id
      JOIN jobs j ON j.id = a.job_id
-     LEFT JOIN users u ON u.Id = r.rater_id
+     LEFT JOIN users u ON TRIM(COALESCE(u.Id, '')) = TRIM(COALESCE(r.rater_id, ''))
      LEFT JOIN business_profiles bp ON bp.UserId = u.Id
      LEFT JOIN employee_profiles ep ON ep.UserId = u.Id
      WHERE r.rated_id = ?
@@ -183,13 +184,14 @@ router.get("/me", authMiddleware, async (req: ReqWithUser, res: Response): Promi
 
 /** GET /api/ratings/user/:userId - scor mediu și număr evaluări pentru un user (rated) */
 router.get("/user/:userId", async (req: ReqWithUser, res: Response): Promise<void> => {
-  const userId = req.params.userId;
+  const rawUserId = req.params.userId;
+  const userId = rawUserId != null ? String(rawUserId).trim() : "";
   if (!userId) {
     res.status(400).json({ error: "userId lipsă." });
     return;
   }
   const [rows] = await db.query(
-    "SELECT COUNT(*) AS count, COALESCE(AVG(score), 0) AS average FROM ratings WHERE rated_id = ?",
+    "SELECT COUNT(*) AS count, COALESCE(AVG(score), 0) AS average FROM ratings WHERE TRIM(COALESCE(rated_id, '')) = ?",
     [userId]
   ) as [Record<string, unknown>[], unknown];
   const r = Array.isArray(rows) ? rows[0] : null;
@@ -204,40 +206,101 @@ const toIsoReceived = (v: unknown): string | undefined => {
   const s = String(v);
   return s.trim() || undefined;
 };
-const mapRowReceived = (row: Record<string, unknown>) => ({
-  id: String(row.id),
-  applicationId: String(row.application_id),
-  jobTitle: row.job_title != null ? String(row.job_title) : undefined,
-  otherPartyName: row.other_name != null ? String(row.other_name) : undefined,
-  score: Number(row.score) || 0,
-  comment: typeof row.comment === "string" && row.comment.trim() ? row.comment.trim() : undefined,
-  photoUrl: typeof row.photo_url === "string" && row.photo_url.trim() ? row.photo_url.trim() : undefined,
-  createdAt: toIsoReceived(row.created_at),
-});
+function normalizeRole(raw: unknown): "staff" | "customer" | "admin" | "" {
+  if (typeof raw === "number") {
+    if (raw === 1) return "staff";
+    if (raw === 2) return "customer";
+    if (raw === 3) return "admin";
+    return "";
+  }
+  const s = String(raw ?? "").toLowerCase().trim();
+  if (s === "1" || s === "staff" || s === "employee" || s === "user") return "staff";
+  if (s === "2" || s === "customer" || s === "business") return "customer";
+  if (s === "3" || s === "admin") return "admin";
+  return "";
+}
 
-/** GET /api/ratings/received/:userId - lista recenziilor primite de un user (pentru profil) */
-router.get("/received/:userId", authMiddleware, async (req: ReqWithUser, res: Response): Promise<void> => {
-  const userId = req.params.userId;
+const mapRowReceived = (row: Record<string, unknown>) => {
+  const avatarKey = Object.keys(row).find((k) => k.toLowerCase() === "other_party_avatar" || k.toLowerCase() === "otherpartyavatar");
+  const rawAvatar = avatarKey != null ? row[avatarKey] : (row.other_party_avatar ?? (row as Record<string, unknown>)["otherPartyAvatar"]);
+  const avatarStr = rawAvatar != null ? String(rawAvatar).trim() : "";
+  return {
+    id: String(row.id),
+    applicationId: String(row.application_id),
+    jobTitle: row.job_title != null ? String(row.job_title) : undefined,
+    otherPartyName: row.other_name != null ? String(row.other_name) : undefined,
+    otherPartyAvatar: avatarStr.length > 0 ? avatarStr : undefined,
+    otherPartyRole: normalizeRole(row.other_party_role) || undefined,
+    score: Number(row.score) || 0,
+    comment: typeof row.comment === "string" && row.comment.trim() ? row.comment.trim() : undefined,
+    photoUrl: typeof row.photo_url === "string" && row.photo_url.trim() ? row.photo_url.trim() : undefined,
+    createdAt: toIsoReceived(row.created_at),
+  };
+};
+
+/** GET /api/ratings/received/:userId - lista recenziilor primite de un user (pentru profil, public ca și user summary) */
+router.get("/received/:userId", async (req: ReqWithUser, res: Response): Promise<void> => {
+  const rawUserId = req.params.userId;
+  const userId = rawUserId != null ? String(rawUserId).trim() : "";
   if (!userId) {
     res.status(400).json({ error: "userId lipsă." });
     return;
   }
   const [receivedRows] = await db.query(
     `SELECT r.id, r.application_id, r.score, r.comment, r.photo_url, r.created_at,
-            j.job AS job_title,
-            COALESCE(bp.CompanyName, TRIM(CONCAT(ep.Name, ' ', ep.Surname)), a.staff_name, u.Email) AS other_name
+            COALESCE(r.job_title, j.Title) AS job_title,
+            COALESCE(bp.CompanyName, TRIM(CONCAT(ep.Name, ' ', ep.Surname)), a.staff_name, u.Email) AS other_name,
+            COALESCE(u.Avatar, ep.ProfilePictureFileId, NULL) AS other_party_avatar,
+            u.Role AS other_party_role
      FROM ratings r
-     JOIN applications a ON a.id = r.application_id
-     JOIN jobs j ON j.id = a.job_id
-     LEFT JOIN users u ON u.Id = r.rater_id
+     LEFT JOIN applications a ON a.id = r.application_id
+     LEFT JOIN jobs j ON j.id = a.job_id
+     LEFT JOIN users u ON TRIM(COALESCE(u.Id, '')) = TRIM(COALESCE(r.rater_id, ''))
      LEFT JOIN business_profiles bp ON bp.UserId = u.Id
      LEFT JOIN employee_profiles ep ON ep.UserId = u.Id
-     WHERE r.rated_id = ?
+     WHERE TRIM(COALESCE(r.rated_id, '')) = ?
      ORDER BY r.created_at DESC`,
     [userId]
   ) as [Record<string, unknown>[], unknown];
   const received = (Array.isArray(receivedRows) ? receivedRows : []).map(mapRowReceived);
   res.json({ reviews: received });
+});
+
+/** GET /api/ratings/profile/:userId - summary + lista recenzii primite în același răspuns (același userId) */
+router.get("/profile/:userId", async (req: ReqWithUser, res: Response): Promise<void> => {
+  const rawUserId = req.params.userId;
+  const userId = rawUserId != null ? String(rawUserId).trim() : "";
+  if (!userId) {
+    res.status(400).json({ error: "userId lipsă." });
+    return;
+  }
+  const [rows] = await db.query(
+    "SELECT COUNT(*) AS count, COALESCE(AVG(score), 0) AS average FROM ratings WHERE TRIM(COALESCE(rated_id, '')) = ?",
+    [userId]
+  ) as [Record<string, unknown>[], unknown];
+  const r = Array.isArray(rows) ? rows[0] : null;
+  const count = r ? Number(r.count) || 0 : 0;
+  const average = r ? Number(Number(r.average).toFixed(2)) : 0;
+
+  const [receivedRows] = await db.query(
+    `SELECT r.id, r.application_id, r.score, r.comment, r.photo_url, r.created_at,
+            COALESCE(r.job_title, j.Title) AS job_title,
+            COALESCE(bp.CompanyName, TRIM(CONCAT(ep.Name, ' ', ep.Surname)), a.staff_name, u.Email) AS other_name,
+            COALESCE(u.Avatar, ep.ProfilePictureFileId, NULL) AS other_party_avatar,
+            u.Role AS other_party_role
+     FROM ratings r
+     LEFT JOIN applications a ON a.id = r.application_id
+     LEFT JOIN jobs j ON j.id = a.job_id
+     LEFT JOIN users u ON TRIM(COALESCE(u.Id, '')) = TRIM(COALESCE(r.rater_id, ''))
+     LEFT JOIN business_profiles bp ON bp.UserId = u.Id
+     LEFT JOIN employee_profiles ep ON ep.UserId = u.Id
+     WHERE TRIM(COALESCE(r.rated_id, '')) = ?
+     ORDER BY r.created_at DESC`,
+    [userId]
+  ) as [Record<string, unknown>[], unknown];
+  const received = (Array.isArray(receivedRows) ? receivedRows : []).map(mapRowReceived);
+
+  res.json({ average, count, reviews: received });
 });
 
 export default router;

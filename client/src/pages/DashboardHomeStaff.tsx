@@ -5,7 +5,7 @@ import { useAuth } from "../hooks/useAuth";
 import { jobsApi, type StaffApplicationItem } from "../api/client";
 import { DashboardContext } from "./DashboardLayout";
 import StarRating from "../components/StarRating";
-import { MapPin, Clock, Calendar, Briefcase, CheckCircle2, XCircle } from "lucide-react";
+import { MapPin, Clock, Calendar, Briefcase, CheckCircle2, XCircle, ClipboardCheck } from "lucide-react";
 
 const RATING_ICON = (
   <svg className="w-6 h-6 sm:w-7 sm:h-7 text-primary" fill="currentColor" viewBox="0 0 24 24" aria-hidden>
@@ -314,6 +314,13 @@ export default function DashboardHomeStaff() {
   };
 
   const acceptedJobsCount = acceptedApplications.length;
+  const finishedJobsCount = useMemo(() => {
+    return acceptedApplications.filter(
+      (app) =>
+        !!app.checkedOutAt ||
+        (app.workSessions && app.workSessions.some((s) => !!s.checkedOutAt))
+    ).length;
+  }, [acceptedApplications]);
   const pendingCount = useMemo(() => {
     return Object.values(applicationsByJob).filter((app) => app.status === "pending").length;
   }, [applicationsByJob]);
@@ -424,7 +431,7 @@ export default function DashboardHomeStaff() {
           </div>
         </header>
 
-        <section className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-6 mb-6 md:mb-8">
+        <section className="grid grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-6 mb-6 md:mb-8">
           <article className="p-4 sm:p-6 rounded-xl sm:rounded-2xl bg-white border border-gray-200 shadow-sm flex items-start gap-3 sm:gap-4">
             <div className="flex-shrink-0 w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-primary/10 flex items-center justify-center">
               <svg className="w-6 h-6 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -443,6 +450,15 @@ export default function DashboardHomeStaff() {
             <div className="min-w-0 flex-1">
               <h3 className="text-xs sm:text-sm font-medium text-gray-500 mb-1 truncate">{t("dashboard.statsAcceptedJobs") || "Joburi acceptate"}</h3>
               <p className="text-xl sm:text-2xl font-bold text-gray-900">{acceptedJobsCount}</p>
+            </div>
+          </article>
+          <article className="p-4 sm:p-6 rounded-xl sm:rounded-2xl bg-white border border-gray-200 shadow-sm flex items-start gap-3 sm:gap-4">
+            <div className="flex-shrink-0 w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-blue-100 flex items-center justify-center">
+              <ClipboardCheck className="w-6 h-6 text-blue-600" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <h3 className="text-xs sm:text-sm font-medium text-gray-500 mb-1 truncate">{t("dashboard.statsFinishedJobs") || "Joburi finisate"}</h3>
+              <p className="text-xl sm:text-2xl font-bold text-gray-900">{finishedJobsCount}</p>
             </div>
           </article>
           <article className="p-4 sm:p-6 rounded-xl sm:rounded-2xl bg-white border border-gray-200 shadow-sm flex items-start gap-3 sm:gap-4">

@@ -501,7 +501,7 @@ export default function DashboardSettings() {
                   <form onSubmit={handleContactSubmit} className="space-y-5">
                     <div className="grid sm:grid-cols-2 gap-5">
                       <label className="block">
-                        <span className="block text-sm font-medium text-gray-700 mb-1.5">{t("contactPage.fullName")} <span className="text-primary">*</span></span>
+                        <span className="block text-sm font-medium text-gray-700 mb-1.5">{t("contactPage.fullName")}</span>
                         <input
                           type="text"
                           value={contactName}
@@ -512,7 +512,7 @@ export default function DashboardSettings() {
                         />
                       </label>
                       <label className="block">
-                        <span className="block text-sm font-medium text-gray-700 mb-1.5">{t("contactPage.email")} <span className="text-primary">*</span></span>
+                        <span className="block text-sm font-medium text-gray-700 mb-1.5">{t("contactPage.email")}</span>
                         <input
                           type="email"
                           value={contactEmail}
@@ -524,7 +524,7 @@ export default function DashboardSettings() {
                       </label>
                     </div>
                     <label className="block">
-                      <span className="block text-sm font-medium text-gray-700 mb-1.5">{t("contactPage.subject")} <span className="text-primary">*</span></span>
+                      <span className="block text-sm font-medium text-gray-700 mb-1.5">{t("contactPage.subject")}</span>
                       <input
                         type="text"
                         value={contactSubject}
@@ -535,7 +535,7 @@ export default function DashboardSettings() {
                       />
                     </label>
                     <label className="block">
-                      <span className="block text-sm font-medium text-gray-700 mb-1.5">{t("contactPage.message")} <span className="text-primary">*</span></span>
+                      <span className="block text-sm font-medium text-gray-700 mb-1.5">{t("contactPage.message")}</span>
                       <textarea
                         value={contactMessage}
                         onChange={(e) => setContactMessage(e.target.value)}

@@ -99,7 +99,7 @@ export default function Contact() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-semibold text-[#1e1c2f] mb-2">Email *</label>
+                <label className="block text-sm font-semibold text-[#1e1c2f] mb-2">{t("contactPage.email")}</label>
                 <input
                   type="email"
                   value={email}

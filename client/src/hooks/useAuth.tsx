@@ -2,7 +2,7 @@ import { createContext, useContext, useState, useEffect, ReactNode } from "react
 import { useTranslation } from "react-i18next";
 import { authApi } from "../api/client";
 
-type User = { id: number; name: string; email: string; role?: string; avatar?: string; isActive?: boolean } | null;
+type User = { id: number; name: string; email: string; role?: string; avatar?: string; isActive?: boolean; boosterUntil?: string } | null;
 
 const AuthContext = createContext<{
   user: User;

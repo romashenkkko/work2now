@@ -47,6 +47,18 @@ async function optionalQuery(conn: { query: (sql: string, params?: unknown[]) =>
   }
 }
 
+/** Formatează o valoare (Date sau string) la YYYY-MM-DD. Pentru Date folosim getFullYear/getMonth/getDate (local) ca ziua să nu se mute din cauza timezone-ului serverului. */
+function formatWorkDateYMD(v: unknown): string {
+  if (v == null) return "";
+  if (v instanceof Date) {
+    const d = v as Date;
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  }
+  const s = String(v).trim();
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+  return s.slice(0, 10) || "";
+}
+
 
 async function getJobCategoryHourlyMin(conn: { query: (sql: string, params?: unknown[]) => Promise<unknown> }, code: number): Promise<number | null> {
   const [rows] = await conn.query(
@@ -160,7 +172,8 @@ function rowToJob(r: Record<string, unknown>): Record<string, unknown> {
   const postedByName = r.posted_by_name ?? (r as Record<string, unknown>).postedByName;
   const name = typeof postedByName === "string" && postedByName.trim() ? postedByName.trim() : undefined;
   const postedByUserId = r.posted_by_user_id ?? r.user_id;
-  const postedByRole = r.posted_by_role;
+  const postedByRoleRaw = r.posted_by_role;
+  const postedByRole = normalizeRole(postedByRoleRaw) || undefined;
   const postedByAvatar = r.posted_by_avatar;
   const checkInLat = r.check_in_lat != null ? Number(r.check_in_lat) : undefined;
   const checkInLng = r.check_in_lng != null ? Number(r.check_in_lng) : undefined;
@@ -201,7 +214,7 @@ function rowToJob(r: Record<string, unknown>): Record<string, unknown> {
     hourlyRateBase: r.hourly_rate_base ?? undefined,
 
     postedById: postedByUserId != null ? String(postedByUserId) : undefined,
-    postedByRole: typeof postedByRole === "string" && postedByRole.trim() ? postedByRole.trim() : undefined,
+    postedByRole: postedByRole || undefined,
     postedByAvatar: typeof postedByAvatar === "string" && postedByAvatar.trim() ? postedByAvatar.trim() : undefined,
     ...(Number.isFinite(checkInLat) && Number.isFinite(checkInLng) && Number.isFinite(checkInRadiusM) && checkInRadiusM! > 0
       ? { checkInLat, checkInLng, checkInRadiusM }
@@ -292,7 +305,7 @@ router.get("/", authMiddleware, async (req: ReqWithUser, res: Response): Promise
          LEFT JOIN users u ON u.Id = j.user_id
          LEFT JOIN business_profiles bp ON bp.UserId = u.Id
          LEFT JOIN employee_profiles ep ON ep.UserId = u.Id
-         ORDER BY COALESCE(j.is_promoted, 0) DESC, j.created_at DESC`
+         ORDER BY (u.BoosterUntil IS NOT NULL AND u.BoosterUntil > NOW()) DESC, COALESCE(j.is_promoted, 0) DESC, j.created_at DESC`
     ) as [Record<string, unknown>[], unknown];
     list = Array.isArray(r) ? r : [];
   }
@@ -549,14 +562,8 @@ router.get("/my-applications", authMiddleware, async (req: ReqWithUser, res: Res
     (Array.isArray(sessions) ? sessions : []).forEach((s) => {
       const aid = String(s.application_id);
       if (!sessionsByApp[aid]) sessionsByApp[aid] = [];
-      const raw = s.work_date;
-      let workDate: string;
-      if (raw instanceof Date) {
-        const d = raw as Date;
-        workDate = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
-      } else {
-        workDate = String(raw ?? "").slice(0, 10);
-      }
+      const workDate = formatWorkDateYMD(s.work_date);
+      if (!workDate) return;
       sessionsByApp[aid].push({
         workDate,
         checkedInAt: s.checked_in_at != null ? (s.checked_in_at instanceof Date ? (s.checked_in_at as Date).toISOString() : String(s.checked_in_at)) : undefined,
@@ -657,11 +664,8 @@ router.get("/my-applications/list", authMiddleware, async (req: ReqWithUser, res
     (Array.isArray(sessions) ? sessions : []).forEach((s) => {
       const aid = String(s.application_id);
       if (!sessionsByAppId[aid]) sessionsByAppId[aid] = [];
-      const workDate =
-        s.work_date instanceof Date
-          ? (s.work_date as Date).toISOString().slice(0, 10)
-          : String(s.work_date ?? "").slice(0, 10);
-
+      const workDate = formatWorkDateYMD(s.work_date);
+      if (!workDate) return;
       sessionsByAppId[aid].push({
         workDate,
         checkedInAt: toIso(s.checked_in_at),
@@ -850,7 +854,8 @@ router.get("/applications", authMiddleware, async (req: ReqWithUser, res: Respon
     (Array.isArray(sessions) ? sessions : []).forEach((s) => {
       const aid = String(s.application_id);
       if (!sessionsByAppId[aid]) sessionsByAppId[aid] = [];
-      const workDate = s.work_date instanceof Date ? (s.work_date as Date).toISOString().slice(0, 10) : String(s.work_date ?? "").slice(0, 10);
+      const workDate = formatWorkDateYMD(s.work_date);
+      if (!workDate) return;
       sessionsByAppId[aid].push({
         workDate,
         checkedInAt: toIso(s.checked_in_at),

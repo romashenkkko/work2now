@@ -106,12 +106,22 @@ function getCalendarDaysForMonth(year: number, month: number): (number | null)[]
   return days;
 }
 
+/** Normalizează un string de dată la YYYY-MM-DD (API poate returna ISO cu timp). */
+function toYMDString(dateStr: string | undefined): string {
+  if (!dateStr || typeof dateStr !== "string") return "";
+  const s = dateStr.trim();
+  if (s.length >= 10 && /^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+  const d = new Date(s);
+  return Number.isFinite(d.getTime()) ? toYMD(d) : "";
+}
+
 /** Lista de zile (YMD) între date și endDate (inclusive). Dacă endDate lipsește, returnează doar [date]. */
 function getScheduledDates(dateYmd: string, endDateYmd?: string): string[] {
   const start = new Date(dateYmd + "T12:00:00");
+  if (Number.isNaN(start.getTime())) return [];
   if (!endDateYmd || endDateYmd === dateYmd) return [dateYmd];
   const end = new Date(endDateYmd + "T12:00:00");
-  if (end < start) return [dateYmd];
+  if (Number.isNaN(end.getTime()) || end < start) return [dateYmd];
   const out: string[] = [];
   const d = new Date(start);
   while (d <= end) {
@@ -184,16 +194,22 @@ export default function DashboardHomeCustomer() {
       .applications()
       .then((r) => {
         const map: Record<string, AppWithSessions[]> = {};
-        Object.entries(r.applications ?? {}).forEach(([jobId, list]) => {
-          map[jobId] = (list || []).map((a) => ({
-            status: a.status,
-            staffId: a.staffId ?? "",
-            staffName: a.staffName ?? "",
-            workSessions: a.workSessions ?? [],
-            checkedInAt: a.checkedInAt,
-            checkedOutAt: a.checkedOutAt,
-          }));
-        });
+        const apps = r?.applications;
+        if (apps && typeof apps === "object") {
+          Object.entries(apps).forEach(([jobId, list]) => {
+            const key = String(jobId).trim();
+            if (!key) return;
+            const items = Array.isArray(list) ? list : [];
+            map[key] = items.map((a: { status?: string; staffId?: string; staffName?: string; workSessions?: { workDate: string; checkedInAt?: string; checkedOutAt?: string }[]; checkedInAt?: string; checkedOutAt?: string }) => ({
+              status: a.status ?? "",
+              staffId: a.staffId ?? "",
+              staffName: a.staffName ?? "",
+              workSessions: Array.isArray(a.workSessions) ? a.workSessions : [],
+              checkedInAt: a.checkedInAt,
+              checkedOutAt: a.checkedOutAt,
+            }));
+          });
+        }
         setApplicationsByJob(map);
       })
       .catch(() => setApplicationsByJob({}));
@@ -645,9 +661,9 @@ export default function DashboardHomeCustomer() {
               const job = allJobs.find((j, i) => ("id" in j && j.id != null ? String(j.id) : `job-${i}`) === selectedJobIdForReport) as { date?: string; endDate?: string; startTime?: string; endTime?: string; peopleNeeded?: string } | undefined;
               const apps = applicationsByJob[selectedJobIdForReport] ?? [];
               const accepted = apps.filter((a) => String(a.status).toLowerCase() === "accepted");
-              const jobDate = (job?.date || "").trim();
-              const jobEndDate = (job?.endDate || "").trim();
-              const scheduledDates = jobDate ? getScheduledDates(jobDate, jobEndDate || undefined) : [];
+              const jobDateYmd = toYMDString(job?.date);
+              const jobEndDateYmd = toYMDString(job?.endDate);
+              const scheduledDates = jobDateYmd ? getScheduledDates(jobDateYmd, jobEndDateYmd || undefined) : [];
               const scheduledStartTime = (job?.startTime || "").trim() || "—";
               const scheduledEndTime = (job?.endTime || "").trim() || "—";
               type Row = { staffId: string; staffName: string; workDate: string; scheduledCheckIn: string; scheduledCheckOut: string; actualCheckIn?: string; actualCheckOut?: string };
@@ -655,14 +671,13 @@ export default function DashboardHomeCustomer() {
               accepted.forEach((a) => {
                 const sessionsByDate: Record<string, { checkedInAt?: string; checkedOutAt?: string }> = {};
                 (a.workSessions ?? []).forEach((s) => {
-                  const d = (s.workDate || "").slice(0, 10);
+                  const d = toYMDString(s.workDate);
                   if (d) sessionsByDate[d] = { checkedInAt: s.checkedInAt, checkedOutAt: s.checkedOutAt };
                 });
                 // Fallback: if workSessions is empty but checkedInAt/checkedOutAt exist, use them for matching dates
                 if ((a.workSessions ?? []).length === 0 && (a.checkedInAt || a.checkedOutAt)) {
-                  const checkedInDate = a.checkedInAt ? a.checkedInAt.slice(0, 10) : null;
-                  const checkedOutDate = a.checkedOutAt ? a.checkedOutAt.slice(0, 10) : null;
-                  // Use the date from check-in or check-out, whichever exists
+                  const checkedInDate = a.checkedInAt ? toYMDString(a.checkedInAt) : null;
+                  const checkedOutDate = a.checkedOutAt ? toYMDString(a.checkedOutAt) : null;
                   const sessionDate = checkedInDate || checkedOutDate;
                   if (sessionDate && scheduledDates.includes(sessionDate)) {
                     sessionsByDate[sessionDate] = { checkedInAt: a.checkedInAt, checkedOutAt: a.checkedOutAt };
@@ -705,6 +720,14 @@ export default function DashboardHomeCustomer() {
                       <span className="text-sm font-semibold text-primary">{t("dashboard.numberOfEmployees")}</span>
                       <span className="text-sm font-bold text-gray-900">{displayedEmployeeCount}</span>
                     </div>
+                    <button
+                      type="button"
+                      onClick={() => fetchApplications()}
+                      className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-gray-200 bg-white text-gray-700 text-sm font-medium hover:bg-gray-50 hover:border-primary/30 transition-colors"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+                      {t("dashboard.refresh", "Reîncarcă")}
+                    </button>
                   </div>
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
                     {accepted.length >= 2 && (

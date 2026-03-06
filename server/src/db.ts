@@ -303,6 +303,7 @@ export async function initDatabase(): Promise<void> {
     await ensureColumn(conn, "users", "IsActive", "TINYINT(1) NOT NULL DEFAULT 1");
     await ensureColumn(conn, "users", "LastActiveAt", "DATETIME NULL");
     await ensureColumn(conn, "users", "PhoneNumber", "VARCHAR(50) NULL");
+    await ensureColumn(conn, "users", "BoosterUntil", "DATETIME NULL");
     try {
       await conn.query("ALTER TABLE `users` MODIFY COLUMN `Avatar` MEDIUMTEXT NULL");
     } catch (_) {
@@ -648,6 +649,9 @@ export async function initDatabase(): Promise<void> {
     }
     if (!(await columnExists(conn, "ratings", "photo_url"))) {
       await conn.query("ALTER TABLE `ratings` ADD COLUMN `photo_url` VARCHAR(2000) NULL");
+    }
+    if (!(await columnExists(conn, "ratings", "job_title"))) {
+      await conn.query("ALTER TABLE `ratings` ADD COLUMN `job_title` VARCHAR(255) NULL");
     }
     try {
       await conn.query("ALTER TABLE `ratings` MODIFY COLUMN `score` DECIMAL(2,1) NOT NULL");

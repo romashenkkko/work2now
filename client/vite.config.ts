@@ -6,7 +6,19 @@ const BACKEND_PORT = process.env.VITE_API_PORT || "5600";
 const BACKEND_URL = `http://localhost:${BACKEND_PORT}`;
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [
+    react(),
+    {
+      name: "warn-api-backend",
+      configureServer() {
+        if (!process.env.VITE_API_PORT) {
+          console.warn(
+            "\n[Work2Now] Rulezi doar frontend-ul. Pentru a evita 503 pe /api, pornește din rădăcina proiectului: npm run dev\n"
+          );
+        }
+      },
+    },
+  ],
   optimizeDeps: {
     include: ["ogl"],
     force: true,

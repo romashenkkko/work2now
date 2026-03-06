@@ -1,5 +1,6 @@
 const net = require("net");
 const path = require("path");
+const http = require("http");
 const { spawn } = require("child_process");
 
 function canConnect(host, port) {
@@ -17,6 +18,39 @@ function canConnect(host, port) {
     socket.once("error", () => finish(false));
     socket.once("timeout", () => finish(false));
     socket.connect(port, host);
+  });
+}
+
+function waitForBackend(port, maxAttempts = 30) {
+  return new Promise((resolve, reject) => {
+    let attempts = 0;
+    const tryOne = () => {
+      attempts += 1;
+      const req = http.get(`http://127.0.0.1:${port}/api/health`, (res) => {
+        if (res.statusCode === 200) {
+          resolve();
+          return;
+        }
+        if (attempts >= maxAttempts) {
+          reject(new Error(`Backend returned ${res.statusCode} after ${maxAttempts} attempts`));
+          return;
+        }
+        setTimeout(tryOne, 500);
+      });
+      req.on("error", () => {
+        if (attempts >= maxAttempts) {
+          reject(new Error(`Backend not reachable after ${maxAttempts} attempts. Pornește MySQL (XAMPP) și rulează din nou.`));
+          return;
+        }
+        setTimeout(tryOne, 500);
+      });
+      req.setTimeout(3000, () => {
+        req.destroy();
+        if (attempts >= maxAttempts) reject(new Error("Backend timeout"));
+        else setTimeout(tryOne, 500);
+      });
+    };
+    tryOne();
   });
 }
 
@@ -82,43 +116,66 @@ async function main() {
     shell: false,
     stdio: ["inherit", "pipe", "pipe"],
   });
+
+  prefixOutput(back.stdout, "back");
+  prefixOutput(back.stderr, "back");
+
+  let shuttingDown = false;
+  const stopChildren = (includeFront) => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    if (!back.killed) back.kill();
+    if (includeFront && frontRef.current && !frontRef.current.killed) frontRef.current.kill();
+  };
+
+  const frontRef = { current: null };
+
+  back.on("exit", (code) => {
+    if (shuttingDown) return;
+    if (code !== 0) {
+      console.error(`[back] exited with code ${code}`);
+      stopChildren(true);
+      process.exit(code || 1);
+    }
+  });
+
+  try {
+    console.log("Aștept backend-ul (API)...");
+    await waitForBackend(backendPort);
+    console.log("Backend gata. Pornesc frontend...");
+  } catch (e) {
+    console.error("Backend nu răspunde:", e.message);
+    if (!back.killed) back.kill();
+    process.exit(1);
+  }
+
   const front = spawn(runCmd, frontArgs, {
     cwd: rootDir,
     env: frontendEnv,
     shell: false,
     stdio: ["inherit", "pipe", "pipe"],
   });
+  frontRef.current = front;
 
-  prefixOutput(back.stdout, "back");
-  prefixOutput(back.stderr, "back");
   prefixOutput(front.stdout, "front");
   prefixOutput(front.stderr, "front");
-
-  let shuttingDown = false;
-  const stopChildren = () => {
-    if (shuttingDown) return;
-    shuttingDown = true;
-    if (!back.killed) back.kill();
-    if (!front.killed) front.kill();
-  };
 
   const onExit = (name, code) => {
     if (shuttingDown) return;
     if (code === 0) return;
     console.error(`[${name}] exited with code ${code}`);
-    stopChildren();
+    stopChildren(true);
     process.exit(code || 1);
   };
 
-  back.on("exit", (code) => onExit("back", code));
   front.on("exit", (code) => onExit("front", code));
 
   process.on("SIGINT", () => {
-    stopChildren();
+    stopChildren(true);
     process.exit(0);
   });
   process.on("SIGTERM", () => {
-    stopChildren();
+    stopChildren(true);
     process.exit(0);
   });
 }
