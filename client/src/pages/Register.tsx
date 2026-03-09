@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { authApi } from "../api/client";
 import DatePicker from "../components/DatePicker";
+import { TERMS_AND_CONDITIONS_RO, TERMS_AND_CONDITIONS_EN } from "../content/termsAndConditions";
 
 /** 0 = none, 1 = weak, 2 = fair, 3 = good, 4 = strong */
 function getPasswordStrength(password: string): 0 | 1 | 2 | 3 | 4 {
@@ -30,7 +31,8 @@ const COMPANY_CATEGORY_OPTIONS = [
 ];
 
 export default function Register() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const termsContent = i18n.language?.startsWith("ro") ? TERMS_AND_CONDITIONS_RO : TERMS_AND_CONDITIONS_EN;
   const navigate = useNavigate();
   const { role: roleParam } = useParams<{ role: string }>();
   const [email, setEmail] = useState("");
@@ -73,6 +75,12 @@ export default function Register() {
   const [otpError, setOtpError] = useState("");
   const [verifiedPhone, setVerifiedPhone] = useState("");
 
+  // Terms & Conditions modal state
+  const [showTermsModal, setShowTermsModal] = useState(false);
+  const [termsScrolledToBottom, setTermsScrolledToBottom] = useState(false);
+  const [termsAcceptLoading, setTermsAcceptLoading] = useState(false);
+  const termsScrollRef = useRef<HTMLDivElement>(null);
+
   const calculateAgeFromYmd = (value: string): number | null => {
     if (!value) return null;
     const [yStr, mStr, dStr] = value.split("-");
@@ -100,6 +108,22 @@ export default function Register() {
     document.addEventListener("mousedown", onOutsideClick);
     return () => document.removeEventListener("mousedown", onOutsideClick);
   }, []);
+
+  // La deschiderea modalului T&C: verificăm dacă conținutul e scurt (fără scroll necesar)
+  useEffect(() => {
+    if (!showTermsModal) {
+      setTermsScrolledToBottom(false);
+      return;
+    }
+    const check = () => {
+      const el = termsScrollRef.current;
+      if (!el) return;
+      if (el.scrollHeight <= el.clientHeight) setTermsScrolledToBottom(true);
+    };
+    check();
+    const t = setTimeout(check, 100);
+    return () => clearTimeout(t);
+  }, [showTermsModal]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -159,21 +183,9 @@ export default function Register() {
       }
     }
 
-    // If OTP is not verified yet, send OTP and show OTP screen
+    // If OTP is not verified yet, show Terms & Conditions modal first (user must accept before OTP)
     if (otpStep === "form") {
-      const phoneToVerify = role === "staff" ? phoneNumber.trim() : contactPhoneNumber.trim();
-      
-      setOtpLoading(true);
-      setOtpError("");
-      try {
-        await authApi.sendOTP(phoneToVerify);
-        setVerifiedPhone(phoneToVerify);
-        setOtpStep("otp");
-      } catch (err) {
-        setOtpError(err instanceof Error ? err.message : t("auth.otpSendError"));
-      } finally {
-        setOtpLoading(false);
-      }
+      setShowTermsModal(true);
       return;
     }
 
@@ -247,6 +259,22 @@ export default function Register() {
       setError(err instanceof Error ? err.message : t("auth.registerError"));
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleAcceptTerms() {
+    const phoneToVerify = role === "staff" ? phoneNumber.trim() : contactPhoneNumber.trim();
+    setTermsAcceptLoading(true);
+    setOtpError("");
+    try {
+      await authApi.sendOTP(phoneToVerify);
+      setVerifiedPhone(phoneToVerify);
+      setShowTermsModal(false);
+      setOtpStep("otp");
+    } catch (err) {
+      setOtpError(err instanceof Error ? err.message : t("auth.otpSendError"));
+    } finally {
+      setTermsAcceptLoading(false);
     }
   }
 
@@ -612,6 +640,50 @@ export default function Register() {
             </button>
           )}
         </form>
+
+        {/* Terms & Conditions Modal – shown when user clicks Continue */}
+        {showTermsModal && (
+          <div className="auth-terms-overlay" onClick={() => { setShowTermsModal(false); setOtpError(""); setTermsScrolledToBottom(false); }} role="dialog" aria-modal="true" aria-labelledby="terms-modal-title">
+            <div className="auth-terms-modal" onClick={(e) => e.stopPropagation()}>
+              <h2 id="terms-modal-title" className="auth-terms-title">{t("auth.acceptTermsTitle")}</h2>
+              <p className="auth-terms-subtitle">{t("auth.acceptTermsSubtitle")}</p>
+              {otpError && <div className="auth-alert error" style={{ margin: "0 24px 16px" }}>{otpError}</div>}
+              <div
+                ref={termsScrollRef}
+                className="auth-terms-scroll"
+                onScroll={(e) => {
+                  const el = e.currentTarget;
+                  // Dacă nu e nevoie de scroll (conținut scurt), considerăm că e la capăt
+                  const hasScroll = el.scrollHeight > el.clientHeight;
+                  const atBottom = !hasScroll || (el.scrollHeight - el.scrollTop - el.clientHeight < 8);
+                  setTermsScrolledToBottom(atBottom);
+                }}
+              >
+                <pre className="auth-terms-content">{termsContent.trim()}</pre>
+              </div>
+              {!termsScrolledToBottom && (
+                <p className="auth-terms-scroll-hint">{t("auth.termsScrollHint")}</p>
+              )}
+              <div className="auth-terms-actions">
+                <button
+                  type="button"
+                  onClick={handleAcceptTerms}
+                  disabled={termsAcceptLoading || !termsScrolledToBottom}
+                  className="btn-primary flex-1 py-3.5 disabled:opacity-50"
+                >
+                  {termsAcceptLoading ? t("auth.sendingOTP") : t("auth.acceptTerms")}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowTermsModal(false)}
+                  className="btn-secondary flex-1 py-3.5"
+                >
+                  {t("auth.termsDecline")}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* OTP Verification Screen */}
         {otpStep === "otp" && (

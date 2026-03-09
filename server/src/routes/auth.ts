@@ -5,6 +5,7 @@ import db, { createUserDotNetStyle } from "../db";
 import { authMiddleware, JwtPayload } from "../middleware/auth";
 import { stringToUserRole, UserRole } from "../enums";
 import { sendOTP, verifyOTP } from "../twilio";
+import { sendTermsAcceptanceEmail } from "../email";
 
 const router = Router();
 const JWT_SECRET = process.env.JWT_SECRET || "default-secret-change-me";
@@ -243,6 +244,15 @@ router.post("/register", async (req: Request, res: Response): Promise<void> => {
         role: roleEnum,
       });
     }
+    // Send T&C acceptance confirmation email to user
+    const displayName =
+      allowedRole === "staff" && employeeProfile
+        ? `${employeeProfile.firstName || ""} ${employeeProfile.lastName || ""}`.trim()
+        : allowedRole === "customer" && businessProfile
+          ? `${businessProfile.contactFirstName || ""} ${businessProfile.contactLastName || ""}`.trim()
+          : nameTrim;
+    await sendTermsAcceptanceEmail(emailTrim, displayName || nameTrim);
+
     res.status(201).json({ message: "Cont creat cu succes. Acum te poti autentifica." });
   } catch (e) {
     /* Fallback în memorie DOAR la erori reale de conexiune DB. */
@@ -257,6 +267,7 @@ router.post("/register", async (req: Request, res: Response): Promise<void> => {
         const id = memoryNextId++;
         memoryUsers.push({ id, name: nameTrim, email: emailTrim, password_hash, role: allowedRole });
         console.warn("[Auth] DB indisponibil – utilizator salvat în memorie.", (e as Error)?.message);
+        await sendTermsAcceptanceEmail(emailTrim, nameTrim);
         res.status(201).json({ message: "Cont creat cu succes. Acum te poti autentifica." });
         return;
       } catch (memErr) {
