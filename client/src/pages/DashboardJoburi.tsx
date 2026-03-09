@@ -6,6 +6,7 @@ import { jobsApi } from "../api/client";
 import JobsMapModal from "../components/JobsMapModal";
 import JobScheduleModal from "../components/JobScheduleModal";
 import CustomerProfileModal from "../components/CustomerProfileModal";
+import StaffProfileModal from "../components/StaffProfileModal";
 import { MapPin, Clock, Users, Banknote, Calendar, Briefcase, Map, Search, TrendingUp } from "lucide-react";
 import { getBusinessTotal, roundMoney } from "../utils/salary";
 
@@ -55,6 +56,14 @@ export default function DashboardJoburi() {
     customerId: string;
     customerName?: string;
     customerAvatar?: string;
+    applicationIdForReview?: string;
+  } | null>(null);
+  const [staffProfileModal, setStaffProfileModal] = useState<{
+    staffId: string;
+    staffName?: string;
+    staffEmail?: string;
+    staffAvatar?: string;
+    applicationId?: string;
   } | null>(null);
 
   const roleLower = user?.role?.toLowerCase?.();
@@ -108,6 +117,12 @@ export default function DashboardJoburi() {
     if (anyCheckedOut) return { status: "finished", firstCheckedInAt };
     if (anyCheckedIn) return { status: "in_process", firstCheckedInAt };
     return { status: null };
+  };
+
+  /** Customer: primul angajat acceptat pentru un job (pentru afișare pe card). */
+  const getFirstAcceptedStaff = (jobId: string): Application | undefined => {
+    const apps = customerApplicationsByJob[String(jobId)] ?? [];
+    return apps.find((a) => a.status === "accepted");
   };
 
   type MyAppInfo = { status: string; applicationId: string; checkedInAt?: string; checkedOutAt?: string; workSessions?: { workDate: string; checkedInAt?: string; checkedOutAt?: string }[] };
@@ -888,54 +903,83 @@ export default function DashboardJoburi() {
                         ) : null;
                       })()}
                     </ul>
-                    {row.postedBy && (
-                      row.postedById ? (
+                    {isStaff && (row.postedBy || row.postedByAvatar) && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (!row.postedById) return;
+                          const myApp = applicationsByJob[normJobId(row.id)];
+                          const applicationIdForReview =
+                            myApp?.checkedOutAt && myApp?.applicationId ? myApp.applicationId : undefined;
+                          setCustomerProfileModal({
+                            customerId: row.postedById,
+                            customerName: row.postedBy,
+                            customerAvatar: row.postedByAvatar,
+                            applicationIdForReview,
+                          });
+                        }}
+                        className="w-full flex items-center gap-3 mt-3 pt-3 border-t border-gray-100 text-left rounded-xl px-3 py-2.5 -mx-0.5 bg-primary/5 border border-primary/10 hover:bg-primary/10 hover:border-primary/20 transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:ring-inset disabled:opacity-60 disabled:pointer-events-none"
+                        aria-label={t("dashboard.viewCustomerReviews", "Deschide recenziile clientului")}
+                        disabled={!row.postedById}
+                      >
+                        <div className="relative flex-shrink-0 w-10 h-10 rounded-full bg-white border-2 border-primary/20 flex items-center justify-center overflow-hidden shadow-sm">
+                          <span className="text-primary font-semibold text-sm">{(row.postedBy || "?").charAt(0).toUpperCase()}</span>
+                          {row.postedByAvatar && (
+                            <img src={row.postedByAvatar} alt="" className="absolute inset-0 w-full h-full object-cover" onError={(e) => { e.currentTarget.style.display = "none"; }} />
+                          )}
+                        </div>
+                        <div className="min-w-0 flex-1 flex flex-col gap-1">
+                          <p className="text-sm font-semibold text-gray-900 truncate">{row.postedBy || "—"}</p>
+                          <span className="inline-flex w-fit px-2 py-0.5 rounded-full text-xs font-medium bg-primary/15 text-primary border border-primary/25">
+                            {t("dashboard.roleCustomer")}
+                          </span>
+                        </div>
+                      </button>
+                    )}
+                    {isCustomer && row.id && (() => {
+                      const staff = getFirstAcceptedStaff(row.id);
+                      if (!staff) {
+                        return (
+                          <div className="mt-3 pt-3 border-t border-gray-100 px-3 py-2.5 -mx-0.5 rounded-xl bg-gray-50/80 border border-gray-100">
+                            <p className="text-sm text-gray-500">{t("dashboard.noStaffAccepted", "Niciun angajat acceptat")}</p>
+                          </div>
+                        );
+                      }
+                      const name = staff.staffName || t("dashboard.staff", "Staff");
+                      return staff.staffId ? (
                         <button
                           type="button"
-                          onClick={(e) => { e.stopPropagation(); setCustomerProfileModal({ customerId: row.postedById!, customerName: row.postedBy, customerAvatar: row.postedByAvatar }); }}
+                          onClick={(e) => { e.stopPropagation(); setStaffProfileModal({ staffId: staff.staffId, staffName: staff.staffName, staffEmail: staff.staffEmail, staffAvatar: staff.staffAvatar, applicationId: staff.checkedOutAt && staff.ratingScore == null ? staff.id : undefined }); }}
                           className="w-full flex items-center gap-3 mt-3 pt-3 border-t border-gray-100 text-left rounded-xl px-3 py-2.5 -mx-0.5 bg-primary/5 border border-primary/10 hover:bg-primary/10 hover:border-primary/20 transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:ring-inset"
                           aria-label={t("dashboard.viewProfile", "Vezi profil")}
                         >
                           <div className="relative flex-shrink-0 w-10 h-10 rounded-full bg-white border-2 border-primary/20 flex items-center justify-center overflow-hidden shadow-sm">
-                            <span className="text-primary font-semibold text-sm">{row.postedBy.charAt(0).toUpperCase()}</span>
-                            {row.postedByAvatar && (
-                              <img
-                                src={row.postedByAvatar}
-                                alt=""
-                                className="absolute inset-0 w-full h-full object-cover"
-                                onError={(e) => { e.currentTarget.style.display = "none"; }}
-                              />
+                            <span className="text-primary font-semibold text-sm">{(name || "S").charAt(0).toUpperCase()}</span>
+                            {staff.staffAvatar && (
+                              <img src={staff.staffAvatar} alt="" className="absolute inset-0 w-full h-full object-cover" onError={(e) => { e.currentTarget.style.display = "none"; }} />
                             )}
                           </div>
                           <div className="min-w-0 flex-1 flex flex-col gap-1">
-                            <p className="text-sm font-semibold text-gray-900 truncate">{row.postedBy}</p>
-                            <span className="inline-flex w-fit px-2 py-0.5 rounded-full text-xs font-medium bg-primary/15 text-primary border border-primary/25">
-                              {(() => { const r = (row.postedByRole ?? "").toLowerCase(); return r === "staff" ? t("dashboard.roleStaff") : r === "admin" ? t("dashboard.roleAdmin") : t("dashboard.roleCustomer"); })()}
-                            </span>
+                            <p className="text-sm font-semibold text-gray-900 truncate">{name}</p>
+                            <span className="inline-flex w-fit px-2 py-0.5 rounded-full text-xs font-medium bg-primary/15 text-primary border border-primary/25">{t("dashboard.roleStaff")}</span>
                           </div>
                         </button>
                       ) : (
                         <div className="flex items-center gap-3 mt-3 pt-3 border-t border-gray-100 px-3 py-2.5 -mx-0.5 rounded-xl bg-gray-50/80 border border-gray-100">
                           <div className="relative flex-shrink-0 w-10 h-10 rounded-full bg-white border border-gray-200 flex items-center justify-center overflow-hidden">
-                            <span className="text-primary font-semibold text-sm">{row.postedBy.charAt(0).toUpperCase()}</span>
-                            {row.postedByAvatar && (
-                              <img
-                                src={row.postedByAvatar}
-                                alt=""
-                                className="absolute inset-0 w-full h-full object-cover"
-                                onError={(e) => { e.currentTarget.style.display = "none"; }}
-                              />
+                            <span className="text-primary font-semibold text-sm">{(name || "S").charAt(0).toUpperCase()}</span>
+                            {staff.staffAvatar && (
+                              <img src={staff.staffAvatar} alt="" className="absolute inset-0 w-full h-full object-cover" onError={(e) => { e.currentTarget.style.display = "none"; }} />
                             )}
                           </div>
                           <div className="min-w-0 flex-1 flex flex-col gap-1">
-                            <p className="text-sm font-semibold text-gray-900 truncate">{row.postedBy}</p>
-                            <span className="inline-flex w-fit px-2 py-0.5 rounded-full text-xs font-medium bg-primary/15 text-primary border border-primary/25">
-                              {(() => { const r = (row.postedByRole ?? "").toLowerCase(); return r === "staff" ? t("dashboard.roleStaff") : r === "admin" ? t("dashboard.roleAdmin") : t("dashboard.roleCustomer"); })()}
-                            </span>
+                            <p className="text-sm font-semibold text-gray-900 truncate">{name}</p>
+                            <span className="inline-flex w-fit px-2 py-0.5 rounded-full text-xs font-medium bg-primary/15 text-primary border border-primary/25">{t("dashboard.roleStaff")}</span>
                           </div>
                         </div>
-                      )
-                    )}
+                      );
+                    })()}
                     <div className="mt-4 pt-4 border-t border-gray-100 space-y-2">
                       {!app ? (
                         <button
@@ -1043,6 +1087,9 @@ export default function DashboardJoburi() {
             customerId={customerProfileModal.customerId}
             customerName={customerProfileModal.customerName}
             customerAvatar={customerProfileModal.customerAvatar}
+            currentUserId={user?.id != null ? String(user.id) : undefined}
+            applicationIdForReview={customerProfileModal.applicationIdForReview}
+            onReviewSubmitted={() => refreshStaffData()}
           />
         )}
       </>
@@ -1124,14 +1171,14 @@ export default function DashboardJoburi() {
                   const { status } = getCustomerJobStatus(row.id);
                   if (status === "in_process") {
                     return (
-                      <span className="absolute bottom-3 left-3 right-3 sm:left-auto sm:right-3 sm:bottom-3 sm:w-auto px-3 py-1.5 rounded-full text-xs font-medium bg-amber-500/90 text-white backdrop-blur-sm">
+                      <span className="absolute right-3 bottom-3 w-auto px-3 py-1.5 rounded-full text-xs font-medium bg-amber-500/90 text-white backdrop-blur-sm">
                         {t("dashboard.inProcess")}
                       </span>
                     );
                   }
                   if (status === "finished") {
                     return (
-                      <span className="absolute bottom-3 left-3 right-3 sm:left-auto sm:right-3 sm:bottom-3 sm:w-auto px-3 py-1.5 rounded-full text-xs font-medium bg-green-600/90 text-white backdrop-blur-sm">
+                      <span className="absolute right-3 bottom-3 w-auto px-3 py-1.5 rounded-full text-xs font-medium bg-green-600/90 text-white backdrop-blur-sm">
                         {t("dashboard.finished")}
                       </span>
                     );
@@ -1208,54 +1255,49 @@ export default function DashboardJoburi() {
                   )}
                 </ul>
 
-                {row.postedBy && (
-                  row.postedById ? (
+                {isCustomer && row.id && (() => {
+                  const staff = getFirstAcceptedStaff(row.id);
+                  if (!staff) {
+                    return (
+                      <div className="mt-3 pt-3 border-t border-gray-100 px-3 py-2.5 -mx-0.5 rounded-xl bg-gray-50/80 border border-gray-100">
+                        <p className="text-sm text-gray-500">{t("dashboard.noStaffAccepted", "Niciun angajat acceptat")}</p>
+                      </div>
+                    );
+                  }
+                  const name = staff.staffName || t("dashboard.staff", "Staff");
+                  return staff.staffId ? (
                     <button
                       type="button"
-                      onClick={(e) => { e.stopPropagation(); setCustomerProfileModal({ customerId: row.postedById!, customerName: row.postedBy, customerAvatar: row.postedByAvatar }); }}
+                      onClick={(e) => { e.stopPropagation(); setStaffProfileModal({ staffId: staff.staffId, staffName: staff.staffName, staffEmail: staff.staffEmail, staffAvatar: staff.staffAvatar, applicationId: staff.checkedOutAt && staff.ratingScore == null ? staff.id : undefined }); }}
                       className="w-full flex items-center gap-3 mt-3 pt-3 border-t border-gray-100 text-left rounded-xl px-3 py-2.5 -mx-0.5 bg-primary/5 border border-primary/10 hover:bg-primary/10 hover:border-primary/20 transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:ring-inset"
                       aria-label={t("dashboard.viewProfile", "Vezi profil")}
                     >
                       <div className="relative flex-shrink-0 w-10 h-10 rounded-full bg-white border-2 border-primary/20 flex items-center justify-center overflow-hidden shadow-sm">
-                        <span className="text-primary font-semibold text-sm">{row.postedBy.charAt(0).toUpperCase()}</span>
-                        {row.postedByAvatar && (
-                          <img
-                            src={row.postedByAvatar}
-                            alt=""
-                            className="absolute inset-0 w-full h-full object-cover"
-                            onError={(e) => { e.currentTarget.style.display = "none"; }}
-                          />
+                        <span className="text-primary font-semibold text-sm">{(name || "S").charAt(0).toUpperCase()}</span>
+                        {staff.staffAvatar && (
+                          <img src={staff.staffAvatar} alt="" className="absolute inset-0 w-full h-full object-cover" onError={(e) => { e.currentTarget.style.display = "none"; }} />
                         )}
                       </div>
                       <div className="min-w-0 flex-1 flex flex-col gap-1">
-                        <p className="text-sm font-semibold text-gray-900 truncate">{row.postedBy}</p>
-                        <span className="inline-flex w-fit px-2 py-0.5 rounded-full text-xs font-medium bg-primary/15 text-primary border border-primary/25">
-                          {(() => { const r = (row.postedByRole ?? "").toLowerCase(); return r === "staff" ? t("dashboard.roleStaff") : r === "admin" ? t("dashboard.roleAdmin") : t("dashboard.roleCustomer"); })()}
-                        </span>
+                        <p className="text-sm font-semibold text-gray-900 truncate">{name}</p>
+                        <span className="inline-flex w-fit px-2 py-0.5 rounded-full text-xs font-medium bg-primary/15 text-primary border border-primary/25">{t("dashboard.roleStaff")}</span>
                       </div>
                     </button>
                   ) : (
                     <div className="flex items-center gap-3 mt-3 pt-3 border-t border-gray-100 px-3 py-2.5 -mx-0.5 rounded-xl bg-gray-50/80 border border-gray-100">
                       <div className="relative flex-shrink-0 w-10 h-10 rounded-full bg-white border border-gray-200 flex items-center justify-center overflow-hidden">
-                        <span className="text-primary font-semibold text-sm">{row.postedBy.charAt(0).toUpperCase()}</span>
-                        {row.postedByAvatar && (
-                          <img
-                            src={row.postedByAvatar}
-                            alt=""
-                            className="absolute inset-0 w-full h-full object-cover"
-                            onError={(e) => { e.currentTarget.style.display = "none"; }}
-                          />
+                        <span className="text-primary font-semibold text-sm">{(name || "S").charAt(0).toUpperCase()}</span>
+                        {staff.staffAvatar && (
+                          <img src={staff.staffAvatar} alt="" className="absolute inset-0 w-full h-full object-cover" onError={(e) => { e.currentTarget.style.display = "none"; }} />
                         )}
                       </div>
                       <div className="min-w-0 flex-1 flex flex-col gap-1">
-                        <p className="text-sm font-semibold text-gray-900 truncate">{row.postedBy}</p>
-                        <span className="inline-flex w-fit px-2 py-0.5 rounded-full text-xs font-medium bg-primary/15 text-primary border border-primary/25">
-                          {(() => { const r = (row.postedByRole ?? "").toLowerCase(); return r === "staff" ? t("dashboard.roleStaff") : r === "admin" ? t("dashboard.roleAdmin") : t("dashboard.roleCustomer"); })()}
-                        </span>
+                        <p className="text-sm font-semibold text-gray-900 truncate">{name}</p>
+                        <span className="inline-flex w-fit px-2 py-0.5 rounded-full text-xs font-medium bg-primary/15 text-primary border border-primary/25">{t("dashboard.roleStaff")}</span>
                       </div>
                     </div>
-                  )
-                )}
+                  );
+                })()}
 
                 {/* Footer: dată + acțiuni */}
                 <div className="border-t border-gray-100 mt-4 pt-4 flex items-center justify-between gap-3 flex-wrap">
@@ -1309,6 +1351,24 @@ export default function DashboardJoburi() {
           customerId={customerProfileModal.customerId}
           customerName={customerProfileModal.customerName}
           customerAvatar={customerProfileModal.customerAvatar}
+          currentUserId={user?.id != null ? String(user.id) : undefined}
+          applicationIdForReview={customerProfileModal.applicationIdForReview}
+          onReviewSubmitted={() => refreshStaffData()}
+        />
+      )}
+      {staffProfileModal && (
+        <StaffProfileModal
+          open={!!staffProfileModal}
+          onClose={() => setStaffProfileModal(null)}
+          staffId={staffProfileModal.staffId}
+          staffName={staffProfileModal.staffName}
+          staffEmail={staffProfileModal.staffEmail}
+          staffAvatar={staffProfileModal.staffAvatar}
+          currentUserId={user?.id != null ? String(user.id) : undefined}
+          applicationIdForReview={staffProfileModal.applicationId}
+          onReviewSubmitted={() => {
+            loadCustomerApplications();
+          }}
         />
       )}
     </>

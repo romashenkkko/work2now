@@ -82,8 +82,6 @@ function hoursBetween(start: string, end: string): number {
   return Math.max(0, (b - a) / (1000 * 60 * 60));
 }
 
-
-
 const STATS_ICONS = {
   applications: (
     <svg className="w-6 h-6 sm:w-7 sm:h-7 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
@@ -111,34 +109,6 @@ type AppWithSessions = {
   businessConfirmedAt?: string;
   isBusinessConfirmed?: boolean;
 };
-
-/** Calculate total price paid for an application based on work sessions */
-function calculatePricePaid(
-  app: AppWithSessions,
-  job: JobRow | undefined
-): number | null {
-  if (!job?.hourlyRateBase) return null;
-  const hourlyRate = Number(job.hourlyRateBase);
-  if (!Number.isFinite(hourlyRate) || hourlyRate <= 0) return null;
-
-  // Calculate from work sessions if available
-  let totalHours = 0;
-  if (app.workSessions && app.workSessions.length > 0) {
-    app.workSessions.forEach((session) => {
-      if (session.checkedInAt && session.checkedOutAt) {
-        const hours = hoursBetween(session.checkedInAt, session.checkedOutAt);
-        totalHours += hours;
-      }
-    });
-  } else if (app.checkedInAt && app.checkedOutAt) {
-    // Fallback to application-level check-in/out
-    totalHours = hoursBetween(app.checkedInAt, app.checkedOutAt);
-  }
-
-  if (totalHours <= 0) return null;
-  const baseTotal = hourlyRate * totalHours;
-  return roundMoney(getBusinessTotal(baseTotal));
-}
 
 export default function DashboardHomeCustomer() {
   const { t } = useTranslation();
@@ -175,6 +145,22 @@ export default function DashboardHomeCustomer() {
             isBusinessConfirmed: a.isBusinessConfirmed ?? false,
           }));
         });
+        const apps = r?.applications;
+        if (apps && typeof apps === "object") {
+          Object.entries(apps).forEach(([jobId, list]) => {
+            const key = String(jobId).trim();
+            if (!key) return;
+            const items = Array.isArray(list) ? list : [];
+            map[key] = items.map((a: { status?: string; staffId?: string; staffName?: string; workSessions?: { workDate: string; checkedInAt?: string; checkedOutAt?: string }[]; checkedInAt?: string; checkedOutAt?: string }) => ({
+              status: a.status ?? "",
+              staffId: a.staffId ?? "",
+              staffName: a.staffName ?? "",
+              workSessions: Array.isArray(a.workSessions) ? a.workSessions : [],
+              checkedInAt: a.checkedInAt,
+              checkedOutAt: a.checkedOutAt,
+            }));
+          });
+        }
         setApplicationsByJob(map);
       })
       .catch(() => setApplicationsByJob({}));

@@ -21,6 +21,8 @@ import {
   MessageCircle,
   Settings,
   UtensilsCrossed,
+  CreditCard,
+  Trash2,
 } from "lucide-react";
 import { coffeemaker } from "@lucide/lab";
 import { useAuth } from "../hooks/useAuth";
@@ -31,6 +33,7 @@ import StarRating from "../components/StarRating";
 import DatePicker from "../components/DatePicker";
 import AddressPickerModal from "../components/AddressPickerModal";
 import DocumentsModal, { type DocItem } from "../components/DocumentsModal";
+import StaffProfileModal from "../components/StaffProfileModal";
 
 export type JobType = "one-day" | "multi-day" | "full-time";
 export type JobRow = {
@@ -132,6 +135,7 @@ const NAV_ICONS: Record<string, ComponentType<{ className?: string; size?: numbe
   review: Star as ComponentType<{ className?: string; size?: number }>,
   messageCircle: MessageCircle as ComponentType<{ className?: string; size?: number }>,
   settings: Settings as ComponentType<{ className?: string; size?: number }>,
+  creditCard: CreditCard as ComponentType<{ className?: string; size?: number }>,
 };
 
 const NAV_CUSTOMER = [
@@ -278,10 +282,14 @@ export default function DashboardLayout() {
   const staffDropdownRef = useRef<HTMLDivElement>(null);
   const [salaryDropdownOpen, setSalaryDropdownOpen] = useState(false);
   const salaryDropdownRef = useRef<HTMLDivElement>(null);
+  const [categoryDropdownOpen, setCategoryDropdownOpen] = useState(false);
+  const categoryDropdownRef = useRef<HTMLDivElement>(null);
   const [unpaidBreak, setUnpaidBreak] = useState<"no" | "yes">("no");
   const [unpaidBreakOpen, setUnpaidBreakOpen] = useState(false);
   const unpaidBreakRef = useRef<HTMLDivElement>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [showMyProfileModal, setShowMyProfileModal] = useState(false);
+  const [deleteJobConfirmId, setDeleteJobConfirmId] = useState<string | null>(null);
   const [userRating, setUserRating] = useState<{ average: number; count: number } | null>(null);
   const [jobsAdded, setJobsAdded] = useState<JobRow[]>(() => {
     if (typeof window === "undefined") return [];
@@ -350,15 +358,35 @@ export default function DashboardLayout() {
     if (loading || !user || role !== "customer") return;
     fetchJobsForCustomer();
   }, [loading, user?.id, user?.role, fetchJobsForCustomer]);
+  const MY_RATING_CACHE_KEY = "work2now_my_rating";
   useEffect(() => {
     if (!user?.id) {
       setUserRating(null);
       return;
     }
+    const uid = String(user.id);
     ratingsApi
       .getUserRating(user.id)
-      .then((r) => setUserRating({ average: r.average, count: r.count }))
-      .catch(() => setUserRating(null));
+      .then((r) => {
+        const data = { average: r.average, count: r.count, userId: uid };
+        setUserRating({ average: data.average, count: data.count });
+        try {
+          localStorage.setItem(MY_RATING_CACHE_KEY, JSON.stringify(data));
+        } catch {}
+      })
+      .catch(() => {
+        try {
+          const raw = localStorage.getItem(MY_RATING_CACHE_KEY);
+          if (raw) {
+            const cached = JSON.parse(raw) as { average: number; count: number; userId?: string };
+            if (cached && String(cached.userId) === uid && (cached.count ?? 0) > 0) {
+              setUserRating({ average: cached.average, count: cached.count });
+              return;
+            }
+          }
+        } catch {}
+        setUserRating(null);
+      });
   }, [user?.id]);
 
   // Check if staff user needs onboarding
@@ -519,7 +547,7 @@ export default function DashboardLayout() {
       return false;
     }
   };
-  const removeJob = (id: string) => {
+  const performJobDelete = (id: string) => {
     jobsApi
       .delete(id)
       .then(() => setJobsAdded((prev) => prev.filter((j) => j.id !== id)))
@@ -540,6 +568,10 @@ export default function DashboardLayout() {
           }
         } catch {}
       });
+    setDeleteJobConfirmId(null);
+  };
+  const removeJob = (id: string) => {
+    setDeleteJobConfirmId(id);
   };
 
   useEffect(() => {
@@ -586,6 +618,15 @@ export default function DashboardLayout() {
     document.addEventListener("mousedown", close);
     return () => document.removeEventListener("mousedown", close);
   }, [salaryDropdownOpen]);
+
+  useEffect(() => {
+    if (!categoryDropdownOpen) return;
+    const close = (e: MouseEvent) => {
+      if (categoryDropdownRef.current && !categoryDropdownRef.current.contains(e.target as Node)) setCategoryDropdownOpen(false);
+    };
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, [categoryDropdownOpen]);
 
   // Keep page start consistent between dashboard sections. Must be before any conditional return (Rules of Hooks).
   useEffect(() => {
@@ -666,14 +707,35 @@ export default function DashboardLayout() {
             {t("dashboard.postJob")}
           </button>
         )}
-        <nav className="flex-1 overflow-y-auto px-4 py-2 space-y-1 min-h-0">
-          {getNavForRole(user.role).map(({ to, labelKey, end, icon }) => {
-            const IconComponent = icon ? NAV_ICONS[icon] : null;
-            return (
+        <nav className="flex-1 flex flex-col min-h-0 overflow-hidden">
+          <div className="flex-1 overflow-y-auto px-4 py-2 space-y-1 min-h-0">
+            {getNavForRole(user.role).map(({ to, labelKey, end, icon }) => {
+              const IconComponent = icon ? NAV_ICONS[icon] : null;
+              return (
+                <NavLink
+                  key={to}
+                  to={to}
+                  end={end}
+                  onClick={closeSidebar}
+                  className={({ isActive }) =>
+                    `flex items-center gap-3 px-4 py-2 rounded-lg font-medium transition-colors ${
+                      isActive ? "bg-primary/10 text-primary" : "text-gray-600 hover:bg-gray-100"
+                    }`
+                  }
+                >
+                  {IconComponent && (
+                    <IconComponent className="w-5 h-5 flex-shrink-0" size={20} />
+                  )}
+                  {t(labelKey)}
+                </NavLink>
+              );
+            })}
+          </div>
+          {isCustomer && (
+            <div className="flex-shrink-0 px-4 py-2 pt-2 border-t border-gray-200">
               <NavLink
-                key={to}
-                to={to}
-                end={end}
+                to="/dashboard/subscription"
+                end={false}
                 onClick={closeSidebar}
                 className={({ isActive }) =>
                   `flex items-center gap-3 px-4 py-2 rounded-lg font-medium transition-colors ${
@@ -681,21 +743,24 @@ export default function DashboardLayout() {
                   }`
                 }
               >
-                {IconComponent && (
-                  <IconComponent className="w-5 h-5 flex-shrink-0" size={20} />
-                )}
-                {t(labelKey)}
+                <CreditCard className="w-5 h-5 flex-shrink-0" size={20} />
+                {t("dashboard.subscription")}
               </NavLink>
-            );
-          })}
+            </div>
+          )}
         </nav>
         <div className="p-4 border-t border-gray-200 bg-gradient-to-b from-gray-50/80 to-white flex-shrink-0">
-          <div className="flex items-center gap-3 mb-3">
-            <div className="relative flex-shrink-0">
+          <button
+            type="button"
+            onClick={() => { setShowMyProfileModal(true); closeSidebar(); }}
+            className="w-full flex items-center gap-3 mb-3 rounded-xl p-1 -m-1 hover:bg-gray-100/80 transition-colors text-left focus:outline-none focus:ring-2 focus:ring-primary/40 focus:ring-offset-2"
+            aria-label={t("dashboard.viewMyProfileAndReviews", "Deschide profilul și recenziile")}
+          >
+            <span className="relative flex-shrink-0 rounded-full">
               <img
                 src={user?.avatar || "/Illustration/AvatarWhiteGuy.png"}
                 alt=""
-                className="w-12 h-12 rounded-full object-cover ring-2 ring-white shadow-md"
+                className="w-12 h-12 rounded-full object-cover ring-2 ring-white shadow-md hover:opacity-90 transition-opacity"
               />
               <span
                 className={`absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-white ${
@@ -703,12 +768,19 @@ export default function DashboardLayout() {
                 }`}
                 title={availableToWork ? t("dashboard.availableToWork") : t("dashboard.unavailable")}
               />
-            </div>
+            </span>
             <div className="min-w-0 flex-1">
               <p className="font-semibold text-gray-900 truncate">{user.name}</p>
-              <span className="inline-block px-2 py-0.5 text-xs font-medium rounded-full bg-primary/10 text-primary capitalize">
-                {user.role?.toLowerCase?.() === "admin" ? t("dashboard.roleAdmin") : user.role?.toLowerCase?.() === "customer" ? t("dashboard.roleCustomer") : t("dashboard.roleStaff")}
-              </span>
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="inline-block px-2 py-0.5 text-xs font-medium rounded-full bg-primary/10 text-primary capitalize">
+                  {user.role?.toLowerCase?.() === "admin" ? t("dashboard.roleAdmin") : user.role?.toLowerCase?.() === "customer" ? t("dashboard.roleCustomer") : t("dashboard.roleStaff")}
+                </span>
+                {user.role?.toLowerCase?.() === "customer" && user.boosterUntil && new Date(user.boosterUntil) > new Date() && (
+                  <span className="inline-block px-2 py-0.5 text-xs font-medium rounded-full bg-amber-100 text-amber-800" title={t("dashboard.boosterActiveUntil", "Booster activ până la {{date}}", { date: new Date(user.boosterUntil).toLocaleDateString() })}>
+                    {t("dashboard.boosterActive", "Booster activ")}
+                  </span>
+                )}
+              </div>
               <div className="flex items-center gap-1 mt-1">
                 <StarRating value={userRating?.average ?? 0} size={14} />
                 {userRating && userRating.count > 0 && (
@@ -716,11 +788,11 @@ export default function DashboardLayout() {
                 )}
               </div>
             </div>
-          </div>
+          </button>
           <button
             type="button"
             onClick={() => { navigate("/dashboard/settings"); closeSidebar(); }}
-            className="w-full flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 border border-gray-200/80 transition-colors"
+            className="w-full flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 border border-gray-200/80 transition-colors mt-2"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
@@ -740,6 +812,34 @@ export default function DashboardLayout() {
           </button>
         </div>
       </aside>
+
+      {showMyProfileModal && user && (
+        <StaffProfileModal
+          open={showMyProfileModal}
+          onClose={() => setShowMyProfileModal(false)}
+          staffId={String(user.id)}
+          staffName={user.name}
+          staffEmail={user.email}
+          staffAvatar={user.avatar}
+          currentUserId={String(user.id)}
+          userRole={user.role}
+          scrollToReviewsOnOpen
+          initialRating={
+            userRating ??
+            (() => {
+              try {
+                const raw = localStorage.getItem(MY_RATING_CACHE_KEY);
+                if (!raw) return null;
+                const c = JSON.parse(raw) as { average: number; count: number; userId?: string };
+                if (c && String(c.userId) === String(user.id) && (c.count ?? 0) > 0) return { average: c.average, count: c.count };
+                return null;
+              } catch {
+                return null;
+              }
+            })()
+          }
+        />
+      )}
 
       <main key={location.pathname} className="flex-1 pt-14 md:pt-0 p-4 md:p-8 page-enter min-w-0">
         <DashboardContext.Provider value={{ openPostJobModal: () => setShowPostJob(true), jobsAdded, addJob, removeJob, refreshJobs: fetchJobsForCustomer, availableToWork, setAvailableToWork, jobsLoadError, userRating: userRating ?? null }}>
@@ -1140,27 +1240,59 @@ export default function DashboardLayout() {
                         </label>
                         <label className="block min-w-0">
                           <span className="text-sm font-medium text-gray-700">Job Category <span className="text-red-500">*</span></span>
-                          <select
-                            name="jobCategoryCode"
-                            value={selectedJobCategory || ""}
-                            onChange={(e) => {
-                              const code = e.target.value ? Number(e.target.value) : null;
-                              setSelectedJobCategory(code);
-                              setPostJobFieldErrors((prev) => ({ ...prev, jobCategoryCode: undefined }));
-                              setHourlyRate("");
-                              setCalculatedSalary(null);
-                            }}
-                            className={`mt-1 block w-full px-4 py-2.5 rounded-xl border ${
-                              postJobFieldErrors.jobCategoryCode ? "border-red-400" : "border-gray-200"
-                            } focus:ring-2 focus:ring-primary focus:border-primary transition-colors`}
-                          >
-                            <option value="" disabled>Choose category</option>
-                            {jobCategories.map((cat) => (
-                              <option key={cat.code} value={cat.code}>
-                                {cat.title}
-                              </option>
-                            ))}
-                          </select>
+                          <div ref={categoryDropdownRef} className="mt-1 relative">
+                            <input type="hidden" name="jobCategoryCode" value={selectedJobCategory ?? ""} />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setCategoryDropdownOpen((v) => !v);
+                                setStaffDropdownOpen(false);
+                                setSalaryDropdownOpen(false);
+                              }}
+                              aria-expanded={categoryDropdownOpen}
+                              aria-haspopup="listbox"
+                              aria-label={t("dashboard.selectJobCategory", "Selectează categoria jobului")}
+                              className={`flex items-center justify-between w-full px-4 py-2.5 rounded-xl border bg-white text-left shadow-sm transition-all ${
+                                postJobFieldErrors.jobCategoryCode ? "border-red-400 ring-1 ring-red-200" : "border-gray-200 hover:border-gray-300"
+                              } focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary`}
+                            >
+                              <span className={selectedJobCategory ? "text-gray-900 font-medium" : "text-gray-500"}>
+                                {selectedJobCategory
+                                  ? jobCategories.find((c) => c.code === selectedJobCategory)?.title ?? "—"
+                                  : t("dashboard.chooseCategory", "Choose category")}
+                              </span>
+                              <svg className={`w-5 h-5 text-gray-400 flex-shrink-0 ml-2 transition-transform duration-200 ${categoryDropdownOpen ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                            </button>
+                            {categoryDropdownOpen && (
+                              <div className="absolute left-0 right-0 top-full z-50 mt-1.5 max-h-72 overflow-hidden rounded-xl border border-gray-200 bg-white py-1 shadow-lg ring-1 ring-black/5">
+                                <div className="overflow-y-auto max-h-64 py-1">
+                                  {jobCategories.map((cat) => (
+                                    <button
+                                      key={cat.code}
+                                      type="button"
+                                      role="option"
+                                      aria-selected={selectedJobCategory === cat.code}
+                                      onMouseDown={(e) => {
+                                        e.preventDefault();
+                                        setSelectedJobCategory(cat.code);
+                                        setPostJobFieldErrors((prev) => ({ ...prev, jobCategoryCode: undefined }));
+                                        setHourlyRate("");
+                                        setCalculatedSalary(null);
+                                        setCategoryDropdownOpen(false);
+                                      }}
+                                      className={`block w-full px-4 py-2.5 text-left text-sm font-medium transition-colors ${
+                                        selectedJobCategory === cat.code
+                                          ? "bg-primary/10 text-primary"
+                                          : "text-gray-700 hover:bg-gray-50 hover:text-gray-900"
+                                      }`}
+                                    >
+                                      {cat.title}
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </div>
                           {postJobFieldErrors.jobCategoryCode && (
                             <p className="mt-1 text-sm text-red-600">{postJobFieldErrors.jobCategoryCode}</p>
                           )}
@@ -1523,6 +1655,51 @@ export default function DashboardLayout() {
                 </form>
               </>
             )}
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Modal confirmare ștergere job */}
+      {deleteJobConfirmId && createPortal(
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
+          onClick={() => setDeleteJobConfirmId(null)}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="delete-job-title"
+        >
+          <div
+            className="bg-white rounded-2xl shadow-xl max-w-sm w-full overflow-hidden border border-gray-100"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-6 text-center">
+              <div className="mx-auto w-14 h-14 rounded-full bg-red-50 flex items-center justify-center mb-4">
+                <Trash2 className="w-7 h-7 text-red-500" />
+              </div>
+              <h3 id="delete-job-title" className="text-lg font-semibold text-gray-900 mb-2">
+                {t("dashboard.deleteJobTitle", "Șterge job")}
+              </h3>
+              <p className="text-gray-600 text-sm mb-6">
+                {t("dashboard.confirmDeleteJob", "Sigur vrei să ștergi acest job?")}
+              </p>
+              <div className="flex gap-3 justify-center">
+                <button
+                  type="button"
+                  onClick={() => setDeleteJobConfirmId(null)}
+                  className="px-5 py-2.5 rounded-xl border border-gray-200 text-gray-700 font-medium hover:bg-gray-50 transition-colors"
+                >
+                  {t("dashboard.cancel", "Anulare")}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => deleteJobConfirmId && performJobDelete(deleteJobConfirmId)}
+                  className="px-5 py-2.5 rounded-xl bg-red-600 text-white font-medium hover:bg-red-700 transition-colors shadow-sm"
+                >
+                  {t("dashboard.delete", "Șterge")}
+                </button>
+              </div>
+            </div>
           </div>
         </div>,
         document.body

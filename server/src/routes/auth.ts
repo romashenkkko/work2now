@@ -429,7 +429,7 @@ router.get("/me", authMiddleware, async (req: Request, res: Response): Promise<v
   try {
     // Query new schema: join with profile tables to get name/avatar
     const [rows] = await db.query(
-      `SELECT u.Id, u.Email, u.Role, COALESCE(u.IsActive, 1) AS IsActive,
+      `SELECT u.Id, u.Email, u.Role, COALESCE(u.IsActive, 1) AS IsActive, u.BoosterUntil AS boosterUntil,
               CASE
                 WHEN bp.UserId IS NOT NULL THEN COALESCE(bp.CompanyName, 'User')
                 WHEN ep.UserId IS NOT NULL THEN TRIM(CONCAT(COALESCE(ep.Name, ''), ' ', COALESCE(ep.Surname, '')))
@@ -449,13 +449,14 @@ router.get("/me", authMiddleware, async (req: Request, res: Response): Promise<v
        LEFT JOIN business_profiles bp ON u.Id = bp.UserId
        WHERE u.Id = ?`,
       [user.userId]
-    ) as [{ Id: string; Email: string; Role: number; IsActive: number; name: string; surname: string; avatar?: string | null; resolved_role: string }[], unknown];
+    ) as [{ Id: string; Email: string; Role: number; IsActive: number; boosterUntil?: string | Date | null; name: string; surname: string; avatar?: string | null; resolved_role: string }[], unknown];
     const u = Array.isArray(rows) ? rows[0] : undefined;
     if (u) {
       const roleStr = String(u.resolved_role || "").trim() || "staff";
       const fullName = u.name;
       const isActive = Number(u.IsActive) !== 0;
-      res.json({ id: u.Id, name: fullName, email: u.Email, role: roleStr, avatar: u.avatar ?? undefined, isActive });
+      const boosterUntil = u.boosterUntil != null ? (typeof u.boosterUntil === "string" ? u.boosterUntil : (u.boosterUntil as Date).toISOString?.() ?? String(u.boosterUntil)) : undefined;
+      res.json({ id: u.Id, name: fullName, email: u.Email, role: roleStr, avatar: u.avatar ?? undefined, isActive, boosterUntil: boosterUntil ?? undefined });
       return;
     }
     const mem = memoryUsers.find((m) => String(m.id) === user.userId);
@@ -625,7 +626,7 @@ router.get("/users", authMiddleware, async (req: Request, res: Response): Promis
   try {
     // Query all users with profile data
     const [allRows] = await db.query(
-      `SELECT u.Id as id, u.Email as email, u.Role, COALESCE(u.IsActive, 1) AS IsActive,
+      `SELECT u.Id as id, u.Email as email, u.Role, COALESCE(u.IsActive, 1) AS IsActive, u.BoosterUntil AS boosterUntil,
               COALESCE(
                 (SELECT b.PhoneNumber FROM branches b INNER JOIN business_profiles bp ON bp.Id = b.BusinessProfileId AND bp.UserId = u.Id LIMIT 1),
                 ''
@@ -647,13 +648,14 @@ router.get("/users", authMiddleware, async (req: Request, res: Response): Promis
        LEFT JOIN employee_profiles ep ON u.Id = ep.UserId
        LEFT JOIN business_profiles bp ON u.Id = bp.UserId
        ORDER BY u.CreatedAt`
-    ) as [{ id?: string; Id?: string; email: string; Role: number; IsActive: number; phone?: string; name: string; surname: string; resolved_role: string }[], unknown];
+    ) as [{ id?: string; Id?: string; email: string; Role: number; IsActive: number; boosterUntil?: string | Date | null; phone?: string; name: string; surname: string; resolved_role: string }[], unknown];
     if (Array.isArray(allRows)) {
       const users = allRows.map((u) => {
         const roleStr = String(u.resolved_role || "").trim() || "staff";
         const fullName = u.name;
         const userId = (u as { id?: string; Id?: string }).id ?? (u as { id?: string; Id?: string }).Id;
-        return { id: userId, name: fullName, email: u.email, role: roleStr, isActive: Number(u.IsActive) !== 0, phone: String(u.phone ?? "").trim() || undefined };
+        const boosterUntil = u.boosterUntil != null ? (typeof u.boosterUntil === "string" ? u.boosterUntil : (u.boosterUntil as Date).toISOString?.() ?? String(u.boosterUntil)) : undefined;
+        return { id: userId, name: fullName, email: u.email, role: roleStr, isActive: Number(u.IsActive) !== 0, phone: String(u.phone ?? "").trim() || undefined, boosterUntil: boosterUntil ?? undefined };
       });
       res.json({ users });
       return;
@@ -704,6 +706,54 @@ router.post("/users/set-status", authMiddleware, async (req: Request, res: Respo
   } catch (e) {
     console.error("POST /auth/users/set-status error:", e);
     if (!res.headersSent) res.status(500).json({ error: "Eroare la actualizarea statusului." });
+  }
+});
+
+/** POST /api/auth/users/set-booster - admin: setează subscription booster pentru un user (customer). Joburile lui vor apărea primele. */
+router.post("/users/set-booster", authMiddleware, async (req: Request, res: Response): Promise<void> => {
+  const { user } = req as Request & { user: JwtPayload };
+  const targetId = String(req.body?.userId ?? req.body?.id ?? "").trim();
+  const rawUntil = req.body?.boosterUntil; // ISO string or null to clear
+  if (!targetId) {
+    res.status(400).json({ error: "ID utilizator lipsă. Trimite userId în body." });
+    return;
+  }
+  let isAdmin = false;
+  try {
+    const [rows] = await db.query("SELECT Role FROM users WHERE Id = ?", [user.userId]) as [{ Role: number }[], unknown];
+    const current = Array.isArray(rows) ? rows[0] : undefined;
+    if (current?.Role === UserRole.Admin) isAdmin = true;
+  } catch (_) {}
+  if (!isAdmin) {
+    const mem = memoryUsers.find((m) => String(m.id) === user.userId);
+    if (mem?.role === "admin") isAdmin = true;
+  }
+  if (!isAdmin) {
+    res.status(403).json({ error: "Doar administratorii pot seta booster." });
+    return;
+  }
+  try {
+    const [existing] = await db.query("SELECT Id FROM users WHERE Id = ?", [targetId]) as [{ Id: string }[], unknown];
+    if (!Array.isArray(existing) || !existing[0]) {
+      res.status(404).json({ error: "Utilizator negăsit." });
+      return;
+    }
+    let boosterUntil: string | null = null;
+    if (rawUntil !== undefined && rawUntil !== null) {
+      if (typeof rawUntil === "string" && rawUntil.trim()) {
+        const d = new Date(rawUntil.trim());
+        if (Number.isNaN(d.getTime())) {
+          res.status(400).json({ error: "boosterUntil trebuie să fie o dată ISO validă." });
+          return;
+        }
+        boosterUntil = d.toISOString().slice(0, 19).replace("T", " ");
+      }
+    }
+    await db.query("UPDATE users SET BoosterUntil = ? WHERE Id = ?", [boosterUntil, targetId]);
+    res.json({ ok: true, boosterUntil: boosterUntil ?? undefined });
+  } catch (e) {
+    console.error("POST /auth/users/set-booster error:", e);
+    if (!res.headersSent) res.status(500).json({ error: "Eroare la setarea booster." });
   }
 });
 

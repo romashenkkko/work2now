@@ -1,11 +1,19 @@
 import { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
-import { Mail, User, MessageSquare, X } from "lucide-react";
+import { Mail, User, MessageSquare, X, Calendar } from "lucide-react";
 import StarRating from "./StarRating";
 import { ratingsApi, type ReviewItem } from "../api/client";
 
 const DEFAULT_AVATAR = "/Illustration/AvatarWhiteGuy.png";
+
+function avatarSrc(url: string | undefined): string | undefined {
+  if (!url || !url.trim()) return undefined;
+  const s = url.trim();
+  if (s.startsWith("data:") || s.startsWith("http://") || s.startsWith("https://")) return s;
+  if (s.startsWith("/")) return typeof window !== "undefined" ? `${window.location.origin}${s}` : s;
+  return s;
+}
 
 export type CustomerProfileModalProps = {
   open: boolean;
@@ -14,6 +22,12 @@ export type CustomerProfileModalProps = {
   customerName?: string;
   customerEmail?: string;
   customerAvatar?: string;
+  /** ID utilizator curent (staff) – dacă e setat și diferit de customerId, poate lăsa recenzie. */
+  currentUserId?: string;
+  /** ID aplicație finalizată (check-out făcut) la care staff-ul poate lăsa recenzie pentru acest customer. */
+  applicationIdForReview?: string;
+  /** După ce recenzia a fost trimisă (refresh listă etc.). */
+  onReviewSubmitted?: () => void;
 };
 
 export default function CustomerProfileModal({
@@ -23,17 +37,33 @@ export default function CustomerProfileModal({
   customerName = "",
   customerEmail = "",
   customerAvatar = DEFAULT_AVATAR,
+  currentUserId,
+  applicationIdForReview,
+  onReviewSubmitted,
 }: CustomerProfileModalProps) {
+  const canLeaveReview =
+    !!applicationIdForReview?.trim() &&
+    currentUserId != null &&
+    String(currentUserId).trim() !== String(customerId).trim();
   const { t } = useTranslation();
   const [ratingSummary, setRatingSummary] = useState<{ average: number; count: number } | null>(null);
   const [reviews, setReviews] = useState<ReviewItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [reviewScore, setReviewScore] = useState(0);
+  const [reviewComment, setReviewComment] = useState("");
+  const [reviewSubmitting, setReviewSubmitting] = useState(false);
+  const [reviewSubmitted, setReviewSubmitted] = useState(false);
+  const [showReviewForm, setShowReviewForm] = useState(false);
 
   useEffect(() => {
     if (!open || !customerId?.trim()) return;
     setLoading(true);
     setError(null);
+    setReviewSubmitted(false);
+    setReviewScore(0);
+    setReviewComment("");
+    setShowReviewForm(false);
     Promise.all([
       ratingsApi.getUserRating(customerId).catch(() => ({ average: 0, count: 0 })),
       ratingsApi.getReviewsReceivedBy(customerId).catch(() => ({ reviews: [] as ReviewItem[] })),
@@ -45,6 +75,28 @@ export default function CustomerProfileModal({
       .catch(() => setError(t("dashboard.errorLoadingProfile", "Eroare la încărcarea profilului.")))
       .finally(() => setLoading(false));
   }, [open, customerId, t]);
+
+  const submitReview = () => {
+    if (!applicationIdForReview?.trim() || reviewScore < 0.5) return;
+    setReviewSubmitting(true);
+    ratingsApi
+      .submit(applicationIdForReview, reviewScore, reviewComment || undefined)
+      .then(() => {
+        setReviewSubmitted(true);
+        setShowReviewForm(false);
+        return Promise.all([
+          ratingsApi.getUserRating(customerId).catch(() => ({ average: 0, count: 0 })),
+          ratingsApi.getReviewsReceivedBy(customerId).catch(() => ({ reviews: [] as ReviewItem[] })),
+        ]);
+      })
+      .then(([summary, received]) => {
+        setRatingSummary(summary);
+        setReviews(received.reviews ?? []);
+        onReviewSubmitted?.();
+      })
+      .catch((err) => setError(err instanceof Error ? err.message : t("dashboard.errorLoadingProfile", "Eroare la încărcarea profilului.")))
+      .finally(() => setReviewSubmitting(false));
+  };
 
   useEffect(() => {
     if (!open) return;
@@ -105,14 +157,12 @@ export default function CustomerProfileModal({
                   <span className="truncate">{customerEmail}</span>
                 </p>
               )}
-              {ratingSummary && ratingSummary.count > 0 && (
-                <div className="flex items-center gap-2 mt-2">
-                  <StarRating value={ratingSummary.average} size={20} />
-                  <span className="text-sm text-gray-600">
-                    {ratingSummary.average.toFixed(1)} ({ratingSummary.count} {ratingSummary.count === 1 ? t("dashboard.review", "review") : t("dashboard.reviews", "recenzii")})
-                  </span>
-                </div>
-              )}
+              <div className="flex items-center gap-2 mt-2">
+                <StarRating value={ratingSummary?.average ?? 0} size={20} />
+                <span className="text-sm text-gray-600">
+                  {(ratingSummary?.average ?? 0).toFixed(1)} ({ratingSummary?.count ?? 0} {ratingSummary?.count === 1 ? t("dashboard.review", "review") : t("dashboard.reviews", "recenzii")})
+                </span>
+              </div>
             </div>
           </div>
 
@@ -141,20 +191,103 @@ export default function CustomerProfileModal({
                       className="review-card-anim bg-white rounded-2xl p-4 sm:p-5 shadow-[0_1px_3px_rgba(0,0,0,0.06)] border border-gray-100"
                       style={{ animationDelay: `${i * 60}ms` }}
                     >
-                      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                        <StarRating value={r.score} size={18} />
-                        {r.otherPartyName && <span className="text-sm font-semibold text-[#333]">— {r.otherPartyName}</span>}
-                        {r.jobTitle && <span className="text-sm text-gray-500">{r.jobTitle}</span>}
+                      <div className="flex items-start gap-3">
+                        <div className="flex-shrink-0 w-10 h-10 rounded-full bg-primary/10 border-2 border-primary/20 flex items-center justify-center overflow-hidden">
+                          {avatarSrc(r.otherPartyAvatar) ? (
+                            <img
+                              src={avatarSrc(r.otherPartyAvatar)!}
+                              alt=""
+                              className="w-full h-full object-cover"
+                              onError={(e) => {
+                                e.currentTarget.style.display = "none";
+                                e.currentTarget.nextElementSibling?.classList.remove("hidden");
+                              }}
+                            />
+                          ) : null}
+                          <span className={`text-primary font-semibold text-sm ${avatarSrc(r.otherPartyAvatar) ? "hidden" : ""}`}>
+                            {(r.otherPartyName || "?").charAt(0).toUpperCase()}
+                          </span>
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                            <StarRating value={r.score} size={18} />
+                            {r.otherPartyRole && (
+                              <span className="text-xs font-medium text-primary px-2 py-0.5 rounded-full bg-primary/15 border border-primary/25">
+                                {r.otherPartyRole === "staff" ? t("dashboard.roleStaff") : r.otherPartyRole === "admin" ? t("dashboard.roleAdmin") : t("dashboard.roleCustomer")}
+                              </span>
+                            )}
+                          </div>
+                          {r.otherPartyName && (
+                            <p className="text-sm font-medium text-gray-800 mt-1">
+                              {t("dashboard.reviewBy", "Recenzie de la")}: <span className="font-semibold text-[#333]">{r.otherPartyName}</span>
+                              {r.jobTitle && <span className="text-gray-500 font-normal"> — {r.jobTitle}</span>}
+                            </p>
+                          )}
+                          {r.createdAt && (
+                            <p className="text-xs text-gray-500 flex items-center gap-1 mt-1">
+                              <Calendar className="w-3.5 h-3.5 shrink-0" />
+                              {new Date(r.createdAt).toLocaleString("ro-RO", { dateStyle: "medium", timeStyle: "short" })}
+                            </p>
+                          )}
+                        </div>
                       </div>
                       {r.comment && (
-                        <p className="text-sm text-gray-700 flex items-start gap-1 mt-2">
-                          <MessageSquare className="w-4 h-4 shrink-0 mt-0.5" />
-                          {r.comment}
+                        <p className="text-sm text-gray-700 flex items-start gap-1.5 mt-2">
+                          <MessageSquare className="w-4 h-4 shrink-0 mt-0.5 text-primary/70" />
+                          <span>{r.comment}</span>
                         </p>
                       )}
                     </li>
                   ))}
                 </ul>
+              )}
+
+              {canLeaveReview && (
+                <div className="mt-6 pt-4 border-t border-gray-100">
+                  {reviewSubmitted ? (
+                    <p className="text-sm font-medium text-green-700">{t("dashboard.reviewThankYou", "Mulțumim, recenzia a fost trimisă.")}</p>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => setShowReviewForm((v) => !v)}
+                        className="flex items-center justify-between w-full sm:w-auto px-4 py-2.5 rounded-xl bg-primary text-white text-sm font-medium hover:bg-primary/90 transition-colors"
+                        aria-expanded={showReviewForm}
+                      >
+                        <span>{t("dashboard.leaveReview", "Lasă recenzie")}</span>
+                        <svg className={`w-5 h-5 ml-2 transition-transform duration-300 ease-out ${showReviewForm ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                        </svg>
+                      </button>
+                      <div className={`overflow-hidden transition-all duration-300 ease-out ${showReviewForm ? "max-h-[400px] opacity-100" : "max-h-0 opacity-0"}`}>
+                        <div className="p-4 mt-3 rounded-xl bg-gray-50 border border-gray-100">
+                          <p className="text-sm font-semibold text-gray-800 mb-2">{t("dashboard.rateWork", "Evaluare (1-5 stele)")}</p>
+                          <div className="flex items-center gap-2 flex-wrap mb-3">
+                            <StarRating value={reviewScore} editable onSelect={(s) => setReviewScore(s)} />
+                          </div>
+                          <label className="block text-xs font-medium text-gray-500 mb-1">{t("dashboard.commentOptional", "Comentariu (opțional)")}</label>
+                          <textarea
+                            rows={2}
+                            value={reviewComment}
+                            onChange={(e) => setReviewComment(e.target.value.slice(0, 2000))}
+                            className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
+                            placeholder={t("dashboard.commentOptional", "Comentariu (opțional)")}
+                          />
+                          <div className="flex flex-wrap gap-2 mt-3">
+                            <button
+                              type="button"
+                              disabled={reviewScore < 0.5 || reviewSubmitting}
+                              onClick={submitReview}
+                              className="px-4 py-2 rounded-xl bg-primary text-white text-sm font-medium hover:bg-primary/90 disabled:opacity-50"
+                            >
+                              {reviewSubmitting ? t("dashboard.sending", "Se trimite...") : t("dashboard.submitReview", "Trimite recenzia")}
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </div>
               )}
             </div>
           )}

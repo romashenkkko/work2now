@@ -9,20 +9,23 @@ export default function FindStaff() {
   return (
     <div className="find-staff-page min-h-[60vh]">
       <div className="container mx-auto px-4 py-12 sm:py-16 max-w-6xl">
-        {/* Header – cu linie decorativă */}
-        <header className="text-center max-w-2xl mx-auto mb-12 sm:mb-16 relative">
-          <p className="inline-flex items-center gap-2 text-[0.65rem] sm:text-xs font-semibold uppercase tracking-widest text-primary/90 mb-4 px-4 py-2 rounded-full bg-primary/10 border border-primary/20 shadow-[0_2px_8px_rgba(122,99,241,0.08)]">
+        {/* Hero banner – nuanțe violet brand, aerisit, ca pe Find Jobs */}
+        <section
+          className="rounded-[28px] sm:rounded-[32px] bg-gradient-to-br from-[rgba(122,99,241,0.14)] via-[rgba(157,123,255,0.10)] to-[rgba(122,99,241,0.16)] border border-[rgba(122,99,241,0.25)] shadow-[0_8px_32px_rgba(122,99,241,0.15)] mb-12 sm:mb-14 py-14 sm:py-20 px-6 sm:px-12 text-center"
+          aria-label={t("findStaff.title")}
+        >
+          <p className="inline-flex items-center gap-2 text-[0.65rem] sm:text-xs font-semibold uppercase tracking-widest text-primary/90 mb-5 px-4 py-2.5 rounded-full bg-white/70 border border-primary/20 shadow-[0_2px_10px_rgba(122,99,241,0.1)]">
             <span className="w-1.5 h-1.5 rounded-full bg-primary/80" aria-hidden />
             {t("findStaff.badge")}
           </p>
-          <h1 className="text-2xl sm:text-3xl md:text-4xl font-extrabold text-[#1e1c2f] mb-3 tracking-tight">
+          <h1 className="text-3xl sm:text-4xl md:text-5xl font-extrabold text-[#1e1c2f] tracking-tight mb-4 max-w-2xl mx-auto">
             {t("findStaff.title")}
           </h1>
-          <div className="w-16 h-1 rounded-full bg-gradient-to-r from-transparent via-primary/50 to-transparent mx-auto mb-4" aria-hidden />
-          <p className="text-gray-600 text-base sm:text-lg leading-relaxed">
+          <div className="w-20 h-1 rounded-full bg-gradient-to-r from-transparent via-primary/60 to-transparent mx-auto mb-5" aria-hidden />
+          <p className="text-[#3d3a4a] text-lg sm:text-xl leading-relaxed max-w-xl mx-auto font-normal">
             {t("findStaff.lead")}
           </p>
-        </header>
+        </section>
 
         {/* Carduri – layout bento: primul card lat, următoarele două alăturate */}
         <div className="find-staff-cards grid grid-cols-1 sm:grid-cols-2 gap-5 sm:gap-6 mb-14 sm:mb-20 max-w-4xl mx-auto">

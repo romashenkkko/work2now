@@ -1,5 +1,6 @@
-import { useContext, useState, useEffect } from "react";
+import { useContext, useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "../hooks/useAuth";
 import { DashboardContext, getApplications, setApplications, JobTitleIcon, type Application, type JobRow } from "./DashboardLayout";
@@ -80,6 +81,8 @@ function statusBadge(t: (k: string) => string, status: "pending" | "accepted" | 
 
 export default function DashboardAplicatii() {
   const { t } = useTranslation();
+  const location = useLocation();
+  const navigate = useNavigate();
   const { user } = useAuth();
   const ctx = useContext(DashboardContext);
   const jobsAdded = ctx?.jobsAdded ?? [];
@@ -95,7 +98,13 @@ export default function DashboardAplicatii() {
     staffName?: string;
     staffEmail?: string;
     staffAvatar?: string;
+    /** ID aplicație finalizată, nerată – pentru butonul „Lasă recenzie”. */
+    applicationId?: string;
   } | null>(null);
+
+  /** După „Lasă recenzie” din modal: scroll la acest application și focus pe comentariu. */
+  const [expandReviewApplicationId, setExpandReviewApplicationId] = useState<string | null>(null);
+  const reviewCommentRef = useRef<HTMLTextAreaElement | null>(null);
 
   // Staff view: flat list of my applications
   const [myApps, setMyApps] = useState<StaffApplication[]>([]);
@@ -184,6 +193,27 @@ export default function DashboardAplicatii() {
     // if admin or other role -> do nothing
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.role, user?.id]);
+
+  /** La venire de pe Joburi cu „Lasă recenzie”: expand id din state și derulează la formular. */
+  useEffect(() => {
+    const id = (location.state as { expandReviewApplicationId?: string } | null)?.expandReviewApplicationId;
+    if (id) {
+      setExpandReviewApplicationId(id);
+      navigate(location.pathname, { replace: true, state: {} });
+    }
+  }, [location.state, location.pathname, navigate]);
+
+  /** După „Lasă recenzie” din modal: scroll la formularul de review și focus pe comentariu. */
+  useEffect(() => {
+    if (!expandReviewApplicationId) return;
+    const el = document.getElementById(`review-form-${expandReviewApplicationId}`);
+    el?.scrollIntoView({ behavior: "smooth", block: "center" });
+    const tId = setTimeout(() => {
+      reviewCommentRef.current?.focus();
+      setExpandReviewApplicationId(null);
+    }, 400);
+    return () => clearTimeout(tId);
+  }, [expandReviewApplicationId]);
 
   const [confirmingCompletionId, setConfirmingCompletionId] = useState<string | null>(null);
   const [ratingSubmitting, setRatingSubmitting] = useState<string | null>(null);
@@ -482,7 +512,13 @@ export default function DashboardAplicatii() {
                         {a.staffId ? (
                           <button
                             type="button"
-                            onClick={() => setStaffProfileModal({ staffId: a.staffId!, staffName: a.staffName, staffEmail: a.staffEmail, staffAvatar: a.staffAvatar })}
+                            onClick={() => setStaffProfileModal({
+                              staffId: a.staffId!,
+                              staffName: a.staffName,
+                              staffEmail: a.staffEmail,
+                              staffAvatar: a.staffAvatar,
+                              applicationId: a.checkedOutAt && a.ratingScore == null ? a.id : undefined,
+                            })}
                             className="flex-shrink-0 rounded-full focus:outline-none focus:ring-2 focus:ring-primary/40"
                             aria-label={t("dashboard.viewProfile", "Vezi profil")}
                           >
@@ -495,7 +531,13 @@ export default function DashboardAplicatii() {
                           {a.staffId ? (
                             <button
                               type="button"
-                              onClick={() => setStaffProfileModal({ staffId: a.staffId!, staffName: a.staffName, staffEmail: a.staffEmail, staffAvatar: a.staffAvatar })}
+                              onClick={() => setStaffProfileModal({
+                                staffId: a.staffId!,
+                                staffName: a.staffName,
+                                staffEmail: a.staffEmail,
+                                staffAvatar: a.staffAvatar,
+                                applicationId: a.checkedOutAt && a.ratingScore == null ? a.id : undefined,
+                              })}
                               className="text-left font-medium text-gray-900 hover:text-primary focus:outline-none focus:ring-0"
                             >
                               {a.staffName}
@@ -545,7 +587,7 @@ export default function DashboardAplicatii() {
                                   <StarRating value={a.ratingScore} size={16} />
                                 </span>
                               ) : (
-                                <>
+                                <div id={`review-form-${a.id}`}>
                                   <div className="flex items-center gap-2 flex-wrap">
                                     <span className="text-sm text-gray-600">{t("dashboard.rateWork")}:</span>
                                     <StarRating
@@ -557,6 +599,7 @@ export default function DashboardAplicatii() {
                                   <div>
                                     <label className="block text-xs font-medium text-gray-500 mt-1">{t("dashboard.commentOptional")}</label>
                                     <textarea
+                                      ref={expandReviewApplicationId === a.id ? reviewCommentRef : undefined}
                                       rows={2}
                                       value={ratingDraft[a.id]?.comment ?? ""}
                                       onChange={(e) => setRatingDraft((prev) => ({ ...prev, [a.id]: { ...(prev[a.id] ?? { score: 0 }), comment: e.target.value.slice(0, 2000) } }))}
@@ -575,7 +618,7 @@ export default function DashboardAplicatii() {
                                       {ratingSubmitting === a.id ? "..." : t("dashboard.submitReview", "Trimite review")}
                                     </button>
                                   </div>
-                                </>
+                                </div>
                               )}
                             </div>
                           )}
@@ -619,6 +662,11 @@ export default function DashboardAplicatii() {
           staffName={staffProfileModal.staffName}
           staffEmail={staffProfileModal.staffEmail}
           staffAvatar={staffProfileModal.staffAvatar}
+          currentUserId={user?.id != null ? String(user.id) : undefined}
+          applicationIdForReview={staffProfileModal.applicationId}
+          onReviewSubmitted={() => {
+            refreshCustomerApplications();
+          }}
         />
       )}
     </>

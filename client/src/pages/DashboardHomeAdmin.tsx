@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { useAuth } from "../hooks/useAuth";
 import { authApi, jobsApi } from "../api/client";
 
-type UserRow = { id: number; name: string; email: string; role: string; isActive?: boolean; phone?: string };
+type UserRow = { id: number; name: string; email: string; role: string; isActive?: boolean; phone?: string; boosterUntil?: string };
 type RoleFilter = "" | "staff" | "customer" | "admin";
 
 const ROLE_FILTER_OPTIONS: { value: RoleFilter; labelKey: string }[] = [
@@ -43,6 +43,12 @@ export default function DashboardHomeAdmin() {
   const [statusError, setStatusError] = useState<string | null>(null);
   const [confirmStatus, setConfirmStatus] = useState<{ id: string; name: string; active: boolean } | null>(null);
   const [copiedCell, setCopiedCell] = useState<{ id: string; field: "email" | "phone" } | null>(null);
+  const [boosterUpdatingId, setBoosterUpdatingId] = useState<string | null>(null);
+  const [accountsSectionOpen, setAccountsSectionOpen] = useState(true);
+  const [salaryDomainOpen, setSalaryDomainOpen] = useState(true);
+  const [salaryRegionOpen, setSalaryRegionOpen] = useState(true);
+  const [companyRankingOpen, setCompanyRankingOpen] = useState(true);
+  const [salaryByDomainAndRegionOpen, setSalaryByDomainAndRegionOpen] = useState(true);
 
   const copyToClipboard = (text: string, id: string, field: "email" | "phone") => {
     if (!text || text === "—") return;
@@ -191,80 +197,112 @@ export default function DashboardHomeAdmin() {
           </article>
         </section>
 
-        {/* Salarii pe domenii și regiuni – alăturate pe desktop */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6 md:mb-8">
+        {/* Salarii pe domenii și regiuni – pliabile cu animație */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6 md:mb-8 items-start">
           {/* Salary by domain */}
-          <section className="bg-white rounded-xl sm:rounded-2xl border border-gray-200 shadow-sm p-4 sm:p-6 min-w-0">
-            <h2 className="font-bold text-gray-900 mb-3 sm:mb-4 text-sm sm:text-base">{t("dashboard.adminSalaryByDomain", "Statistică salariilor pe domenii (MDL/oră)")}</h2>
-            {statsLoading && <p className="text-sm text-gray-500">{t("dashboard.loading", "Se încarcă...")}</p>}
-            {!statsLoading && (!adminStats?.salaryByDomain?.length) && <p className="text-sm text-gray-500">{t("dashboard.noData", "Fără date")}</p>}
-            {!statsLoading && adminStats?.salaryByDomain && adminStats.salaryByDomain.length > 0 && (
-              <div className="overflow-x-auto -mx-1">
-                <table className="w-full text-sm min-w-[280px]">
-                  <thead>
-                    <tr className="border-b border-gray-200 text-left text-gray-500 font-medium">
-                      <th className="py-2.5 pr-3 w-[40%]">{t("dashboard.adminDomain", "Domeniu")}</th>
-                      <th className="py-2.5 pr-3">{t("dashboard.adminAvgPerHour", "Medie MDL/oră")}</th>
-                      <th className="py-2.5 pr-3 whitespace-nowrap">{t("dashboard.adminMinMax", "Min – Max")}</th>
-                      <th className="py-2.5 text-right">{t("dashboard.adminJobCount", "Nr. joburi")}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {adminStats.salaryByDomain.map((d) => (
-                      <tr key={d.categoryCode} className="border-b border-gray-100 hover:bg-gray-50/50">
-                        <td className="py-2.5 pr-3 font-medium text-gray-900">{d.categoryTitle}</td>
-                        <td className="py-2.5 pr-3">
-                          <div className="flex items-center gap-2">
-                            <div className="w-16 sm:w-20 h-2 bg-gray-100 rounded-full overflow-hidden flex-shrink-0">
-                              <div className="h-full bg-primary rounded-full transition-all" style={{ width: `${(d.avgHourly / maxAvgDomain) * 100}%` }} />
-                            </div>
-                            <span className="text-gray-900 font-medium tabular-nums">{d.avgHourly.toFixed(0)}</span>
-                          </div>
-                        </td>
-                        <td className="py-2.5 pr-3 text-gray-600 text-xs sm:text-sm tabular-nums">{d.minHourly.toFixed(0)} – {d.maxHourly.toFixed(0)}</td>
-                        <td className="py-2.5 text-right text-gray-700 tabular-nums">{d.jobCount}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+          <section className="bg-white rounded-xl sm:rounded-2xl border border-gray-200 shadow-sm overflow-hidden min-w-0">
+            <button
+              type="button"
+              onClick={() => setSalaryDomainOpen((o) => !o)}
+              className="flex w-full items-center justify-between gap-3 p-4 sm:p-6 text-left hover:bg-gray-50/80 transition-colors"
+              aria-expanded={salaryDomainOpen}
+            >
+              <h2 className="font-bold text-gray-900 text-sm sm:text-base">{t("dashboard.adminSalaryByDomain", "Statistică salariilor pe domenii (MDL/oră)")}</h2>
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-gray-500 transition-transform duration-200" aria-hidden>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={salaryDomainOpen ? "rotate-180" : ""}>
+                  <path d="M6 9l6 6 6-6" />
+                </svg>
+              </span>
+            </button>
+            <div className={`admin-panel-expand ${salaryDomainOpen ? "open" : "closed"}`}>
+              <div className="admin-panel-open px-4 sm:px-6 pb-4 sm:pb-6 border-t border-gray-100">
+                {statsLoading && <p className="text-sm text-gray-500 pt-2">{t("dashboard.loading", "Se încarcă...")}</p>}
+                {!statsLoading && (!adminStats?.salaryByDomain?.length) && <p className="text-sm text-gray-500 pt-2">{t("dashboard.noData", "Fără date")}</p>}
+                {!statsLoading && adminStats?.salaryByDomain && adminStats.salaryByDomain.length > 0 && (
+                  <div className="overflow-x-auto -mx-1 pt-2">
+                    <table className="w-full text-sm min-w-[280px]">
+                      <thead>
+                        <tr className="border-b border-gray-200 text-left text-gray-500 font-medium">
+                          <th className="py-2.5 pr-3 w-[40%]">{t("dashboard.adminDomain", "Domeniu")}</th>
+                          <th className="py-2.5 pr-3">{t("dashboard.adminAvgPerHour", "Medie MDL/oră")}</th>
+                          <th className="py-2.5 pr-3 whitespace-nowrap">{t("dashboard.adminMinMax", "Min – Max")}</th>
+                          <th className="py-2.5 text-right">{t("dashboard.adminJobCount", "Nr. joburi")}</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {adminStats.salaryByDomain.map((d) => (
+                          <tr key={d.categoryCode} className="border-b border-gray-100 hover:bg-gray-50/50">
+                            <td className="py-2.5 pr-3 font-medium text-gray-900">{d.categoryTitle}</td>
+                            <td className="py-2.5 pr-3">
+                              <div className="flex items-center gap-2">
+                                <div className="w-16 sm:w-20 h-2 bg-gray-100 rounded-full overflow-hidden flex-shrink-0">
+                                  <div className="h-full bg-primary rounded-full transition-all" style={{ width: `${(d.avgHourly / maxAvgDomain) * 100}%` }} />
+                                </div>
+                                <span className="text-gray-900 font-medium tabular-nums">{d.avgHourly.toFixed(0)}</span>
+                              </div>
+                            </td>
+                            <td className="py-2.5 pr-3 text-gray-600 text-xs sm:text-sm tabular-nums">{d.minHourly.toFixed(0)} – {d.maxHourly.toFixed(0)}</td>
+                            <td className="py-2.5 text-right text-gray-700 tabular-nums">{d.jobCount}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </div>
-            )}
+            </div>
           </section>
 
           {/* Salary by region */}
-          <section className="bg-white rounded-xl sm:rounded-2xl border border-gray-200 shadow-sm p-4 sm:p-6 min-w-0">
-            <h2 className="font-bold text-gray-900 mb-3 sm:mb-4 text-sm sm:text-base">{t("dashboard.adminSalaryByRegion", "Statistică salariilor pe regiuni (MDL/oră)")}</h2>
-            {statsLoading && <p className="text-sm text-gray-500">{t("dashboard.loading", "Se încarcă...")}</p>}
-            {!statsLoading && (!adminStats?.salaryByRegion?.length) && <p className="text-sm text-gray-500">{t("dashboard.noData", "Fără date")}</p>}
-            {!statsLoading && adminStats?.salaryByRegion && adminStats.salaryByRegion.length > 0 && (
-              <div className="overflow-x-auto -mx-1">
-                <table className="w-full text-sm min-w-[240px]">
-                  <thead>
-                    <tr className="border-b border-gray-200 text-left text-gray-500 font-medium">
-                      <th className="py-2.5 pr-3 w-[40%]">{t("dashboard.adminRegion", "Regiune / Oraș")}</th>
-                      <th className="py-2.5 pr-3">{t("dashboard.adminAvgPerHour", "Medie MDL/oră")}</th>
-                      <th className="py-2.5 text-right">{t("dashboard.adminJobCount", "Nr. joburi")}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {adminStats.salaryByRegion.map((r) => (
-                      <tr key={r.region} className="border-b border-gray-100 hover:bg-gray-50/50">
-                        <td className="py-2.5 pr-3 font-medium text-gray-900">{r.region}</td>
-                        <td className="py-2.5 pr-3">
-                          <div className="flex items-center gap-2">
-                            <div className="w-16 sm:w-20 h-2 bg-gray-100 rounded-full overflow-hidden flex-shrink-0">
-                              <div className="h-full bg-primary rounded-full transition-all" style={{ width: `${(r.avgHourly / maxAvgRegion) * 100}%` }} />
-                            </div>
-                            <span className="text-gray-900 font-medium tabular-nums">{r.avgHourly.toFixed(0)}</span>
-                          </div>
-                        </td>
-                        <td className="py-2.5 text-right text-gray-700 tabular-nums">{r.jobCount}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+          <section className="bg-white rounded-xl sm:rounded-2xl border border-gray-200 shadow-sm overflow-hidden min-w-0">
+            <button
+              type="button"
+              onClick={() => setSalaryRegionOpen((o) => !o)}
+              className="flex w-full items-center justify-between gap-3 p-4 sm:p-6 text-left hover:bg-gray-50/80 transition-colors"
+              aria-expanded={salaryRegionOpen}
+            >
+              <h2 className="font-bold text-gray-900 text-sm sm:text-base">{t("dashboard.adminSalaryByRegion", "Statistică salariilor pe regiuni (MDL/oră)")}</h2>
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-gray-500 transition-transform duration-200" aria-hidden>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={salaryRegionOpen ? "rotate-180" : ""}>
+                  <path d="M6 9l6 6 6-6" />
+                </svg>
+              </span>
+            </button>
+            <div className={`admin-panel-expand ${salaryRegionOpen ? "open" : "closed"}`}>
+              <div className="admin-panel-open px-4 sm:px-6 pb-4 sm:pb-6 border-t border-gray-100">
+                {statsLoading && <p className="text-sm text-gray-500 pt-2">{t("dashboard.loading", "Se încarcă...")}</p>}
+                {!statsLoading && (!adminStats?.salaryByRegion?.length) && <p className="text-sm text-gray-500 pt-2">{t("dashboard.noData", "Fără date")}</p>}
+                {!statsLoading && adminStats?.salaryByRegion && adminStats.salaryByRegion.length > 0 && (
+                  <div className="overflow-x-auto -mx-1 pt-2">
+                    <table className="w-full text-sm min-w-[240px]">
+                      <thead>
+                        <tr className="border-b border-gray-200 text-left text-gray-500 font-medium">
+                          <th className="py-2.5 pr-3 w-[40%]">{t("dashboard.adminRegion", "Regiune / Oraș")}</th>
+                          <th className="py-2.5 pr-3">{t("dashboard.adminAvgPerHour", "Medie MDL/oră")}</th>
+                          <th className="py-2.5 text-right">{t("dashboard.adminJobCount", "Nr. joburi")}</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {adminStats.salaryByRegion.map((r) => (
+                          <tr key={r.region} className="border-b border-gray-100 hover:bg-gray-50/50">
+                            <td className="py-2.5 pr-3 font-medium text-gray-900">{r.region}</td>
+                            <td className="py-2.5 pr-3">
+                              <div className="flex items-center gap-2">
+                                <div className="w-16 sm:w-20 h-2 bg-gray-100 rounded-full overflow-hidden flex-shrink-0">
+                                  <div className="h-full bg-primary rounded-full transition-all" style={{ width: `${(r.avgHourly / maxAvgRegion) * 100}%` }} />
+                                </div>
+                                <span className="text-gray-900 font-medium tabular-nums">{r.avgHourly.toFixed(0)}</span>
+                              </div>
+                            </td>
+                            <td className="py-2.5 text-right text-gray-700 tabular-nums">{r.jobCount}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </div>
-            )}
+            </div>
           </section>
         </div>
 
@@ -290,70 +328,116 @@ export default function DashboardHomeAdmin() {
           )}
         </section>
 
-        {/* Company ranking - most active hirers */}
-        <section className="bg-white rounded-xl sm:rounded-2xl border border-gray-200 shadow-sm p-4 sm:p-6 mb-6 md:mb-8">
-          <h2 className="font-bold text-gray-900 mb-3 sm:mb-4 text-sm sm:text-base">{t("dashboard.adminCompanyRanking", "Clasament companii care angajează cel mai activ")}</h2>
-          {statsLoading && <p className="text-sm text-gray-500">{t("dashboard.loading", "Se încarcă...")}</p>}
-          {!statsLoading && (!adminStats?.companyRanking?.length) && <p className="text-sm text-gray-500">{t("dashboard.noData", "Fără date")}</p>}
-          {!statsLoading && adminStats?.companyRanking && adminStats.companyRanking.length > 0 && (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-gray-200 text-left text-gray-500 font-medium">
-                    <th className="py-2 pr-4 w-12">#</th>
-                    <th className="py-2 pr-4">{t("dashboard.adminCompany", "Companie")}</th>
-                    <th className="py-2">{t("dashboard.adminAcceptedCount", "Aplicații acceptate")}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {adminStats.companyRanking.map((c) => (
-                    <tr key={c.userId || c.rank} className="border-b border-gray-100">
-                      <td className="py-2.5 pr-4 font-medium text-gray-500">{c.rank}</td>
-                      <td className="py-2.5 pr-4 font-medium text-gray-900">{c.companyName}</td>
-                      <td className="py-2.5">{c.acceptedCount}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+        {/* Company ranking - most active hirers (pliabil) */}
+        <section className="bg-white rounded-xl sm:rounded-2xl border border-gray-200 shadow-sm overflow-hidden mb-6 md:mb-8">
+          <button
+            type="button"
+            onClick={() => setCompanyRankingOpen((o) => !o)}
+            className="flex w-full items-center justify-between gap-3 p-4 sm:p-6 text-left hover:bg-gray-50/80 transition-colors"
+            aria-expanded={companyRankingOpen}
+          >
+            <h2 className="font-bold text-gray-900 text-sm sm:text-base">{t("dashboard.adminCompanyRanking", "Clasament companii care angajează cel mai activ")}</h2>
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-gray-500 transition-transform duration-200" aria-hidden>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={companyRankingOpen ? "rotate-180" : ""}>
+                <path d="M6 9l6 6 6-6" />
+              </svg>
+            </span>
+          </button>
+          <div className={`admin-panel-expand ${companyRankingOpen ? "open" : "closed"}`}>
+            <div className="admin-panel-open px-4 sm:px-6 pb-4 sm:pb-6 border-t border-gray-100">
+              {statsLoading && <p className="text-sm text-gray-500 pt-2">{t("dashboard.loading", "Se încarcă...")}</p>}
+              {!statsLoading && (!adminStats?.companyRanking?.length) && <p className="text-sm text-gray-500 pt-2">{t("dashboard.noData", "Fără date")}</p>}
+              {!statsLoading && adminStats?.companyRanking && adminStats.companyRanking.length > 0 && (
+                <div className="overflow-x-auto pt-2">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-gray-200 text-left text-gray-500 font-medium">
+                        <th className="py-2 pr-4 w-12">#</th>
+                        <th className="py-2 pr-4">{t("dashboard.adminCompany", "Companie")}</th>
+                        <th className="py-2">{t("dashboard.adminAcceptedCount", "Aplicații acceptate")}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {adminStats.companyRanking.map((c) => (
+                        <tr key={c.userId || c.rank} className="border-b border-gray-100">
+                          <td className="py-2.5 pr-4 font-medium text-gray-500">{c.rank}</td>
+                          <td className="py-2.5 pr-4 font-medium text-gray-900">{c.companyName}</td>
+                          <td className="py-2.5">{c.acceptedCount}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
-          )}
+          </div>
         </section>
 
-        {/* Salary by domain AND region (detailed table) */}
-        <section className="bg-white rounded-xl sm:rounded-2xl border border-gray-200 shadow-sm p-4 sm:p-6 mb-6 md:mb-8">
-          <h2 className="font-bold text-gray-900 mb-3 sm:mb-4 text-sm sm:text-base">{t("dashboard.adminSalaryByDomainAndRegion", "Salarii pe domenii și regiuni (MDL/oră)")}</h2>
-          {statsLoading && <p className="text-sm text-gray-500">{t("dashboard.loading", "Se încarcă...")}</p>}
-          {!statsLoading && (!adminStats?.salaryByDomainAndRegion?.length) && <p className="text-sm text-gray-500">{t("dashboard.noData", "Fără date")}</p>}
-          {!statsLoading && adminStats?.salaryByDomainAndRegion && adminStats.salaryByDomainAndRegion.length > 0 && (
-            <div className="overflow-x-auto max-h-80 overflow-y-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-gray-200 text-left text-gray-500 font-medium sticky top-0 bg-white">
-                    <th className="py-2 pr-4">{t("dashboard.adminRegion", "Regiune / Oraș")}</th>
-                    <th className="py-2 pr-4">{t("dashboard.adminDomain", "Domeniu")}</th>
-                    <th className="py-2 pr-4">{t("dashboard.adminAvgPerHour", "Medie MDL/oră")}</th>
-                    <th className="py-2">{t("dashboard.adminJobCount", "Nr. joburi")}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {adminStats.salaryByDomainAndRegion.map((row, i) => (
-                    <tr key={`${row.region}-${row.categoryCode}-${i}`} className="border-b border-gray-100">
-                      <td className="py-2 pr-4 text-gray-900">{row.region}</td>
-                      <td className="py-2 pr-4 text-gray-700">{row.categoryTitle}</td>
-                      <td className="py-2 pr-4 font-medium">{row.avgHourly.toFixed(0)}</td>
-                      <td className="py-2">{row.jobCount}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+        {/* Salary by domain AND region - pliabil */}
+        <section className="bg-white rounded-xl sm:rounded-2xl border border-gray-200 shadow-sm overflow-hidden mb-6 md:mb-8">
+          <button
+            type="button"
+            onClick={() => setSalaryByDomainAndRegionOpen((o) => !o)}
+            className="flex w-full items-center justify-between gap-3 p-4 sm:p-6 text-left hover:bg-gray-50/80 transition-colors"
+            aria-expanded={salaryByDomainAndRegionOpen}
+          >
+            <h2 className="font-bold text-gray-900 text-sm sm:text-base">{t("dashboard.adminSalaryByDomainAndRegion", "Salarii pe domenii și regiuni (MDL/oră)")}</h2>
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-gray-500 transition-transform duration-200" aria-hidden>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={salaryByDomainAndRegionOpen ? "rotate-180" : ""}>
+                <path d="M6 9l6 6 6-6" />
+              </svg>
+            </span>
+          </button>
+          <div className={`admin-panel-expand ${salaryByDomainAndRegionOpen ? "open" : "closed"}`}>
+            <div className="admin-panel-open px-4 sm:px-6 pb-4 sm:pb-6 border-t border-gray-100">
+              {statsLoading && <p className="text-sm text-gray-500 pt-2">{t("dashboard.loading", "Se încarcă...")}</p>}
+              {!statsLoading && (!adminStats?.salaryByDomainAndRegion?.length) && <p className="text-sm text-gray-500 pt-2">{t("dashboard.noData", "Fără date")}</p>}
+              {!statsLoading && adminStats?.salaryByDomainAndRegion && adminStats.salaryByDomainAndRegion.length > 0 && (
+                <div className="overflow-x-auto max-h-80 overflow-y-auto pt-2">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-gray-200 text-left text-gray-500 font-medium sticky top-0 bg-white">
+                        <th className="py-2 pr-4">{t("dashboard.adminRegion", "Regiune / Oraș")}</th>
+                        <th className="py-2 pr-4">{t("dashboard.adminDomain", "Domeniu")}</th>
+                        <th className="py-2 pr-4">{t("dashboard.adminAvgPerHour", "Medie MDL/oră")}</th>
+                        <th className="py-2">{t("dashboard.adminJobCount", "Nr. joburi")}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {adminStats.salaryByDomainAndRegion.map((row, i) => (
+                        <tr key={`${row.region}-${row.categoryCode}-${i}`} className="border-b border-gray-100">
+                          <td className="py-2 pr-4 text-gray-900">{row.region}</td>
+                          <td className="py-2 pr-4 text-gray-700">{row.categoryTitle}</td>
+                          <td className="py-2 pr-4 font-medium">{row.avgHourly.toFixed(0)}</td>
+                          <td className="py-2">{row.jobCount}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
-          )}
+          </div>
         </section>
 
-        <section className="bg-white rounded-xl sm:rounded-2xl border border-gray-200 shadow-sm p-4 sm:p-6 mb-6 md:mb-8">
-          <div className="flex flex-col gap-3 mb-4">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-              <h2 className="font-bold text-gray-900 text-sm sm:text-base">{t("dashboard.accountsCreated", "Conturi create")}</h2>
+        <section className="bg-white rounded-xl sm:rounded-2xl border border-gray-200 shadow-sm overflow-hidden mb-6 md:mb-8">
+          <button
+            type="button"
+            onClick={() => setAccountsSectionOpen((o) => !o)}
+            className="flex w-full items-center justify-between gap-3 p-4 sm:p-6 text-left hover:bg-gray-50/80 transition-colors"
+            aria-expanded={accountsSectionOpen}
+          >
+            <h2 className="font-bold text-gray-900 text-sm sm:text-base">{t("dashboard.accountsCreated", "Conturi create")}</h2>
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-gray-500 transition-transform duration-200" aria-hidden>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={accountsSectionOpen ? "rotate-180" : ""}>
+                <path d="M6 9l6 6 6-6" />
+              </svg>
+            </span>
+          </button>
+          <div className={`admin-panel-expand ${accountsSectionOpen ? "open" : "closed"}`}>
+          <div className="admin-panel-open px-4 sm:px-6 pb-4 sm:pb-6 border-t border-gray-100">
+          <div className="flex flex-col gap-3 mb-4 pt-4">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-end gap-3">
               <div className="flex items-center gap-2 text-sm">
                 <span className="text-gray-500 font-medium">{t("dashboard.filterByRole", "Filtrează după rol")}:</span>
                 <div className="relative inline-block" ref={dropdownRef}>
@@ -531,11 +615,13 @@ export default function DashboardHomeAdmin() {
                             title={t("dashboard.copy", "Copiază")}
                           >
                             {u.email}
-                            {copiedCell?.id === String(u.id) && copiedCell?.field === "email" ? (
-                              <span className="text-xs text-green-600 font-medium">{t("dashboard.copied", "Copiat!")}</span>
-                            ) : (
-                              <svg className="w-3.5 h-3.5 text-gray-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
-                            )}
+                            <span className="inline-flex shrink-0 min-w-[3.25rem] justify-end">
+                              {copiedCell?.id === String(u.id) && copiedCell?.field === "email" ? (
+                                <span className="text-xs text-green-600 font-medium">{t("dashboard.copied", "Copiat!")}</span>
+                              ) : (
+                                <svg className="w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+                              )}
+                            </span>
                           </button>
                         </td>
                         <td className="py-2.5 pr-4 text-gray-600">
@@ -547,11 +633,13 @@ export default function DashboardHomeAdmin() {
                               title={t("dashboard.copy", "Copiază")}
                             >
                               {u.phone}
-                              {copiedCell?.id === String(u.id) && copiedCell?.field === "phone" ? (
-                                <span className="text-xs text-green-600 font-medium">{t("dashboard.copied", "Copiat!")}</span>
-                              ) : (
-                                <svg className="w-3.5 h-3.5 text-gray-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
-                              )}
+                              <span className="inline-flex shrink-0 min-w-[3.25rem] justify-end">
+                                {copiedCell?.id === String(u.id) && copiedCell?.field === "phone" ? (
+                                  <span className="text-xs text-green-600 font-medium">{t("dashboard.copied", "Copiat!")}</span>
+                                ) : (
+                                  <svg className="w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+                                )}
+                              </span>
                             </button>
                           ) : (
                             "—"
@@ -574,27 +662,73 @@ export default function DashboardHomeAdmin() {
                           )}
                         </td>
                         <td className="py-2.5">
-                          {!isCurrentUser && (
-                            isBlocked ? (
-                              <button
-                                type="button"
-                                disabled={updating}
-                                onClick={() => setConfirmStatus({ id: String(u.id), name: u.name, active: true })}
-                                className="text-xs font-medium text-green-700 hover:text-green-800 hover:underline disabled:opacity-50"
-                              >
-                                {updating ? t("dashboard.updating", "Se actualizează...") : t("dashboard.unblock", "Deblochează")}
-                              </button>
-                            ) : (
-                              <button
-                                type="button"
-                                disabled={updating}
-                                onClick={() => setConfirmStatus({ id: String(u.id), name: u.name, active: false })}
-                                className="text-xs font-medium text-red-700 hover:text-red-800 hover:underline disabled:opacity-50"
-                              >
-                                {updating ? t("dashboard.updating", "Se actualizează...") : t("dashboard.block", "Blochează")}
-                              </button>
-                            )
-                          )}
+                          <div className="flex flex-wrap items-center gap-2">
+                            {u.role === "customer" && (
+                              (() => {
+                                const hasBooster = u.boosterUntil && new Date(u.boosterUntil) > new Date();
+                                const busy = boosterUpdatingId === String(u.id);
+                                return hasBooster ? (
+                                  <>
+                                    <span className="text-xs font-medium text-amber-700" title={u.boosterUntil ? new Date(u.boosterUntil).toLocaleDateString() : ""}>
+                                      {t("dashboard.boosterActive", "Booster activ")}
+                                    </span>
+                                    <button
+                                      type="button"
+                                      disabled={busy}
+                                      onClick={() => {
+                                        setBoosterUpdatingId(String(u.id));
+                                        authApi.setUserBooster(String(u.id), null)
+                                          .then(() => { fetchUsers(); fetchAdminStats(); })
+                                          .catch(() => {})
+                                          .finally(() => setBoosterUpdatingId(null));
+                                      }}
+                                      className="text-xs font-medium text-gray-600 hover:text-gray-800 hover:underline disabled:opacity-50"
+                                    >
+                                      {busy ? t("dashboard.updating", "Se actualizează...") : t("dashboard.boosterCancel", "Anulează")}
+                                    </button>
+                                  </>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    disabled={busy}
+                                    onClick={() => {
+                                      const until = new Date();
+                                      until.setDate(until.getDate() + 30);
+                                      setBoosterUpdatingId(String(u.id));
+                                      authApi.setUserBooster(String(u.id), until.toISOString())
+                                        .then(() => { fetchUsers(); fetchAdminStats(); })
+                                        .catch(() => {})
+                                        .finally(() => setBoosterUpdatingId(null));
+                                    }}
+                                    className="text-xs font-medium text-primary hover:text-primary/80 hover:underline disabled:opacity-50"
+                                  >
+                                    {busy ? t("dashboard.updating", "Se actualizează...") : t("dashboard.boosterGrant30", "Booster 30 zile")}
+                                  </button>
+                                );
+                              })()
+                            )}
+                            {!isCurrentUser && (
+                              isBlocked ? (
+                                <button
+                                  type="button"
+                                  disabled={updating}
+                                  onClick={() => setConfirmStatus({ id: String(u.id), name: u.name, active: true })}
+                                  className="text-xs font-medium text-green-700 hover:text-green-800 hover:underline disabled:opacity-50"
+                                >
+                                  {updating ? t("dashboard.updating", "Se actualizează...") : t("dashboard.unblock", "Deblochează")}
+                                </button>
+                              ) : (
+                                <button
+                                  type="button"
+                                  disabled={updating}
+                                  onClick={() => setConfirmStatus({ id: String(u.id), name: u.name, active: false })}
+                                  className="text-xs font-medium text-red-700 hover:text-red-800 hover:underline disabled:opacity-50"
+                                >
+                                  {updating ? t("dashboard.updating", "Se actualizează...") : t("dashboard.block", "Blochează")}
+                                </button>
+                              )
+                            )}
+                          </div>
                         </td>
                       </tr>
                     );
@@ -603,6 +737,8 @@ export default function DashboardHomeAdmin() {
               </table>
             </div>
           )}
+          </div>
+          </div>
         </section>
 
       </div>

@@ -100,7 +100,7 @@ export const authApi = {
     };
   }) =>
     api<{ message: string }>("/auth/register", { method: "POST", body: JSON.stringify(body) }),
-  me: () => api<{ id: number; name: string; email: string; role: string; avatar?: string; isActive?: boolean }>("/auth/me"),
+  me: () => api<{ id: number; name: string; email: string; role: string; avatar?: string; isActive?: boolean; boosterUntil?: string }>("/auth/me"),
   updateProfile: (data: { name?: string; avatar?: string | null }) =>
     api<{ id: number; name: string; email: string; role: string; avatar?: string }>("/auth/me", {
       method: "PATCH",
@@ -113,12 +113,18 @@ export const authApi = {
     }),
   /** Lista conturi (doar admin) */
   users: () =>
-    api<{ users: { id: number; name: string; email: string; role: string; isActive?: boolean; phone?: string }[] }>("/auth/users"),
+    api<{ users: { id: number; name: string; email: string; role: string; isActive?: boolean; phone?: string; boosterUntil?: string }[] }>("/auth/users"),
   /** Admin: blochează/deblochează cont (active = true deblochează, false blochează). Folosește POST cu userId în body. */
   setUserStatus: (userId: string, active: boolean) =>
     api<{ ok: boolean; active: boolean }>("/auth/users/set-status", {
       method: "POST",
       body: JSON.stringify({ userId: String(userId).trim(), active }),
+    }),
+  /** Admin: setează subscription booster pentru customer – joburile lui apar primele. boosterUntil: ISO string sau null pentru anulare. */
+  setUserBooster: (userId: string, boosterUntil: string | null) =>
+    api<{ ok: boolean; boosterUntil?: string }>("/auth/users/set-booster", {
+      method: "POST",
+      body: JSON.stringify({ userId: String(userId).trim(), boosterUntil }),
     }),
 };
 
@@ -312,6 +318,8 @@ export type ReviewItem = {
   applicationId: string;
   jobTitle?: string;
   otherPartyName?: string;
+  otherPartyAvatar?: string;
+  otherPartyRole?: string;
   score: number;
   comment?: string;
   photoUrl?: string;
@@ -319,7 +327,7 @@ export type ReviewItem = {
 };
 
 export const ratingsApi = {
-  submit: (applicationId: string, score: number, comment?: string, photoUrl?: string) =>
+  submit: (applicationId: string, score: number, comment?: string, photoUrl?: string, jobTitle?: string) =>
     api<{ ok: boolean }>("/ratings", {
       method: "POST",
       body: JSON.stringify({
@@ -327,12 +335,16 @@ export const ratingsApi = {
         score: Number(score),
         ...(comment != null && comment !== "" && { comment }),
         ...(photoUrl != null && photoUrl !== "" && { photoUrl }),
+        ...(jobTitle != null && jobTitle.trim() !== "" && { jobTitle: jobTitle.trim() }),
       }),
     }),
   getUserRating: (userId: number | string) =>
     api<{ average: number; count: number }>(`/ratings/user/${userId}`),
   getReviewsReceivedBy: (userId: number | string) =>
     api<{ reviews: ReviewItem[] }>(`/ratings/received/${userId}`),
+  /** Summary + lista recenzii primite în același răspuns (același userId) */
+  getProfileRatings: (userId: number | string) =>
+    api<{ average: number; count: number; reviews: ReviewItem[] }>(`/ratings/profile/${userId}`),
   myReviews: () =>
     api<{ given: ReviewItem[]; received: ReviewItem[] }>("/ratings/me"),
 };
