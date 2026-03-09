@@ -18,7 +18,6 @@ import {
   FileText,
   BarChart2,
   Star,
-  MessageCircle,
   Settings,
   UtensilsCrossed,
   CreditCard,
@@ -133,7 +132,6 @@ const NAV_ICONS: Record<string, ComponentType<{ className?: string; size?: numbe
   fileText: FileText as ComponentType<{ className?: string; size?: number }>,
   barChart: BarChart2 as ComponentType<{ className?: string; size?: number }>,
   review: Star as ComponentType<{ className?: string; size?: number }>,
-  messageCircle: MessageCircle as ComponentType<{ className?: string; size?: number }>,
   settings: Settings as ComponentType<{ className?: string; size?: number }>,
   creditCard: CreditCard as ComponentType<{ className?: string; size?: number }>,
 };
@@ -143,14 +141,12 @@ const NAV_CUSTOMER = [
   { to: "/dashboard/joburi", labelKey: "dashboard.joburi", end: false, icon: "briefcase" },
   { to: "/dashboard/aplicatii", labelKey: "dashboard.aplicatii", end: false, icon: "fileText" },
   { to: "/dashboard/rapoarte", labelKey: "dashboard.rapoarte", end: false, icon: "barChart" },
-  { to: "/dashboard/mesaje", labelKey: "dashboard.mesaje", end: false, icon: "messageCircle" },
 ];
 
 const NAV_STAFF = [
   { to: "/dashboard", labelKey: "dashboard.home", end: true, icon: "home" },
   { to: "/dashboard/joburi", labelKey: "dashboard.joburi", end: false, icon: "briefcase" },
   { to: "/dashboard/aplicatii", labelKey: "dashboard.myApplications", end: false, icon: "fileText" },
-  { to: "/dashboard/mesaje", labelKey: "dashboard.mesaje", end: false, icon: "messageCircle" },
 ];
 
 const NAV_ADMIN = [
