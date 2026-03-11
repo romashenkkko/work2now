@@ -841,6 +841,7 @@ export async function createUserDotNetStyle(params: {
     phoneNumber: string;
     contactPersonName?: string;
     contactPersonSurname?: string;
+    raionId?: number;
   };
 }): Promise<{ userId: string }> {
   const conn = await pool.getConnection();

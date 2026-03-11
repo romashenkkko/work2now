@@ -169,6 +169,7 @@ export default function DashboardJoburi() {
   const [locationOpen, setLocationOpen] = useState(false);
   const [professionOpen, setProfessionOpen] = useState(false);
   const [professionFilter, setProfessionFilter] = useState<string>("all");
+  const [raioane, setRaioane] = useState<Array<{ id: number; name: string; type: string }>>([]);
   const categoryRef = useRef<HTMLDivElement>(null);
   const locationRef = useRef<HTMLDivElement>(null);
   const professionRef = useRef<HTMLDivElement>(null);
@@ -269,6 +270,25 @@ export default function DashboardJoburi() {
     const onFocus = () => refreshStaffData();
     window.addEventListener("focus", onFocus);
     return () => window.removeEventListener("focus", onFocus);
+  }, [isStaff]);
+  // Fetch raioane for location filter
+  useEffect(() => {
+    if (!isStaff) return;
+    jobsApi
+      .getRaioane()
+      .then((r) => {
+        // Include: 32 raioane (districts) + UTA Gagauzia cities (Comrat, Ceadir-Lunga, Vulcanesti)
+        const gagauziaCities = ["Comrat", "Ceadir-Lunga", "Vulcanesti"];
+        const raioaneOnly = (r.raioane || []).filter((raion) => 
+          raion.type === "raion" || 
+          (raion.type === "municipiu" && gagauziaCities.includes(raion.name))
+        );
+        setRaioane(raioaneOnly);
+      })
+      .catch((err) => {
+        console.error("Failed to load raioane:", err);
+        setRaioane([]);
+      });
   }, [isStaff]);
   useEffect(() => {
     const close = (e: MouseEvent) => {
@@ -573,11 +593,18 @@ export default function DashboardJoburi() {
       if (!showJobForStaff(row)) return false;
       const matchSearch = !q || (row.job?.toLowerCase().includes(q) || (row.location ?? "").toLowerCase().includes(q));
       const matchCategory = categoryFilter === "all" || (row.jobType ?? "") === categoryFilter;
-      const matchLocation = locationFilter === "all" || (row.location?.trim() ?? "") === locationFilter;
+      // Match location by raion name: check if job location contains the selected raion name
+      const matchLocation = locationFilter === "all" || (() => {
+        const selectedRaion = raioane.find((r) => r.name === locationFilter);
+        if (!selectedRaion) return false;
+        const jobLocation = (row.location?.trim() ?? "").toLowerCase();
+        const raionName = selectedRaion.name.toLowerCase();
+        // Check if job location contains the raion name
+        return jobLocation.includes(raionName);
+      })();
       const matchProfession = professionFilter === "all" || (row.job?.trim() ?? "") === professionFilter;
       return matchSearch && matchCategory && matchLocation && matchProfession;
     });
-    const uniqueLocations = [...new Set(publicJobs.map((j) => j.location?.trim()).filter(Boolean))].sort() as string[];
     const professionLabelKeys = [
       "dashboard.jobTitleBarista",
       "dashboard.jobTitleBartender",
@@ -608,7 +635,7 @@ export default function DashboardJoburi() {
     ];
     const locationOptions = [
       { value: "all", label: t("findJobs.allLocations") },
-      ...uniqueLocations.map((loc) => ({ value: loc, label: loc })),
+      ...raioane.map((raion) => ({ value: raion.name, label: raion.name })),
     ];
     return (
       <>

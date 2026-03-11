@@ -73,6 +73,35 @@ export const authApi = {
       method: "POST",
       body: JSON.stringify({ phoneNumber, code }),
     }),
+  validateRegistration: (body: {
+    name: string;
+    email: string;
+    password: string;
+    role?: string;
+    employeeProfile?: {
+      firstName: string;
+      lastName: string;
+      dateOfBirth: string;
+      aboutMe: string;
+    };
+    businessProfile?: {
+      companyName: string;
+      contactFirstName: string;
+      contactLastName: string;
+      companyCategory: number;
+      infoForStaff: string;
+    };
+    branch?: {
+      name: string;
+      address: string;
+      city: string;
+      country: string;
+      phoneNumber: string;
+      raionId?: number;
+    };
+    contactDateOfBirth?: string;
+  }) =>
+    api<{ valid: boolean }>("/auth/validate-registration", { method: "POST", body: JSON.stringify(body) }),
   register: (body: {
     name: string;
     email: string;

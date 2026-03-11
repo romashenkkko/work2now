@@ -96,6 +96,126 @@ function useMemoryFallback(): boolean {
   return process.env.NODE_ENV !== "production";
 }
 
+/** POST /api/auth/validate-registration - Validate registration data before showing terms & conditions */
+router.post("/validate-registration", async (req: Request, res: Response): Promise<void> => {
+  const body = req.body ?? {};
+  const {
+    name = "",
+    email = "",
+    password = "",
+    role = "user",
+    employeeProfile,
+    businessProfile,
+    branch,
+    contactDateOfBirth,
+  } = body as {
+    name?: string;
+    email?: string;
+    password?: string;
+    role?: string;
+    employeeProfile?: { firstName?: string; lastName?: string; dateOfBirth?: string; aboutMe?: string };
+    businessProfile?: { companyName?: string; contactFirstName?: string; contactLastName?: string; companyCategory?: number; infoForStaff?: string };
+    branch?: { name?: string; address?: string; city?: string; country?: string; phoneNumber?: string; raionId?: number };
+    contactDateOfBirth?: string;
+  };
+
+  // Validate basic fields
+  const nameTrim = String(name).trim();
+  if (!nameTrim || nameTrim.length < 2) {
+    res.status(400).json({ error: "Numele este prea scurt." });
+    return;
+  }
+
+  const emailStr = String(email).trim();
+  if (!emailStr || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailStr)) {
+    res.status(400).json({ error: "Email invalid." });
+    return;
+  }
+
+  if (!String(password).length || String(password).length < 6) {
+    res.status(400).json({ error: "Parola trebuie sa aiba minim 6 caractere." });
+    return;
+  }
+
+  const allowedRole = ["user", "staff", "customer", "admin"].includes(String(role)) ? String(role) : "user";
+  const emailTrim = emailStr;
+
+  if (allowedRole === "user") {
+    res.status(400).json({ error: "Selectează un rol valid: staff sau customer." });
+    return;
+  }
+
+  // Check if email already exists
+  try {
+    const [rows] = await db.query("SELECT Id FROM users WHERE Email = ?", [emailTrim]) as [unknown[], unknown];
+    if (Array.isArray(rows) && rows.length > 0) {
+      res.status(400).json({ error: "Email deja folosit." });
+      return;
+    }
+  } catch (e) {
+    const err = e as Error;
+    console.error("Validate registration error:", err);
+    res.status(500).json({ error: "Eroare la validare. Verifica ca backend-ul ruleaza." });
+    return;
+  }
+
+  // Validate role-specific required fields
+  if (allowedRole === "staff") {
+    if (!employeeProfile) {
+      res.status(400).json({ error: "Profilul staff este obligatoriu." });
+      return;
+    }
+    if (!employeeProfile.firstName?.trim() || !employeeProfile.lastName?.trim()) {
+      res.status(400).json({ error: "Prenumele și numele sunt obligatorii pentru staff." });
+      return;
+    }
+    if (!employeeProfile.dateOfBirth) {
+      res.status(400).json({ error: "Data nașterii este obligatorie pentru staff." });
+      return;
+    }
+    const age = calculateAgeFromIsoOrYmd(employeeProfile.dateOfBirth);
+    if (age === null || age < 18) {
+      res.status(400).json({ error: "Trebuie să ai cel puțin 18 ani pentru a crea un cont de staff (18+)." });
+      return;
+    }
+  }
+
+  if (allowedRole === "customer") {
+    if (!businessProfile) {
+      res.status(400).json({ error: "Profilul business este obligatoriu pentru customer." });
+      return;
+    }
+    if (!businessProfile.companyName?.trim()) {
+      res.status(400).json({ error: "Numele companiei este obligatoriu." });
+      return;
+    }
+    if (!businessProfile.contactFirstName?.trim() || !businessProfile.contactLastName?.trim()) {
+      res.status(400).json({ error: "Numele și prenumele persoanei de contact sunt obligatorii." });
+      return;
+    }
+    if (!branch || !branch.name?.trim() || !branch.address?.trim() || !branch.city?.trim() || !branch.phoneNumber?.trim()) {
+      res.status(400).json({ error: "Toate câmpurile filialei sunt obligatorii." });
+      return;
+    }
+    if (!branch.raionId || branch.raionId <= 0) {
+      res.status(400).json({ error: "Raionul este obligatoriu." });
+      return;
+    }
+    const age = calculateAgeFromIsoOrYmd(contactDateOfBirth);
+    if (age === null) {
+      res.status(400).json({ error: "Data nașterii este obligatorie pentru customer." });
+      return;
+    }
+    if (age < 18) {
+      res.status(400).json({ error: "Trebuie să ai cel puțin 18 ani pentru a crea un cont de customer (18+)." });
+      return;
+    }
+  }
+
+  // All validations passed
+  res.status(200).json({ valid: true });
+});
+
 router.post("/register", async (req: Request, res: Response): Promise<void> => {
   const body = req.body ?? {};
   const {
@@ -114,7 +234,7 @@ router.post("/register", async (req: Request, res: Response): Promise<void> => {
     role?: string;
     employeeProfile?: { firstName?: string; lastName?: string; dateOfBirth?: string; aboutMe?: string; profilePictureFileId?: string | null };
     businessProfile?: { companyName?: string; contactFirstName?: string; contactLastName?: string; companyCategory?: number; infoForStaff?: string };
-    branch?: { name?: string; address?: string; city?: string; country?: string; phoneNumber?: string };
+    branch?: { name?: string; address?: string; city?: string; country?: string; phoneNumber?: string; raionId?: number };
     contactDateOfBirth?: string;
   };
   
