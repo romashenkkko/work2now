@@ -491,6 +491,7 @@
     "checkInSuccess": "Check-in successful!",
     "checkOutSuccess": "Check-out successful!",
     "jobInformation": "Job Information",
+    "noCheckInOut": "There is no check-in/check-out information yet.",
     "applicationId": "Application ID",
     "appliedAt": "Applied at",
     "noWorkSessions": "No work sessions",

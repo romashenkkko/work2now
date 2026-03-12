@@ -255,7 +255,9 @@ export default function JobScheduleModal({ open, onClose, job, viewerIsStaff = f
                 </div>
               )}
               <div className="flex items-center justify-between gap-2 mb-4">
-                <h3 className="text-xl font-bold text-gray-900">{job.job}</h3>
+                <h3 className="text-xl font-extrabold bg-gradient-to-r from-primary via-[#7d66ff] to-[#5f7cff] bg-clip-text text-transparent">
+                  {job.job}
+                </h3>
                 <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${isJobFull ? "bg-amber-100 text-amber-800 border border-amber-200" : job.statusClass}`}>
                   {isJobFull ? t("dashboard.jobFull") : job.status}
                 </span>

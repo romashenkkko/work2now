@@ -67,7 +67,7 @@ type AppWithSessions = {
 export default function DashboardHomeCustomer() {
   const { t } = useTranslation();
   const { user } = useAuth();
-  const { openPostJobModal, jobsAdded, removeJob } = useContext(DashboardContext);
+  const { openPostJobModal, jobsAdded, removeJob, userRating } = useContext(DashboardContext);
   const [toast] = useState<string | null>(null);
   const [applicationsByJob, setApplicationsByJob] = useState<Record<string, AppWithSessions[]>>({});
   const [jobsArchiveExpanded, setJobsArchiveExpanded] = useState(false);
@@ -669,6 +669,31 @@ function ApplicationDetailsModal({
     return new Date(iso).toLocaleTimeString("ro-MD", { hour: "2-digit", minute: "2-digit" });
   };
 
+  const statusMeta =
+    application.status === "accepted"
+      ? {
+          label: t("dashboard.accepted"),
+          className: "bg-emerald-100 text-emerald-700 border-emerald-200",
+        }
+      : application.status === "pending"
+        ? {
+            label: t("dashboard.pending"),
+            className: "bg-amber-100 text-amber-700 border-amber-200",
+          }
+        : {
+            label: t("dashboard.refused"),
+            className: "bg-rose-100 text-rose-700 border-rose-200",
+          };
+
+  const jobTypeLabel =
+    job.jobType === "one-day"
+      ? t("dashboard.oneDayJob")
+      : job.jobType === "multi-day"
+        ? t("dashboard.multiDayJob")
+        : job.jobType === "full-time"
+          ? t("dashboard.fullTimeRecruitment")
+          : null;
+
   const modalContent = (
     <div
       className="modal-backdrop-anim fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50"
@@ -678,19 +703,27 @@ function ApplicationDetailsModal({
       aria-labelledby="application-details-title"
     >
       <div
-        className="modal-panel-anim bg-white rounded-2xl shadow-xl max-w-3xl max-h-[95vh] w-full flex flex-col"
+        className="modal-panel-anim bg-[#fcfbff] rounded-[28px] shadow-[0_30px_80px_rgba(15,23,42,0.22)] border border-white/70 max-w-4xl max-h-[92vh] w-full flex flex-col overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Header */}
-        <div className="flex-shrink-0 bg-white border-b border-gray-100 px-4 sm:px-6 py-4 flex items-center justify-between">
-          <h2 id="application-details-title" className="text-lg sm:text-xl font-bold text-gray-900">
-            Detalii Aplicație
-          </h2>
+        <div className="flex-shrink-0 relative overflow-hidden bg-gradient-to-r from-primary via-[#7d66ff] to-[#5f7cff] px-5 sm:px-7 py-5 sm:py-6 flex items-start justify-between gap-4">
+          <div className="absolute inset-0 opacity-20 bg-[radial-gradient(circle_at_top_right,white,transparent_45%)]" aria-hidden />
+          <div className="relative min-w-0">
+            <p className="text-[0.7rem] font-semibold uppercase tracking-[0.25em] text-white/75 mb-2">
+              Work2Now
+            </p>
+            <h2 id="application-details-title" className="text-xl sm:text-2xl font-bold text-white">
+              Detalii Aplicație
+            </h2>
+            <p className="text-sm text-white/80 mt-1">
+              {job.job || "—"} {application.staffName ? `• ${application.staffName}` : ""}
+            </p>
+          </div>
           <button
             type="button"
             onClick={onClose}
-            className="p-2 rounded-full hover:bg-gray-100 text-gray-600 transition-colors"
-            aria-label="Închide"
+            className="relative flex-shrink-0 w-10 h-10 rounded-full bg-white/15 hover:bg-white/25 border border-white/20 text-white transition-colors inline-flex items-center justify-center"
+            aria-label={t("dashboard.close")}
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -698,11 +731,26 @@ function ApplicationDetailsModal({
           </button>
         </div>
 
-        {/* Content - Scrollable */}
-        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 sm:p-6 space-y-6">
-          {/* Job Information */}
-          <div className="space-y-4">
-            <h3 className="text-base font-semibold text-gray-900 border-b border-gray-200 pb-2">
+        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 sm:p-6 md:p-7 space-y-5 bg-[linear-gradient(180deg,rgba(255,255,255,0.72),rgba(248,246,255,0.96))]">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="rounded-2xl border border-primary/15 bg-white/90 px-4 py-3 shadow-sm">
+              <p className="text-[11px] uppercase tracking-[0.18em] text-gray-400 mb-1">{t("dashboard.jobName")}</p>
+              <p className="text-sm font-semibold text-gray-900">{job.job || "—"}</p>
+            </div>
+            <div className="rounded-2xl border border-primary/15 bg-white/90 px-4 py-3 shadow-sm">
+              <p className="text-[11px] uppercase tracking-[0.18em] text-gray-400 mb-1">{t("dashboard.date")}</p>
+              <p className="text-sm font-semibold text-gray-900">{job.date || "—"}</p>
+            </div>
+            <div className="rounded-2xl border border-primary/15 bg-white/90 px-4 py-3 shadow-sm">
+              <p className="text-[11px] uppercase tracking-[0.18em] text-gray-400 mb-1">{t("dashboard.status")}</p>
+              <span className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold ${statusMeta.className}`}>
+                {statusMeta.label}
+              </span>
+            </div>
+          </div>
+
+          <div className="rounded-[24px] border border-primary/10 bg-white/92 shadow-[0_12px_30px_rgba(122,99,241,0.08)] p-5 sm:p-6 space-y-4">
+            <h3 className="text-base font-semibold text-[#1e1c2f] border-b border-gray-200/80 pb-2">
               Informații Job
             </h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -724,6 +772,12 @@ function ApplicationDetailsModal({
                   {job.startTime && job.endTime ? `${job.startTime} – ${job.endTime}` : "—"}
                 </p>
               </div>
+              {jobTypeLabel && (
+                <div>
+                  <p className="text-xs text-gray-500 mb-1">{t("dashboard.jobTitle")}</p>
+                  <p className="text-sm font-medium text-gray-900">{jobTypeLabel}</p>
+                </div>
+              )}
               {job.jobCategoryTitle && (
                 <div>
                   <p className="text-xs text-gray-500 mb-1">{t("dashboard.category") || "Categorie"}</p>
@@ -733,56 +787,53 @@ function ApplicationDetailsModal({
             </div>
           </div>
 
-          {/* Staff Information */}
-          <div className="space-y-4">
-            <h3 className="text-base font-semibold text-gray-900 border-b border-gray-200 pb-2">
+          <div className="rounded-[24px] border border-primary/10 bg-white/92 shadow-[0_12px_30px_rgba(122,99,241,0.08)] p-5 sm:p-6 space-y-4">
+            <h3 className="text-base font-semibold text-[#1e1c2f] border-b border-gray-200/80 pb-2">
               Informații Angajat
             </h3>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-start">
+              <div className="rounded-2xl border border-gray-100 bg-[#faf8ff] p-4">
                 <p className="text-xs text-gray-500 mb-1">{t("dashboard.staffName") || "Nume Angajat"}</p>
                 <p className="text-sm font-medium text-gray-900">{application.staffName || "—"}</p>
               </div>
               {application.staffEmail && (
-                <div>
+                <div className="rounded-2xl border border-gray-100 bg-[#faf8ff] p-4">
                   <p className="text-xs text-gray-500 mb-1">{t("dashboard.email") || "Email"}</p>
                   <p className="text-sm font-medium text-gray-900">{application.staffEmail}</p>
                 </div>
               )}
-              <div>
+              <div className="rounded-2xl border border-gray-100 bg-[#faf8ff] p-4 sm:col-span-2">
                 <p className="text-xs text-gray-500 mb-1">{t("dashboard.status") || "Status"}</p>
-                <span className={`inline-block px-2 py-1 rounded-lg text-xs font-medium ${
-                  application.status === "accepted" ? "bg-green-100 text-green-700" :
-                  application.status === "pending" ? "bg-amber-100 text-amber-700" :
-                  "bg-red-100 text-red-700"
-                }`}>
-                  {application.status === "accepted" ? (t("dashboard.accepted") || "Acceptat") :
-                   application.status === "pending" ? (t("dashboard.pending") || "În așteptare") :
-                   (t("dashboard.refused") || "Refuzat")}
+                <span className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold ${statusMeta.className}`}>
+                  {statusMeta.label}
                 </span>
               </div>
             </div>
           </div>
 
-          {/* Check-in/Check-out Information */}
-          <div className="space-y-4">
-            <h3 className="text-base font-semibold text-gray-900 border-b border-gray-200 pb-2">
+          <div className="rounded-[24px] border border-primary/10 bg-white/92 shadow-[0_12px_30px_rgba(122,99,241,0.08)] p-5 sm:p-6 space-y-4">
+            <h3 className="text-base font-semibold text-[#1e1c2f] border-b border-gray-200/80 pb-2">
               Informații Prezență
             </h3>
             {workSessionsDetails.length > 0 ? (
               <div className="space-y-3">
                 {workSessionsDetails.map((session, idx) => (
-                  <div key={idx} className="bg-gray-50 rounded-lg p-4 border border-gray-200">
-                    <p className="text-xs text-gray-500 mb-2">{t("dashboard.workDate") || "Data lucrării"}: {session.date}</p>
+                  <div key={idx} className="rounded-2xl p-4 border border-primary/10 bg-gradient-to-br from-[#faf8ff] to-white">
+                    <div className="flex items-center justify-between gap-3 mb-3">
+                      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-primary/80">
+                        {t("dashboard.workDate", { defaultValue: "Data lucrării" })}
+                      </p>
+                      <span className="text-sm font-semibold text-gray-900">{session.date}</span>
+                    </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <div>
+                      <div className="rounded-xl border border-gray-100 bg-white p-3">
                         <p className="text-xs text-gray-500 mb-1">{t("dashboard.checkInTime") || "Check-in"}</p>
                         <p className="text-sm font-medium text-gray-900">{formatTime(session.checkIn)}</p>
                         {session.checkIn && (
                           <p className="text-xs text-gray-400 mt-0.5">{formatDateTime(session.checkIn)}</p>
                         )}
                       </div>
-                      <div>
+                      <div className="rounded-xl border border-gray-100 bg-white p-3">
                         <p className="text-xs text-gray-500 mb-1">{t("dashboard.checkOutTime") || "Check-out"}</p>
                         <p className="text-sm font-medium text-gray-900">{formatTime(session.checkOut) || "—"}</p>
                         {session.checkOut && (
@@ -790,7 +841,7 @@ function ApplicationDetailsModal({
                         )}
                       </div>
                       {session.hours > 0 && (
-                        <div className="sm:col-span-2">
+                        <div className="sm:col-span-2 rounded-xl border border-primary/10 bg-primary/[0.04] p-3">
                           <p className="text-xs text-gray-500 mb-1">{t("dashboard.hoursWorked") || "Ore lucrate"}</p>
                           <p className="text-sm font-medium text-gray-900">{session.hours.toFixed(2)} {t("dashboard.hours") || "ore"}</p>
                         </div>
@@ -800,18 +851,24 @@ function ApplicationDetailsModal({
                 ))}
               </div>
             ) : (
-              <p className="text-sm text-gray-500">{t("dashboard.noCheckInOut") || "Nu există informații de check-in/check-out"}</p>
+              <div className="rounded-2xl border border-dashed border-primary/20 bg-primary/[0.03] px-5 py-8 text-center">
+                <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-white shadow-sm border border-primary/10 text-primary">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M7 3h10l4 4v14H3V3h4z" />
+                  </svg>
+                </div>
+                <p className="text-sm font-medium text-gray-800">{t("dashboard.noCheckInOut", { defaultValue: "Nu există informații de check-in/check-out" })}</p>
+                <p className="text-xs text-gray-500 mt-1">Datele vor apărea aici imediat ce angajatul face check-in sau check-out.</p>
+              </div>
             )}
           </div>
 
-          {/* Salary Information */}
           {hasRate && (
-            <div className="space-y-4">
-              <h3 className="text-base font-semibold text-gray-900 border-b border-gray-200 pb-2">
+            <div className="rounded-[24px] border border-primary/10 bg-white/92 shadow-[0_12px_30px_rgba(122,99,241,0.08)] p-5 sm:p-6 space-y-4">
+              <h3 className="text-base font-semibold text-[#1e1c2f] border-b border-gray-200/80 pb-2">
                 Informații Salariu
               </h3>
               <div className="bg-gradient-to-br from-primary/5 to-primary/10 rounded-xl p-4 sm:p-6 space-y-4 border border-primary/20">
-                {/* Initial Expected Salary and Actual Time Worked */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pb-4 border-b border-primary/20">
                   {job.estimatedSalary && (
                     <div>
@@ -872,8 +929,8 @@ function ApplicationDetailsModal({
 
           {/* Confirmation Date */}
           {application.businessConfirmedAt && (
-            <div className="space-y-2">
-              <h3 className="text-base font-semibold text-gray-900 border-b border-gray-200 pb-2">
+            <div className="rounded-[24px] border border-primary/10 bg-white/92 shadow-[0_12px_30px_rgba(122,99,241,0.08)] p-5 sm:p-6 space-y-2">
+              <h3 className="text-base font-semibold text-[#1e1c2f] border-b border-gray-200/80 pb-2">
                 Confirmare
               </h3>
               <p className="text-sm text-gray-600">
@@ -883,14 +940,13 @@ function ApplicationDetailsModal({
           )}
         </div>
 
-        {/* Footer */}
-        <div className="flex-shrink-0 bg-white border-t border-gray-100 px-4 sm:px-6 py-4 flex justify-end">
+        <div className="flex-shrink-0 bg-white/95 border-t border-gray-100 px-5 sm:px-7 py-4 flex justify-end">
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2 rounded-xl bg-gray-900 text-white font-medium hover:bg-gray-800 transition-colors"
+            className="px-5 py-2.5 rounded-xl bg-gray-900 text-white font-semibold hover:bg-gray-800 transition-colors shadow-sm"
           >
-            Închide
+            {t("dashboard.close")}
           </button>
         </div>
       </div>

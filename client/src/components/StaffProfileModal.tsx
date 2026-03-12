@@ -370,17 +370,23 @@ export default function StaffProfileModal({
       aria-labelledby="staff-profile-title"
     >
       <div
-        className="modal-panel-anim bg-white rounded-2xl shadow-xl max-w-4xl max-h-[95vh] w-full overflow-y-auto"
+        className="modal-panel-anim bg-white rounded-[28px] shadow-[0_30px_80px_rgba(15,23,42,0.22)] max-w-4xl max-h-[95vh] w-full overflow-y-auto border border-white/70"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="sticky top-0 bg-white border-b border-gray-100 px-4 py-3 flex items-center justify-between z-10">
-          <h2 id="staff-profile-title" className="text-lg font-bold text-gray-900">
-            {staffName || t("dashboard.staffMember", "Membru staff")}
-          </h2>
+        <div className="sticky top-0 relative overflow-hidden bg-gradient-to-r from-primary via-[#7d66ff] to-[#5f7cff] px-5 sm:px-6 py-5 flex items-start justify-between z-10 border-b border-white/20">
+          <div className="absolute inset-0 opacity-20 bg-[radial-gradient(circle_at_top_right,white,transparent_45%)]" aria-hidden />
+          <div className="relative min-w-0">
+            <p className="text-[0.7rem] font-semibold uppercase tracking-[0.25em] text-white/75 mb-2">
+              Work2Now
+            </p>
+            <h2 id="staff-profile-title" className="text-xl sm:text-2xl font-bold text-white">
+              {staffName || t("dashboard.staffMember", "Membru staff")}
+            </h2>
+          </div>
           <button
             type="button"
             onClick={onClose}
-            className="p-2 rounded-full hover:bg-gray-100 text-gray-600"
+            className="relative flex-shrink-0 w-10 h-10 rounded-full bg-white/15 hover:bg-white/25 border border-white/20 text-white transition-colors inline-flex items-center justify-center"
             aria-label={t("dashboard.close", "Închide")}
           >
             <X className="w-5 h-5" />

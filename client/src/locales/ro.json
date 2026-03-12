@@ -434,6 +434,7 @@
     "staffName": "Angajat",
     "checkInTime": "Ora check-in",
     "checkOutTime": "Ora check-out",
+    "noCheckInOut": "Nu există informații de check-in/check-out",
     "scheduledCheckIn": "Check-in programat",
     "scheduledCheckOut": "Check-out programat",
     "notYetDone": "Încă nu a făcut",

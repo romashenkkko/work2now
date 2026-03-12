@@ -483,6 +483,7 @@
     "checkInSuccess": "Начало смены зафиксировано!",
     "checkOutSuccess": "Окончание смены зафиксировано!",
     "jobInformation": "Информация о вакансии",
+    "noCheckInOut": "Информация о check-in/check-out пока отсутствует.",
     "applicationId": "ID заявки",
     "appliedAt": "Подано",
     "noWorkSessions": "Нет рабочих смен",
