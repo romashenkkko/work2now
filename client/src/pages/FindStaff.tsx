@@ -15,24 +15,25 @@ import {
 } from "lucide-react";
 
 function MockupPostJob() {
+  const { t } = useTranslation();
   return (
     <div className="rounded-2xl border border-primary/15 bg-white shadow-[0_4px_20px_rgba(122,99,241,0.08)] overflow-hidden text-left text-[13px]">
       <div className="bg-gradient-to-r from-primary to-primary/80 px-5 py-3 flex items-center gap-2.5">
         <div className="w-6 h-6 rounded-lg bg-white/20 flex items-center justify-center">
           <Plus className="w-4 h-4 text-white" strokeWidth={2.5} />
         </div>
-        <span className="text-white font-semibold">Publica job</span>
+        <span className="text-white font-semibold">{t("findStaff.mockupPostTitle")}</span>
       </div>
       <div className="p-4 space-y-2.5">
-        <div className="w-full h-9 rounded-xl bg-gray-50 border border-gray-200 flex items-center px-3 text-gray-400 text-[13px]">Ospitar</div>
+        <div className="w-full h-9 rounded-xl bg-gray-50 border border-gray-200 flex items-center px-3 text-gray-400 text-[13px]">{t("findStaff.mockupRolePlaceholder")}</div>
         <div className="flex gap-2.5">
           <div className="flex-1 h-9 rounded-xl bg-gray-50 border border-gray-200 flex items-center px-3 text-gray-400">12:00</div>
           <div className="flex-1 h-9 rounded-xl bg-gray-50 border border-gray-200 flex items-center px-3 text-gray-400">20:00</div>
         </div>
-        <div className="h-9 rounded-xl bg-gray-50 border border-gray-200 flex items-center px-3 text-gray-400">Chisinau, str. Stefan cel Mare</div>
-        <div className="h-9 rounded-xl bg-gray-50 border border-gray-200 flex items-center px-3 text-gray-400">Salariu: 150 MDL / zi</div>
+        <div className="h-9 rounded-xl bg-gray-50 border border-gray-200 flex items-center px-3 text-gray-400">{t("findStaff.mockupLocationPlaceholder")}</div>
+        <div className="h-9 rounded-xl bg-gray-50 border border-gray-200 flex items-center px-3 text-gray-400">{t("findStaff.mockupSalaryPlaceholder")}</div>
         <button className="w-full h-10 rounded-xl bg-primary text-white font-semibold text-sm flex items-center justify-center gap-2 mt-1 shadow-[0_4px_12px_rgba(122,99,241,0.25)]">
-          <Plus className="w-4 h-4" /> Publica acum
+          <Plus className="w-4 h-4" /> {t("findStaff.mockupPostNow")}
         </button>
       </div>
     </div>
@@ -40,17 +41,18 @@ function MockupPostJob() {
 }
 
 function MockupCandidates() {
+  const { t } = useTranslation();
   const candidates = [
-    { name: "Alex I.", rating: 4.8, status: "Nou", exp: "3 ani" },
-    { name: "Maria P.", rating: 4.5, status: "Nou", exp: "1 an" },
-    { name: "Ion D.", rating: 4.9, status: "Aplicat", exp: "5 ani" },
+    { name: "Alex I.", rating: 4.8, status: "new", exp: t("findStaff.mockupExp3") },
+    { name: "Maria P.", rating: 4.5, status: "new", exp: t("findStaff.mockupExp1") },
+    { name: "Ion D.", rating: 4.9, status: "applied", exp: t("findStaff.mockupExp5") },
   ];
   return (
     <div className="rounded-2xl border border-primary/15 bg-white shadow-[0_4px_20px_rgba(122,99,241,0.08)] overflow-hidden text-left text-[13px]">
       <div className="bg-gradient-to-r from-primary to-primary/80 px-5 py-3 flex items-center gap-2.5">
         <Bell className="w-4 h-4 text-white" />
-        <span className="text-white font-semibold">Candidati</span>
-        <span className="ml-auto bg-white/25 text-white px-2 py-0.5 rounded-full text-[11px] font-bold">3 noi</span>
+        <span className="text-white font-semibold">{t("findStaff.mockupCandidatesTitle")}</span>
+        <span className="ml-auto bg-white/25 text-white px-2 py-0.5 rounded-full text-[11px] font-bold">{t("findStaff.mockupCandidatesNewCount")}</span>
       </div>
       <div className="p-4 space-y-2.5">
         {candidates.map((c) => (
@@ -66,7 +68,9 @@ function MockupCandidates() {
                 <span>{c.exp}</span>
               </div>
             </div>
-            <span className={`px-2.5 py-1 rounded-full text-[11px] font-semibold ${c.status === "Nou" ? "bg-green-100 text-green-700" : "bg-primary/10 text-primary"}`}>{c.status}</span>
+            <span className={`px-2.5 py-1 rounded-full text-[11px] font-semibold ${c.status === "new" ? "bg-green-100 text-green-700" : "bg-primary/10 text-primary"}`}>
+              {c.status === "new" ? t("findStaff.mockupCandidateNew") : t("findStaff.mockupCandidateApplied")}
+            </span>
           </div>
         ))}
       </div>
@@ -75,11 +79,12 @@ function MockupCandidates() {
 }
 
 function MockupRecruit() {
+  const { t } = useTranslation();
   return (
     <div className="rounded-2xl border border-primary/15 bg-white shadow-[0_4px_20px_rgba(122,99,241,0.08)] overflow-hidden text-left text-[13px]">
       <div className="bg-gradient-to-r from-primary to-primary/80 px-5 py-3 flex items-center gap-2.5">
         <ListFilter className="w-4 h-4 text-white" />
-        <span className="text-white font-semibold">Filtrare & Selectie</span>
+        <span className="text-white font-semibold">{t("findStaff.mockupRecruitTitle")}</span>
       </div>
       <div className="p-4 space-y-2.5">
         <div className="flex gap-2">
@@ -93,17 +98,17 @@ function MockupRecruit() {
           </div>
           <div className="flex-1 min-w-0">
             <p className="font-semibold text-gray-800">Alex I.</p>
-            <p className="text-[11px] text-green-600 font-medium">Acceptat — gata de lucru</p>
+            <p className="text-[11px] text-green-600 font-medium">{t("findStaff.mockupAcceptedReady")}</p>
           </div>
-          <button className="px-3 py-1.5 rounded-xl bg-primary text-white text-[11px] font-semibold shadow-sm">Contact</button>
+          <button className="px-3 py-1.5 rounded-xl bg-primary text-white text-[11px] font-semibold shadow-sm">{t("findStaff.mockupContact")}</button>
         </div>
         <div className="flex items-center gap-3 p-2.5 rounded-xl bg-amber-50/60 border border-amber-200/60">
           <div className="w-10 h-10 rounded-full bg-gradient-to-br from-amber-300/30 to-amber-400/10 flex items-center justify-center text-amber-600 font-bold text-sm">I</div>
           <div className="flex-1 min-w-0">
             <p className="font-semibold text-gray-800">Ion D.</p>
-            <p className="text-[11px] text-amber-600 font-medium">In evaluare</p>
+            <p className="text-[11px] text-amber-600 font-medium">{t("findStaff.mockupInReview")}</p>
           </div>
-          <button className="px-3 py-1.5 rounded-xl bg-gray-100 text-gray-600 text-[11px] font-semibold">Profil</button>
+          <button className="px-3 py-1.5 rounded-xl bg-gray-100 text-gray-600 text-[11px] font-semibold">{t("findStaff.mockupProfile")}</button>
         </div>
       </div>
     </div>

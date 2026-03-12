@@ -252,6 +252,102 @@ export default function DashboardHomeCustomer() {
 
   const allJobs = useMemo(() => [...jobsAdded], [jobsAdded]);
 
+  const getDisplayJobStatus = useCallback(
+    (row: {
+      id?: string | number;
+      status: string;
+      statusClass: string;
+      applicationsCount?: number;
+    }) => {
+      const apps = row.id != null ? applicationsByJob[String(row.id)] ?? [] : [];
+      const acceptedApps = apps.filter((app) => String(app.status).trim().toLowerCase() === "accepted");
+      const hasCheckedOut = acceptedApps.some(
+        (app) => !!app.checkedOutAt || (app.workSessions ?? []).some((session) => !!session.checkedOutAt)
+      );
+      const hasCheckedIn = acceptedApps.some(
+        (app) => !!app.checkedInAt || (app.workSessions ?? []).some((session) => !!session.checkedInAt)
+      );
+
+      if (hasCheckedOut) {
+        return {
+          label: t("dashboard.finished"),
+          className: "bg-emerald-100 text-emerald-700",
+        };
+      }
+
+      if (hasCheckedIn) {
+        return {
+          label: t("dashboard.inProcess"),
+          className: "bg-violet-100 text-violet-700",
+        };
+      }
+
+      if (acceptedApps.length > 0) {
+        return {
+          label: t("dashboard.jobStatusInProcess"),
+          className: "bg-blue-100 text-blue-700",
+        };
+      }
+
+      if (apps.length > 0 || (row.applicationsCount ?? 0) > 0) {
+        return {
+          label: t("dashboard.jobStatusSearching"),
+          className: "bg-amber-100 text-amber-700",
+        };
+      }
+
+      const normalized = row.status.trim().toLowerCase();
+      if (normalized === "draft") {
+        return {
+          label: t("dashboard.draft"),
+          className: "bg-gray-100 text-gray-700",
+        };
+      }
+      if (normalized === "published") {
+        return {
+          label: t("dashboard.published"),
+          className: "bg-sky-100 text-sky-700",
+        };
+      }
+      if (normalized === "confirmed") {
+        return {
+          label: t("dashboard.confirmed"),
+          className: "bg-emerald-100 text-emerald-700",
+        };
+      }
+      if (normalized === "pending") {
+        return {
+          label: t("dashboard.jobStatusSearching"),
+          className: "bg-amber-100 text-amber-700",
+        };
+      }
+      if (normalized === "accepted") {
+        return {
+          label: t("dashboard.jobStatusInProcess"),
+          className: "bg-blue-100 text-blue-700",
+        };
+      }
+      if (normalized === "inprocess" || normalized === "in_process" || normalized === "checkedin" || normalized === "checked_in") {
+        return {
+          label: t("dashboard.inProcess"),
+          className: "bg-violet-100 text-violet-700",
+        };
+      }
+      if (normalized === "finished" || normalized === "completed" || normalized === "checkedout" || normalized === "checked_out") {
+        return {
+          label: t("dashboard.finished"),
+          className: "bg-emerald-100 text-emerald-700",
+        };
+      }
+
+      return {
+        label: row.status,
+        className: row.statusClass,
+      };
+    },
+    [applicationsByJob, t]
+  );
+
   const totalApplications = useMemo(
     () => allJobs.reduce((sum, j) => sum + (j.applicationsCount ?? 0), 0),
     [allJobs]
@@ -393,7 +489,9 @@ export default function DashboardHomeCustomer() {
                     </td>
                   </tr>
                 ) : (
-                  allJobs.map((row, i) => (
+                  allJobs.map((row, i) => {
+                    const displayStatus = getDisplayJobStatus(row);
+                    return (
                     <tr key={("id" in row && row.id != null ? String(row.id) : `job-${i}-${row.job}-${row.location}`)} className="border-b border-gray-100 hover:bg-gray-50/50">
                       <td className="p-3 sm:p-4 font-medium text-gray-900 text-sm">{row.job}</td>
                       <td className="p-3 sm:p-4 text-gray-600 text-sm">{row.location}</td>
@@ -407,7 +505,7 @@ export default function DashboardHomeCustomer() {
                           : "—"}
                       </td>
                       <td className="p-3 sm:p-4">
-                        <span className={`px-2 py-1 rounded-lg text-xs font-medium ${row.statusClass}`}>{row.status}</span>
+                        <span className={`px-2 py-1 rounded-lg text-xs font-medium ${displayStatus.className}`}>{displayStatus.label}</span>
                       </td>
                       <td className="p-3 sm:p-4 text-gray-600 text-sm">{row.date}</td>
                       <td className="p-3 sm:p-4 text-gray-600 text-sm">
@@ -429,7 +527,8 @@ export default function DashboardHomeCustomer() {
                         )}
                       </td>
                     </tr>
-                  ))
+                  );
+                  })
                 )}
               </tbody>
             </table>

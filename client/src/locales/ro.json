@@ -224,7 +224,24 @@
     "whyTitle": "De ce Work2Now pentru angajatori?",
     "noFees": "Comisioane ascunse",
     "access24": "Acces la platforma",
-    "pay48": "Plata rapida pentru lucratori"
+    "pay48": "Plata rapida pentru lucratori",
+    "mockupPostTitle": "Publica job",
+    "mockupRolePlaceholder": "Ospatar",
+    "mockupLocationPlaceholder": "Chisinau, str. Stefan cel Mare",
+    "mockupSalaryPlaceholder": "Salariu: 150 MDL / zi",
+    "mockupPostNow": "Publica acum",
+    "mockupCandidatesTitle": "Candidati",
+    "mockupCandidatesNewCount": "3 noi",
+    "mockupExp1": "1 an",
+    "mockupExp3": "3 ani",
+    "mockupExp5": "5 ani",
+    "mockupCandidateNew": "Nou",
+    "mockupCandidateApplied": "Aplicat",
+    "mockupRecruitTitle": "Filtrare & Selectie",
+    "mockupAcceptedReady": "Acceptat — gata de lucru",
+    "mockupInReview": "In evaluare",
+    "mockupContact": "Contact",
+    "mockupProfile": "Profil"
   },
   "contactPage": {
     "title": "Contacteaza-ne",
@@ -246,7 +263,39 @@
     "readMore": "Citeste mai mult →",
     "ctaTitle": "Continua explorarea",
     "ctaJobs": "Vezi joburile",
-    "ctaContact": "Contact"
+    "ctaContact": "Contact",
+    "posts": {
+      "post1": {
+        "date": "15 Ianuarie 2026",
+        "title": "Cum sa iti creezi un profil atractiv pe Work2Now",
+        "desc": "Sfaturi practice pentru a-ti optimiza profilul si a atrage mai multe oferte de joburi."
+      },
+      "post2": {
+        "date": "10 Ianuarie 2026",
+        "title": "Recrutare flexibila: viitorul angajarii",
+        "desc": "De ce joburile flexibile devin din ce in ce mai populare si cum beneficiaza angajatorii si angajatii."
+      },
+      "post3": {
+        "date": "5 Ianuarie 2026",
+        "title": "Work2Now se extinde in Romania",
+        "desc": "Lansarea platformei in Romania si cum poti beneficia de serviciile noastre."
+      },
+      "post4": {
+        "date": "28 Decembrie 2025",
+        "title": "Plata rapida: cum functioneaza",
+        "desc": "Salariul in maxim 48 de ore dupa finalizarea jobului."
+      },
+      "post5": {
+        "date": "20 Decembrie 2025",
+        "title": "Aplicatia mobila Work2Now",
+        "desc": "Gestionare joburi, notificari, plata si multe altele."
+      },
+      "post6": {
+        "date": "15 Decembrie 2025",
+        "title": "Sfaturi pentru angajatori",
+        "desc": "Cum sa scrii anunturi eficiente si sa gasesti personalul potrivit rapid."
+      }
+    }
   },
   "about": {
     "title": "Ce este Work2Now",
@@ -316,6 +365,8 @@
     "clearAllPending": "Respinge toate",
     "markCompleted": "Marchează ca finalizat",
     "confirmFinished": "Confirmă finalizarea",
+    "jobStatusSearching": "În căutare",
+    "jobStatusInProcess": "În proces",
     "inProcess": "În desfășurare",
     "finished": "Finalizat",
     "employeeStartedAt": "Angajatul a început lucrul la ora {{time}}.",
@@ -324,6 +375,7 @@
     "rateWork": "Evaluare (1-5 stele)",
     "reviewForExperience": "Pentru ce experiență profesională?",
     "aplicatii": "Aplicatii",
+    "applicationsSubtitle": "Vezi aplicațiile candidaților la joburile tale.",
     "history": "History",
     "hideHistory": "Ascunde history",
     "historyTitle": "Istoric aplicații",
@@ -356,11 +408,13 @@
     "location": "Locație",
     "status": "Status",
     "confirmed": "Confirmat",
+    "draft": "Ciornă",
+    "published": "Publicat",
     "date": "Data",
     "time": "Ora",
     "actions": "Acțiuni",
     "noJobsFound": "Niciun job găsit.",
-    "jobFillRate": "Job fill rate",
+    "jobFillRate": "Rata de ocupare a joburilor",
     "reports": "Rapoarte",
     "totalHours": "Total ore",
     "completedJobs": "Joburi finalizate",
@@ -550,6 +604,7 @@
     "roleCustomer": "Customer",
     "roleAdmin": "Admin",
     "review": "Review",
+    "reviews": "recenzii",
     "reviewSubtitle": "Recenziile tale și cele de făcut.",
     "deFacutReview": "De făcut review",
     "deFacutReviewHint": "Aplicațiile finalizate la care poți lăsa un review (stele, comentariu, poză) se găsesc în Aplicații. Apasă butonul de mai sus.",
@@ -561,7 +616,9 @@
     "photo": "Poză",
     "commentOptional": "Comentariu (opțional)",
     "photoOptional": "Poză (opțional)",
+    "leaveReview": "Lasă recenzie",
     "submitReview": "Trimite review",
+    "sending": "Se trimite...",
     "reviewThankYou": "Mulțumim, recenzia a fost trimisă.",
     "showAllReviews": "Afișează toate recenziile",
     "reviewBy": "Recenzie de la",
@@ -570,6 +627,17 @@
     "leaveReviewFromApplicationsHint": "Poți lăsa recenzie din Aplicații sau Joburi, deschizând profilul angajatului la o aplicație finalizată.",
     "reviewYour": "Review-ul tău",
     "myApplications": "Aplicatiile mele",
+    "all": "Toate",
+    "professionalExperiencesAll": "Experiențe profesionale (toate)",
+    "noExperiencesYet": "Nicio experiență adăugată.",
+    "experience": "Experiență",
+    "experienceDurationNone": "Fără experiență",
+    "experienceDurationLessThanOne": "Mai puțin de 1 an",
+    "experienceDurationOneToFive": "1-5 ani",
+    "experienceDurationMoreThanFive": "Mai mult de 5 ani",
+    "addedDuringOnboarding": "Adăugat la înregistrare",
+    "reviewsForJob": "Recenziile primite",
+    "reviewsReceived": "Recenziile primite",
     "savedJobs": "Joburi salvate",
     "adminUsers": "Utilizatori",
     "adminSettings": "Setări sistem",

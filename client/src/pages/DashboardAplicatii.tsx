@@ -589,7 +589,7 @@ export default function DashboardAplicatii() {
         <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
           <div>
             <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-[#1e1c2f]">{t("dashboard.aplicatii")}</h1>
-            <p className="text-gray-500 text-sm mt-1.5 max-w-md">Vezi aplicațiile candidaților la joburile tale.</p>
+            <p className="text-gray-500 text-sm mt-1.5 max-w-md">{t("dashboard.applicationsSubtitle")}</p>
           </div>
           <button
             type="button"
