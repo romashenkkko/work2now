@@ -3,9 +3,9 @@ import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "../hooks/useAuth";
 import { jobsApi, type StaffApplicationItem } from "../api/client";
-import { DashboardContext } from "./DashboardLayout";
+import { DashboardContext, JobTitleIcon } from "./DashboardLayout";
 import StarRating from "../components/StarRating";
-import { MapPin, Clock, Calendar, Briefcase, CheckCircle2, XCircle, ClipboardCheck } from "lucide-react";
+import { MapPin, Clock, Calendar, CheckCircle2, XCircle, ClipboardCheck } from "lucide-react";
 
 const RATING_ICON = (
   <svg className="w-6 h-6 sm:w-7 sm:h-7 text-primary" fill="currentColor" viewBox="0 0 24 24" aria-hidden>
@@ -14,6 +14,23 @@ const RATING_ICON = (
 );
 
 type JobItem = { id: string; job: string; location: string; jobType?: string; isPromoted?: boolean };
+
+function getJobIconId(jobTitle?: string): string {
+  if (!jobTitle) return "waiter";
+  const title = jobTitle.toLowerCase();
+  if (title.includes("barista")) return "barista";
+  if (title.includes("bartender") || title.includes("barman")) return "bartender";
+  if (title.includes("chef") || title.includes("bucatar")) return "chef";
+  if (title.includes("cleaner") || title.includes("curatenie")) return "cleaner";
+  if (title.includes("dishwasher") || title.includes("spalator")) return "dishwasher";
+  if (title.includes("event") || title.includes("echipa")) return "eventcrew";
+  if (title.includes("grocery") || title.includes("magazin")) return "grocery";
+  if (title.includes("maintenance") || title.includes("intretinere")) return "maintenance";
+  if (title.includes("receptionist") || title.includes("receptioner")) return "receptionist";
+  if (title.includes("training")) return "trainingevent";
+  if (title.includes("waiter") || title.includes("ospatar")) return "waiter";
+  return "waiter";
+}
 
 export default function DashboardHomeStaff() {
   const { t } = useTranslation();
@@ -508,7 +525,11 @@ export default function DashboardHomeStaff() {
                       <div className="flex items-start justify-between gap-4">
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-2 mb-2">
-                            <Briefcase className="w-5 h-5 text-primary flex-shrink-0" />
+                            <JobTitleIcon
+                              jobId={getJobIconId(app.jobTitle)}
+                              className="w-5 h-5 text-primary flex-shrink-0"
+                              size={20}
+                            />
                             <h3 className="font-semibold text-gray-900 text-base sm:text-lg truncate">{app.jobTitle || t("dashboard.job")}</h3>
                             <span className="px-2 py-1 rounded-lg text-xs font-medium bg-green-100 text-green-700 flex-shrink-0">
                               {t("dashboard.accepted")}
@@ -517,13 +538,13 @@ export default function DashboardHomeStaff() {
                           <div className="space-y-1.5 text-sm text-gray-600">
                             {app.jobLocation && (
                               <div className="flex items-center gap-2">
-                                <MapPin className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                                <MapPin className="w-4 h-4 text-primary flex-shrink-0" />
                                 <span className="truncate">{app.jobLocation}</span>
                               </div>
                             )}
                             {app.jobDate && (
                               <div className="flex items-center gap-2">
-                                <Calendar className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                                <Calendar className="w-4 h-4 text-primary flex-shrink-0" />
                                 <span>{formatDate(app.jobDate)}{app.jobEndDate && app.jobEndDate !== app.jobDate ? ` - ${formatDate(app.jobEndDate)}` : ""}</span>
                               </div>
                             )}

@@ -131,6 +131,10 @@ export default function StaffProfileModal({
   const [reviewExperienceDropdownOpen, setReviewExperienceDropdownOpen] = useState(false);
   const reviewExperienceDropdownRef = useRef<HTMLDivElement>(null);
   const reviewsSectionRef = useRef<HTMLDivElement>(null);
+  const reviewsAnimatedRef = useRef<HTMLDivElement>(null);
+  const reviewsAnimatedInnerRef = useRef<HTMLDivElement>(null);
+  const reviewsHeightInitializedRef = useRef(false);
+  const reviewsHeightRafRef = useRef<number | null>(null);
 
   const filteredReviews =
     selectedExperienceJobLabel != null
@@ -291,6 +295,71 @@ export default function StaffProfileModal({
     }, 150);
     return () => clearTimeout(tid);
   }, [open, scrollToReviewsOnOpen, loading]);
+
+  useEffect(() => {
+    if (!open) {
+      reviewsHeightInitializedRef.current = false;
+      if (reviewsHeightRafRef.current !== null) {
+        window.cancelAnimationFrame(reviewsHeightRafRef.current);
+        reviewsHeightRafRef.current = null;
+      }
+      const outer = reviewsAnimatedRef.current;
+      if (outer) {
+        outer.style.height = "auto";
+        outer.style.overflow = "visible";
+      }
+      return;
+    }
+
+    const outer = reviewsAnimatedRef.current;
+    const inner = reviewsAnimatedInnerRef.current;
+    if (!outer || !inner || typeof ResizeObserver === "undefined") return;
+
+    const animateHeight = () => {
+      const nextHeight = inner.getBoundingClientRect().height;
+      if (!reviewsHeightInitializedRef.current) {
+        outer.style.height = "auto";
+        outer.style.overflow = "visible";
+        reviewsHeightInitializedRef.current = true;
+        return;
+      }
+
+      const currentHeight = outer.getBoundingClientRect().height;
+      if (Math.abs(currentHeight - nextHeight) < 1) return;
+
+      outer.style.height = `${currentHeight}px`;
+      outer.style.overflow = "hidden";
+      if (reviewsHeightRafRef.current !== null) {
+        window.cancelAnimationFrame(reviewsHeightRafRef.current);
+      }
+      reviewsHeightRafRef.current = window.requestAnimationFrame(() => {
+        outer.style.height = `${nextHeight}px`;
+      });
+    };
+
+    const handleTransitionEnd = (event: TransitionEvent) => {
+      if (event.propertyName !== "height") return;
+      outer.style.height = "auto";
+      outer.style.overflow = "visible";
+    };
+
+    const observer = new ResizeObserver(() => {
+      animateHeight();
+    });
+
+    observer.observe(inner);
+    outer.addEventListener("transitionend", handleTransitionEnd);
+    animateHeight();
+
+    return () => {
+      observer.disconnect();
+      outer.removeEventListener("transitionend", handleTransitionEnd);
+      if (reviewsHeightRafRef.current !== null) {
+        window.cancelAnimationFrame(reviewsHeightRafRef.current);
+        reviewsHeightRafRef.current = null;
+      }
+    };
+  }, [open]);
 
   if (!open) return null;
 
@@ -455,81 +524,90 @@ export default function StaffProfileModal({
                   ? t("dashboard.reviewsForJob", "Recenziile primite") + ` (${selectedExperienceJobLabel})`
                   : t("dashboard.reviewsReceived", "Recenziile primite")}
               </h3>
-              {filteredReviews.length === 0 ? (
-                <div className="bg-white rounded-2xl p-6 text-center text-sm text-gray-500 border border-gray-100">
-                  {selectedExperienceJobLabel ? (
-                    <>
-                      <p>{t("dashboard.noReviewsForThisJob", "Nicio recenzie pentru acest job.")}</p>
-                      {reviews.length > 0 && (
-                        <p className="mt-2">
-                          <button
-                            type="button"
-                            onClick={() => setSelectedExperienceJobLabel(null)}
-                            className="text-primary font-medium hover:underline"
-                          >
-                            {t("dashboard.showAllReviews", "Afișează toate recenziile")}
-                          </button>
-                        </p>
+              <div
+                ref={reviewsAnimatedRef}
+                className="overflow-hidden transition-[height] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]"
+              >
+                <div ref={reviewsAnimatedInnerRef}>
+                  {filteredReviews.length === 0 ? (
+                    <div className="bg-white rounded-2xl p-6 text-center text-sm text-gray-500 border border-gray-100">
+                      {selectedExperienceJobLabel ? (
+                        <>
+                          <p>{t("dashboard.noReviewsForThisJob", "Nicio recenzie pentru acest job.")}</p>
+                          {reviews.length > 0 && (
+                            <p className="mt-2">
+                              <button
+                                type="button"
+                                onClick={() => setSelectedExperienceJobLabel(null)}
+                                className="text-primary font-medium hover:underline"
+                              >
+                                {t("dashboard.showAllReviews", "Afișează toate recenziile")}
+                              </button>
+                            </p>
+                          )}
+                        </>
+                      ) : (
+                        t("dashboard.noReviewsYet", "Încă nu are recenzii.")
                       )}
-                    </>
+                    </div>
                   ) : (
-                    t("dashboard.noReviewsYet", "Încă nu are recenzii.")
+                    <div className="max-h-[420px] overflow-y-auto pr-1 sm:pr-2">
+                      <ul className="space-y-3">
+                      {filteredReviews.map((r, i) => (
+                        <li
+                          key={r.id}
+                          className="review-card-anim bg-white rounded-2xl p-3.5 sm:p-4 shadow-[0_1px_3px_rgba(0,0,0,0.06)] border border-gray-100"
+                          style={{ animationDelay: `${i * 60}ms` }}
+                        >
+                          <div className="flex items-start gap-3">
+                            <div className="flex-shrink-0 w-10 h-10 rounded-full bg-primary/10 border-2 border-primary/20 flex items-center justify-center overflow-hidden">
+                              {avatarSrc(r.otherPartyAvatar) ? (
+                                <img src={avatarSrc(r.otherPartyAvatar)!} alt="" className="w-full h-full object-cover" onError={(e) => { e.currentTarget.style.display = "none"; e.currentTarget.nextElementSibling?.classList.remove("hidden"); }} />
+                              ) : null}
+                              <span className={`text-primary font-semibold text-sm ${avatarSrc(r.otherPartyAvatar) ? "hidden" : ""}`}>
+                                {(r.otherPartyName || "?").charAt(0).toUpperCase()}
+                              </span>
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                                <StarRating value={r.score} size={18} />
+                                <span className="text-xs font-medium text-primary px-2 py-0.5 rounded-full bg-primary/15 border border-primary/25">
+                                  {r.otherPartyRole === "staff" ? t("dashboard.roleStaff") : r.otherPartyRole === "admin" ? t("dashboard.roleAdmin") : t("dashboard.roleCustomer")}
+                                </span>
+                              </div>
+                              {r.otherPartyName && (
+                                <p className="text-sm font-medium text-gray-800 mt-1">
+                                  {t("dashboard.reviewBy", "Recenzie de la")}: <span className="font-semibold text-[#333]">{r.otherPartyName}</span>
+                                </p>
+                              )}
+                              {r.createdAt && (
+                                <p className="text-xs text-gray-500 flex items-center gap-1 mt-1">
+                                  <Calendar className="w-3.5 h-3.5 shrink-0" />
+                                  {new Date(r.createdAt).toLocaleString("ro-RO", { dateStyle: "medium", timeStyle: "short" })}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                          {r.comment ? (
+                            <p className="text-sm text-gray-700 flex items-start gap-1.5 mt-2">
+                              <MessageSquare className="w-4 h-4 shrink-0 mt-0.5 text-primary/70" />
+                              <span>{r.comment}</span>
+                            </p>
+                          ) : (
+                            <p className="text-sm text-gray-400 italic mt-2">{t("dashboard.noComment", "Fără comentariu.")}</p>
+                          )}
+                          {r.photoUrl && (
+                            <div className="mt-2">
+                              <ReviewPhotoThumb photoUrl={r.photoUrl} />
+                            </div>
+                          )}
+                        </li>
+                      ))}
+                      </ul>
+                    </div>
                   )}
                 </div>
-              ) : (
-                <ul className="space-y-3">
-                  {filteredReviews.map((r, i) => (
-                    <li
-                      key={r.id}
-                      className="review-card-anim bg-white rounded-2xl p-3.5 sm:p-4 shadow-[0_1px_3px_rgba(0,0,0,0.06)] border border-gray-100"
-                      style={{ animationDelay: `${i * 60}ms` }}
-                    >
-                      <div className="flex items-start gap-3">
-                        <div className="flex-shrink-0 w-10 h-10 rounded-full bg-primary/10 border-2 border-primary/20 flex items-center justify-center overflow-hidden">
-                          {avatarSrc(r.otherPartyAvatar) ? (
-                            <img src={avatarSrc(r.otherPartyAvatar)!} alt="" className="w-full h-full object-cover" onError={(e) => { e.currentTarget.style.display = "none"; e.currentTarget.nextElementSibling?.classList.remove("hidden"); }} />
-                          ) : null}
-                          <span className={`text-primary font-semibold text-sm ${avatarSrc(r.otherPartyAvatar) ? "hidden" : ""}`}>
-                            {(r.otherPartyName || "?").charAt(0).toUpperCase()}
-                          </span>
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                            <StarRating value={r.score} size={18} />
-                            <span className="text-xs font-medium text-primary px-2 py-0.5 rounded-full bg-primary/15 border border-primary/25">
-                              {r.otherPartyRole === "staff" ? t("dashboard.roleStaff") : r.otherPartyRole === "admin" ? t("dashboard.roleAdmin") : t("dashboard.roleCustomer")}
-                            </span>
-                          </div>
-                          {r.otherPartyName && (
-                            <p className="text-sm font-medium text-gray-800 mt-1">
-                              {t("dashboard.reviewBy", "Recenzie de la")}: <span className="font-semibold text-[#333]">{r.otherPartyName}</span>
-                            </p>
-                          )}
-                          {r.createdAt && (
-                            <p className="text-xs text-gray-500 flex items-center gap-1 mt-1">
-                              <Calendar className="w-3.5 h-3.5 shrink-0" />
-                              {new Date(r.createdAt).toLocaleString("ro-RO", { dateStyle: "medium", timeStyle: "short" })}
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                      {r.comment ? (
-                        <p className="text-sm text-gray-700 flex items-start gap-1.5 mt-2">
-                          <MessageSquare className="w-4 h-4 shrink-0 mt-0.5 text-primary/70" />
-                          <span>{r.comment}</span>
-                        </p>
-                      ) : (
-                        <p className="text-sm text-gray-400 italic mt-2">{t("dashboard.noComment", "Fără comentariu.")}</p>
-                      )}
-                      {r.photoUrl && (
-                        <div className="mt-2">
-                          <ReviewPhotoThumb photoUrl={r.photoUrl} />
-                        </div>
-                      )}
-                    </li>
-                  ))}
-                </ul>
-              )}
+              </div>
 
               </div>
 

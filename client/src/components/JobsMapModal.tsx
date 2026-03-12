@@ -219,7 +219,7 @@ export default function JobsMapModal({ open, onClose, jobs, showMyLocation = fal
       onClick={onClose}
     >
       <div
-        className="bg-white rounded-2xl shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden modal-content-enter"
+        className="bg-white rounded-2xl shadow-xl w-full max-w-[min(96vw,1400px)] max-h-[94vh] flex flex-col overflow-hidden modal-content-enter"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between gap-3 p-4 border-b border-gray-100 flex-shrink-0 flex-wrap">
@@ -266,16 +266,16 @@ export default function JobsMapModal({ open, onClose, jobs, showMyLocation = fal
             {t("dashboard.myLocationOnMapHint", "Markerul verde arată locația ta. Vizibil doar pentru tine.")}
           </p>
         )}
-        <div className="flex-1 min-h-[400px] relative">
+        <div className="relative flex-1 min-h-[65vh]">
           {loading && markers.length === 0 && (
             <div className="absolute inset-0 z-[10] flex items-center justify-center bg-gray-50/90 rounded-b-2xl">
               <p className="text-gray-600 font-medium">{t("dashboard.loadingMap")}</p>
             </div>
           )}
           {hasToken ? (
-            <div ref={mapContainerRef} className="w-full h-full min-h-[400px] rounded-b-2xl" />
+            <div ref={mapContainerRef} className="w-full h-full min-h-[65vh] rounded-b-2xl" />
           ) : (
-            <div className="w-full h-full min-h-[400px] rounded-b-2xl flex items-center justify-center bg-gray-200 text-gray-600 p-4 text-center">
+            <div className="w-full h-full min-h-[65vh] rounded-b-2xl flex items-center justify-center bg-gray-200 text-gray-600 p-4 text-center">
               <p className="text-sm">
                 Pentru hartă Mapbox, adaugă <code className="bg-gray-300 px-1 rounded">VITE_MAPBOX_ACCESS_TOKEN</code> în <code className="bg-gray-300 px-1 rounded">client/.env</code>.
               </p>

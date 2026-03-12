@@ -167,13 +167,10 @@ export default function DashboardJoburi() {
   };
   const [searchQuery, setSearchQuery] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
-  const [locationFilter, setLocationFilter] = useState<string>("all");
   const [categoryOpen, setCategoryOpen] = useState(false);
-  const [locationOpen, setLocationOpen] = useState(false);
   const [professionOpen, setProfessionOpen] = useState(false);
   const [professionFilter, setProfessionFilter] = useState<string>("all");
   const categoryRef = useRef<HTMLDivElement>(null);
-  const locationRef = useRef<HTMLDivElement>(null);
   const professionRef = useRef<HTMLDivElement>(null);
 
   const refreshStaffData = (opts?: { silent?: boolean }): Promise<void> => {
@@ -276,7 +273,6 @@ export default function DashboardJoburi() {
   useEffect(() => {
     const close = (e: MouseEvent) => {
       if (categoryRef.current && !categoryRef.current.contains(e.target as Node)) setCategoryOpen(false);
-      if (locationRef.current && !locationRef.current.contains(e.target as Node)) setLocationOpen(false);
       if (professionRef.current && !professionRef.current.contains(e.target as Node)) setProfessionOpen(false);
     };
     document.addEventListener("click", close);
@@ -576,11 +572,9 @@ export default function DashboardJoburi() {
       if (!showJobForStaff(row)) return false;
       const matchSearch = !q || (row.job?.toLowerCase().includes(q) || (row.location ?? "").toLowerCase().includes(q));
       const matchCategory = categoryFilter === "all" || (row.jobType ?? "") === categoryFilter;
-      const matchLocation = locationFilter === "all" || (row.location?.trim() ?? "") === locationFilter;
       const matchProfession = professionFilter === "all" || (row.job?.trim() ?? "") === professionFilter;
-      return matchSearch && matchCategory && matchLocation && matchProfession;
+      return matchSearch && matchCategory && matchProfession;
     });
-    const uniqueLocations = [...new Set(publicJobs.map((j) => j.location?.trim()).filter(Boolean))].sort() as string[];
     const professionLabelKeys = [
       "dashboard.jobTitleBarista",
       "dashboard.jobTitleBartender",
@@ -607,11 +601,6 @@ export default function DashboardJoburi() {
       { value: "all", label: t("findJobs.allCategories") },
       { value: "one-day", label: t("dashboard.oneDayJob") },
       { value: "multi-day", label: t("dashboard.multiDayJob") },
-      { value: "full-time", label: t("dashboard.fullTimeRecruitment") },
-    ];
-    const locationOptions = [
-      { value: "all", label: t("findJobs.allLocations") },
-      ...uniqueLocations.map((loc) => ({ value: loc, label: loc })),
     ];
     return (
       <>
@@ -745,7 +734,7 @@ export default function DashboardJoburi() {
                 <button
                   type="button"
                   className={`dropdown-btn in-bar ${categoryOpen ? "active" : ""}`}
-                  onClick={() => { setLocationOpen(false); setProfessionOpen(false); setCategoryOpen((o) => !o); }}
+                  onClick={() => { setProfessionOpen(false); setCategoryOpen((o) => !o); }}
                   aria-expanded={categoryOpen}
                   aria-haspopup="listbox"
                 >
@@ -766,36 +755,11 @@ export default function DashboardJoburi() {
                   ))}
                 </div>
               </div>
-              <div ref={locationRef} className="custom-dropdown in-bar flex items-stretch">
-                <button
-                  type="button"
-                  className={`dropdown-btn in-bar ${locationOpen ? "active" : ""}`}
-                  onClick={() => { setCategoryOpen(false); setProfessionOpen(false); setLocationOpen((o) => !o); }}
-                  aria-expanded={locationOpen}
-                  aria-haspopup="listbox"
-                >
-                  <span className="dropdown-text truncate">{locationFilter === "all" ? t("findJobs.allLocations") : locationFilter}</span>
-                  <span className="chevron" aria-hidden>▾</span>
-                </button>
-                <div className={`dropdown-menu ${locationOpen ? "active" : ""}`} role="listbox">
-                  {locationOptions.map((opt) => (
-                    <div
-                      key={opt.value}
-                      role="option"
-                      aria-selected={locationFilter === opt.value}
-                      className={`dropdown-item truncate ${locationFilter === opt.value ? "selected" : ""}`}
-                      onClick={() => { setLocationFilter(opt.value); setLocationOpen(false); }}
-                    >
-                      {opt.label}
-                    </div>
-                  ))}
-                </div>
-              </div>
               <div ref={professionRef} className="custom-dropdown in-bar flex items-stretch">
                 <button
                   type="button"
                   className={`dropdown-btn in-bar ${professionOpen ? "active" : ""}`}
-                  onClick={() => { setCategoryOpen(false); setLocationOpen(false); setProfessionOpen((o) => !o); }}
+                  onClick={() => { setCategoryOpen(false); setProfessionOpen((o) => !o); }}
                   aria-expanded={professionOpen}
                   aria-haspopup="listbox"
                 >
@@ -818,7 +782,7 @@ export default function DashboardJoburi() {
               </div>
               <button
                 type="button"
-                onClick={() => { setSearchQuery(""); setCategoryFilter("all"); setLocationFilter("all"); setProfessionFilter("all"); }}
+                onClick={() => { setSearchQuery(""); setCategoryFilter("all"); setProfessionFilter("all"); }}
                 className="h-12 px-6 shrink-0 bg-[#8A63F2] text-white font-semibold text-sm hover:opacity-90 transition-opacity rounded-b-[24px] sm:rounded-b-none sm:rounded-r-[24px]"
               >
                 {t("findJobs.searchBtn")}

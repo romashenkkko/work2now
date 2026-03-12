@@ -8,9 +8,9 @@ export default function Layout({ children }: { children: ReactNode }) {
   const location = useLocation();
   return (
     <RoleModalProvider>
-      <div className="min-h-screen flex flex-col">
+      <div className="min-h-screen flex flex-col overflow-x-hidden min-w-0">
         <Header />
-        <main key={location.pathname} className="flex-1 page-enter">
+        <main key={location.pathname} className="flex-1 page-enter min-w-0 w-full">
           {children}
         </main>
         <Footer />

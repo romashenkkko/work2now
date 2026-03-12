@@ -190,7 +190,7 @@ export default function DashboardSettings() {
       <div className="space-y-6 w-full max-w-6xl">
         {/* Meniu butoane – vizibil doar când nu e deschisă nici o secțiune */}
         {activeSection === null && (
-          <section className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+          <section className="page-enter bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
             <div className="p-2">
               {MENU_BUTTONS.filter(({ id }) => {
                 // Show branches only for business users (customer role)

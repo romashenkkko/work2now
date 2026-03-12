@@ -317,12 +317,13 @@
 }
 
 .hero-title {
-  font-size: clamp(2.25rem, 5vw, 3.5rem);
+  font-size: clamp(1.875rem, 6vw + 1rem, 3.5rem);
   font-weight: 800;
   letter-spacing: -0.04em;
-  line-height: 1.1;
+  line-height: 1.12;
   color: #1e1c2f;
   margin: 0;
+  word-break: break-word;
 }
 
 /* Cifra „2” din Work2Now – alb cu contur violet */
@@ -342,11 +343,12 @@
 }
 
 .hero-lead {
-  font-size: 0.9375rem;
-  line-height: 1.65;
+  font-size: clamp(0.875rem, 2.5vw + 0.75rem, 1.1875rem);
+  line-height: 1.6;
   color: #4d5874;
   max-width: 32em;
   margin: 0;
+  word-break: break-word;
 }
 
 @media (min-width: 640px) {
@@ -380,6 +382,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  min-height: 44px;
   padding: 0.75rem 1.25rem;
   font-size: 0.9375rem;
   font-weight: 600;
@@ -510,6 +513,21 @@
     0 2px 0 rgba(255, 255, 255, 0.5) inset,
     0 12px 32px rgba(122, 99, 241, 0.35),
     0 6px 16px rgba(0, 0, 0, 0.1);
+}
+
+/* Find Staff – pași în stânga + card principal centru */
+.find-staff-steps {
+  scroll-margin-top: 1.5rem;
+}
+.find-staff-step-btn:focus-visible {
+  outline: 2px solid rgba(122, 99, 241, 0.5);
+  outline-offset: 2px;
+}
+.find-staff-main-card {
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.75) inset,
+    0 8px 24px rgba(122, 99, 241, 0.08),
+    0 16px 40px rgba(122, 99, 241, 0.06);
 }
 
 /* Secțiunea beneficii FindStaff – efect de adâncime */
@@ -681,29 +699,104 @@
   }
 }
 
-/* ========== Stats section – Work2Now în cifre (fără carduri) ========== */
+/* ========== Stats section – Work2Now în cifre (carduri) ========== */
 .stats-section {
   background: transparent;
   border-top: 1px solid rgba(224, 216, 247, 0.35);
   border-bottom: 1px solid rgba(224, 216, 247, 0.35);
 }
 
+.stats-card {
+  transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.2s ease;
+}
+.stats-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 32px rgba(122, 99, 241, 0.12);
+  border-color: rgba(224, 216, 247, 0.9);
+}
+
+/* Animație: cardul din mijloc apare, apoi cele laterale ies din el */
+.stats-card--center-out {
+  opacity: 0;
+  transform: scale(0.88);
+}
+
+/* Stare finală – fără animație, după ce a rulat o dată */
+.stats-card--done.stats-card--center,
+.stats-card--done.stats-card--left,
+.stats-card--done.stats-card--right {
+  opacity: 1;
+  transform: none;
+}
+
+.stats-card--center-in {
+  animation: statsCenterAppear 0.45s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+.stats-card--slide-left-out {
+  opacity: 0;
+  transform: translateX(100%);
+}
+.stats-card--slide-left {
+  animation: statsSlideFromCenterLeft 0.5s cubic-bezier(0.22, 1, 0.36, 1) 0.28s forwards;
+}
+.stats-card--slide-right-out {
+  opacity: 0;
+  transform: translateX(-100%);
+}
+.stats-card--slide-right {
+  animation: statsSlideFromCenterRight 0.5s cubic-bezier(0.22, 1, 0.36, 1) 0.28s forwards;
+}
+
+@keyframes statsCenterAppear {
+  from {
+    opacity: 0;
+    transform: scale(0.88);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+@keyframes statsSlideFromCenterLeft {
+  from {
+    opacity: 0;
+    transform: translateX(100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+@keyframes statsSlideFromCenterRight {
+  from {
+    opacity: 0;
+    transform: translateX(-100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@media (max-width: 639px) {
+  .stats-card--slide-left-out { transform: translateX(40px); }
+  .stats-card--slide-right-out { transform: translateX(-40px); }
+  @keyframes statsSlideFromCenterLeft {
+    from { opacity: 0; transform: translateX(40px); }
+    to { opacity: 1; transform: translateX(0); }
+  }
+  @keyframes statsSlideFromCenterRight {
+    from { opacity: 0; transform: translateX(-40px); }
+    to { opacity: 1; transform: translateX(0); }
+  }
+}
+
 .stats-section__title {
-  font-size: 2.125rem;
+  font-size: clamp(1.75rem, 5vw + 1rem, 2.875rem);
   font-weight: 800;
   letter-spacing: -0.03em;
   line-height: 1.2;
-}
-
-@media (min-width: 640px) {
-  .stats-section__title {
-    font-size: 2.5rem;
-  }
-}
-@media (min-width: 768px) {
-  .stats-section__title {
-    font-size: 2.875rem;
-  }
+  word-break: break-word;
 }
 
 /* Grid stats: rând 1 = iconițe, rând 2 = cifre, rând 3 = etichete – aliniere în rând */
@@ -1505,16 +1598,6 @@
   animation: pageEnter 0.5s cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .page-enter,
-  .page-enter-stagger > * {
-    animation: none !important;
-    opacity: 1;
-    transform: none;
-  }
-}
-
-/* Stagger pentru secțiuni (opțional) */
 .page-enter-stagger > * {
   opacity: 0;
   animation: pageEnter 0.45s cubic-bezier(0.22, 1, 0.36, 1) forwards;
@@ -1529,6 +1612,219 @@
 .page-enter-stagger > *:nth-child(8) { animation-delay: 0.4s; }
 .page-enter-stagger > *:nth-child(9) { animation-delay: 0.45s; }
 .page-enter-stagger > *:nth-child(10) { animation-delay: 0.5s; }
+
+@keyframes forWhoEnterLeft {
+  from {
+    opacity: 0;
+    transform: translateX(-120px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes forWhoEnterRight {
+  from {
+    opacity: 0;
+    transform: translateX(120px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.for-who-card-left-enter {
+  animation: forWhoEnterLeft 0.7s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.for-who-card-right-enter {
+  animation: forWhoEnterRight 0.7s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+@keyframes featureCardEnterOne {
+  from {
+    opacity: 0;
+    transform: translate3d(-90px, -55px, 0) rotate(-7deg) scale(0.92);
+  }
+  65% {
+    opacity: 1;
+    transform: translate3d(8px, 6px, 0) rotate(1.5deg) scale(1.02);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) rotate(0deg) scale(1);
+  }
+}
+
+@keyframes featureCardEnterTwo {
+  from {
+    opacity: 0;
+    transform: translate3d(95px, -48px, 0) rotate(7deg) scale(0.92);
+  }
+  65% {
+    opacity: 1;
+    transform: translate3d(-8px, 4px, 0) rotate(-1.5deg) scale(1.02);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) rotate(0deg) scale(1);
+  }
+}
+
+@keyframes featureCardEnterThree {
+  from {
+    opacity: 0;
+    transform: translate3d(-75px, 75px, 0) rotate(5deg) scale(0.9);
+  }
+  65% {
+    opacity: 1;
+    transform: translate3d(6px, -6px, 0) rotate(-1deg) scale(1.015);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) rotate(0deg) scale(1);
+  }
+}
+
+@keyframes featureCardEnterFour {
+  from {
+    opacity: 0;
+    transform: translate3d(82px, 82px, 0) rotate(-5deg) scale(0.9);
+  }
+  65% {
+    opacity: 1;
+    transform: translate3d(-6px, -6px, 0) rotate(1deg) scale(1.015);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) rotate(0deg) scale(1);
+  }
+}
+
+.feature-card-enter-1 {
+  animation: featureCardEnterOne 0.82s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  transform-origin: center;
+}
+
+.feature-card-enter-2 {
+  animation: featureCardEnterTwo 0.82s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  transform-origin: center;
+}
+
+.feature-card-enter-3 {
+  animation: featureCardEnterThree 0.86s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  transform-origin: center;
+}
+
+.feature-card-enter-4 {
+  animation: featureCardEnterFour 0.86s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  transform-origin: center;
+}
+
+@keyframes panelExpandIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.98);
+    max-height: 0;
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    max-height: 2200px;
+  }
+}
+
+@keyframes panelCollapseOut {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    max-height: 2200px;
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.985);
+    max-height: 0;
+  }
+}
+
+@keyframes panelItemIn {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes panelReturnIn {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.99);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.history-panel-enter {
+  overflow: hidden;
+  transform-origin: top center;
+  animation: panelExpandIn 0.5s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.history-panel-exit {
+  overflow: hidden;
+  transform-origin: top center;
+  animation: panelCollapseOut 0.38s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+.history-stagger > * {
+  opacity: 0;
+  animation: panelItemIn 0.4s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.history-stagger > *:nth-child(1) { animation-delay: 0.08s; }
+.history-stagger > *:nth-child(2) { animation-delay: 0.14s; }
+.history-stagger > *:nth-child(3) { animation-delay: 0.2s; }
+.history-stagger > *:nth-child(4) { animation-delay: 0.26s; }
+.history-stagger > *:nth-child(5) { animation-delay: 0.32s; }
+.history-stagger > *:nth-child(6) { animation-delay: 0.38s; }
+
+.history-return-enter {
+  animation: panelReturnIn 0.42s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.history-return-stagger > * {
+  opacity: 0;
+  animation: panelItemIn 0.36s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.history-return-stagger > *:nth-child(1) { animation-delay: 0.04s; }
+.history-return-stagger > *:nth-child(2) { animation-delay: 0.1s; }
+.history-return-stagger > *:nth-child(3) { animation-delay: 0.16s; }
+.history-return-stagger > *:nth-child(4) { animation-delay: 0.22s; }
+.history-return-stagger > *:nth-child(5) { animation-delay: 0.28s; }
+.history-return-stagger > *:nth-child(6) { animation-delay: 0.34s; }
+
+@media (prefers-reduced-motion: reduce) {
+  .page-enter,
+  .page-enter-stagger > *,
+  .history-panel-enter,
+  .history-panel-exit,
+  .history-stagger > *,
+  .history-return-enter,
+  .history-return-stagger > * {
+    animation: none !important;
+    opacity: 1;
+    transform: none;
+    max-height: none;
+  }
+}
 
 /* Animație apariție modale (Post job, Adresă, Documente) */
 @keyframes modalOverlayIn {
@@ -2328,15 +2624,21 @@
 .phone-stack-container {
   position: relative;
   width: 100%;
-  min-height: 500px;
+  min-height: 640px;
   display: flex;
   align-items: center;
   justify-content: center;
   overflow: visible;
 }
+@media (max-width: 768px) {
+  .phone-stack-container {
+    transform: translateX(-20px);
+  }
+}
 @media (min-width: 769px) {
   .phone-stack-container {
-    min-height: 800px;
+    min-height: 1080px;
+    transform: translateX(-48px);
   }
 }
 .phone-section .phone-main {
@@ -2350,19 +2652,19 @@
   transition: transform 0.3s ease;
 }
 .phone-section .phone-main:hover {
-  transform: scale(1.02);
+  transform: scale(1.03) translateY(-4px);
 }
 .phone-section.animate-phones .phone-main {
-  animation: phoneMainAppear 0.8s ease-out forwards;
+  animation: phoneMainAppear 0.85s cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 @keyframes phoneMainAppear {
   0% {
     opacity: 0;
-    transform: scale(0.8);
+    transform: scale(0.88) translateY(8px);
   }
   100% {
     opacity: 1;
-    transform: scale(1);
+    transform: scale(1) translateY(0);
   }
 }
 .phone-section .phone-behind {
@@ -2376,89 +2678,100 @@
   opacity: 0;
 }
 .phone-section .phone-behind.phone-left {
-  transform: translate(-50%, -50%) rotate(-5deg) translateY(20px);
+  transform: translate(-50%, -50%) rotate(-6deg) translateY(24px) scale(0.96);
 }
 .phone-section .phone-behind.phone-right {
-  transform: translate(-50%, -50%) rotate(5deg) translateY(20px);
+  transform: translate(-50%, -50%) rotate(6deg) translateY(24px) scale(0.96);
 }
 .phone-section.animate-phones .phone-left {
-  animation: phoneBehindSlideOutLeft 1.2s ease-out 0.5s forwards;
+  animation: phoneBehindSlideOutLeft 1.2s cubic-bezier(0.22, 1, 0.36, 1) 0.5s forwards;
 }
 .phone-section.animate-phones .phone-right {
-  animation: phoneBehindSlideOutRight 1.2s ease-out 0.7s forwards;
+  animation: phoneBehindSlideOutRight 1.2s cubic-bezier(0.22, 1, 0.36, 1) 0.7s forwards;
 }
 @keyframes phoneBehindSlideOutLeft {
   0% {
     opacity: 0;
-    transform: translate(-50%, -50%) rotate(-5deg) translateY(20px) scale(0.95);
+    transform: translate(-50%, -50%) rotate(-6deg) translateY(24px) scale(0.92);
   }
   100% {
-    opacity: 0.9;
-    transform: translate(calc(-50% - 200px), -50%) rotate(-5deg) translateY(20px) scale(1);
+    opacity: 0.92;
+    transform: translate(calc(-50% - 200px), calc(-50% + 16px)) rotate(-6deg) scale(0.92);
   }
 }
 @keyframes phoneBehindSlideOutRight {
   0% {
     opacity: 0;
-    transform: translate(-50%, -50%) rotate(5deg) translateY(20px) scale(0.95);
+    transform: translate(-50%, -50%) rotate(6deg) translateY(24px) scale(0.92);
   }
   100% {
-    opacity: 0.9;
-    transform: translate(calc(-50% + 200px), -50%) rotate(5deg) translateY(20px) scale(1);
+    opacity: 0.92;
+    transform: translate(calc(-50% + 248px), calc(-50% - 4px)) rotate(6deg) scale(0.92);
   }
 }
 @media (max-width: 768px) {
+  .phone-section {
+    overflow-x: hidden;
+  }
   .phone-section .phone-main {
-    height: 400px !important;
+    height: 600px !important;
+    max-width: 100%;
   }
   .phone-section .phone-behind {
-    height: 380px !important;
+    height: 560px !important;
+    max-width: 90%;
   }
   .phone-section .phone-behind.phone-left {
-    transform: translate(-50%, -50%) rotate(-5deg) translateY(15px);
+    transform: translate(-50%, -50%) rotate(-5deg) translateY(12px) scale(0.96);
   }
   .phone-section .phone-behind.phone-right {
-    transform: translate(-50%, -50%) rotate(5deg) translateY(15px);
+    transform: translate(-50%, -50%) rotate(5deg) translateY(12px) scale(0.96);
   }
   .phone-section.animate-phones .phone-left {
-    animation: phoneBehindSlideOutLeftMobile 1.2s ease-out 0.5s forwards;
+    animation: phoneBehindSlideOutLeftMobile 1.2s cubic-bezier(0.22, 1, 0.36, 1) 0.5s forwards;
   }
   .phone-section.animate-phones .phone-right {
-    animation: phoneBehindSlideOutRightMobile 1.2s ease-out 0.7s forwards;
+    animation: phoneBehindSlideOutRightMobile 1.2s cubic-bezier(0.22, 1, 0.36, 1) 0.7s forwards;
   }
   @keyframes phoneBehindSlideOutLeftMobile {
     0% {
       opacity: 0;
-      transform: translate(-50%, -50%) rotate(-5deg) translateY(15px) scale(0.95);
+      transform: translate(-50%, -50%) rotate(-5deg) translateY(12px) scale(0.92);
     }
     100% {
-      opacity: 0.9;
-      transform: translate(calc(-50% - 120px), -50%) rotate(-5deg) translateY(15px) scale(1);
+      opacity: 0.92;
+      transform: translate(calc(-50% - 62px), calc(-50% + 8px)) rotate(-5deg) scale(0.92);
     }
   }
   @keyframes phoneBehindSlideOutRightMobile {
     0% {
       opacity: 0;
-      transform: translate(-50%, -50%) rotate(5deg) translateY(15px) scale(0.95);
+      transform: translate(-50%, -50%) rotate(5deg) translateY(12px) scale(0.92);
     }
     100% {
-      opacity: 0.9;
-      transform: translate(calc(-50% + 120px), -50%) rotate(5deg) translateY(15px) scale(1);
+      opacity: 0.92;
+      transform: translate(calc(-50% + 78px), calc(-50% + 2px)) rotate(5deg) scale(0.92);
     }
   }
 }
 @media (min-width: 769px) {
   .phone-section .phone-main {
-    height: 700px;
+    height: 980px;
   }
   .phone-section .phone-behind {
-    height: 650px;
+    height: 920px;
   }
 }
 
 /* PHP: respect reduced motion */
 @media (prefers-reduced-motion: reduce) {
   .animate-fade-up,
+  .feature-card-enter-1,
+  .feature-card-enter-2,
+  .feature-card-enter-3,
+  .feature-card-enter-4,
+  .for-who-card-left-enter,
+  .for-who-card-right-enter,
   .animate-nav-appear,
   .animate-pulse-glow,
   .animate-shimmer-btn,
@@ -2481,20 +2794,20 @@
   }
   .phone-section.animate-phones .phone-left {
     animation: none !important;
-    opacity: 0.9 !important;
-    transform: translate(calc(-50% - 200px), -50%) rotate(-5deg) translateY(20px) scale(1) !important;
+    opacity: 0.92 !important;
+    transform: translate(calc(-50% - 200px), calc(-50% + 16px)) rotate(-6deg) scale(0.92) !important;
   }
   .phone-section.animate-phones .phone-right {
     animation: none !important;
-    opacity: 0.9 !important;
-    transform: translate(calc(-50% + 200px), -50%) rotate(5deg) translateY(20px) scale(1) !important;
+    opacity: 0.92 !important;
+    transform: translate(calc(-50% + 248px), calc(-50% - 4px)) rotate(6deg) scale(0.92) !important;
   }
   @media (max-width: 768px) {
     .phone-section.animate-phones .phone-left {
-      transform: translate(calc(-50% - 120px), -50%) rotate(-5deg) translateY(15px) scale(1) !important;
+      transform: translate(calc(-50% - 62px), calc(-50% + 8px)) rotate(-5deg) scale(0.92) !important;
     }
     .phone-section.animate-phones .phone-right {
-      transform: translate(calc(-50% + 120px), -50%) rotate(5deg) translateY(15px) scale(1) !important;
+      transform: translate(calc(-50% + 78px), calc(-50% + 2px)) rotate(5deg) scale(0.92) !important;
     }
   }
 }

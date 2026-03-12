@@ -283,6 +283,14 @@ export default function DashboardLayout() {
   const [showMyProfileModal, setShowMyProfileModal] = useState(false);
   const [deleteJobConfirmId, setDeleteJobConfirmId] = useState<string | null>(null);
   const [userRating, setUserRating] = useState<{ average: number; count: number } | null>(null);
+  useEffect(() => {
+    if (!sidebarOpen) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [sidebarOpen]);
   const [jobsAdded, setJobsAdded] = useState<JobRow[]>(() => {
     if (typeof window === "undefined") return [];
     try {
@@ -641,7 +649,7 @@ export default function DashboardLayout() {
       {/* Sidebar – pe desktop fix, pe mobil drawer peste overlay */}
       <aside
         className={`
-          w-64 min-w-64 max-w-64 h-screen md:h-screen md:self-start bg-white border-r border-secondary/10 flex flex-col shadow-soft
+          w-[78vw] min-w-[78vw] max-w-[320px] md:w-64 md:min-w-64 md:max-w-64 h-screen md:h-screen md:self-start bg-white border-r border-secondary/10 flex flex-col shadow-soft overflow-y-auto overscroll-contain md:overflow-visible
           fixed top-0 left-0 z-50 md:sticky md:top-0 md:left-auto md:z-auto
           transform transition-transform duration-200 ease-out
           ${sidebarOpen ? "translate-x-0" : "-translate-x-full"} md:translate-x-0
@@ -666,7 +674,7 @@ export default function DashboardLayout() {
             {t("dashboard.postJob")}
           </button>
         )}
-        <nav className="flex-1 flex flex-col min-h-0 overflow-hidden">
+        <nav className="flex flex-col flex-1 min-h-0 overflow-hidden">
           <div className="flex-1 overflow-y-auto px-4 py-2 space-y-1 min-h-0">
             {getNavForRole(user.role).map(({ to, labelKey, end, icon }) => {
               const IconComponent = icon ? NAV_ICONS[icon] : null;
@@ -691,7 +699,7 @@ export default function DashboardLayout() {
             })}
           </div>
           {isCustomer && (
-            <div className="flex-shrink-0 px-4 py-2 pt-2 border-t border-gray-200">
+            <div className="mt-auto px-4 py-2 pt-2 border-t border-gray-200 flex-shrink-0">
               <NavLink
                 to="/dashboard/subscription"
                 end={false}
@@ -708,7 +716,7 @@ export default function DashboardLayout() {
             </div>
           )}
         </nav>
-        <div className="p-4 border-t border-gray-200 bg-gradient-to-b from-gray-50/80 to-white flex-shrink-0">
+        <div className="mt-auto p-4 border-t border-gray-200 bg-gradient-to-b from-gray-50/80 to-white md:flex-shrink-0">
           <button
             type="button"
             onClick={() => { setShowMyProfileModal(true); closeSidebar(); }}
