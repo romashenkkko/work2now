@@ -73,6 +73,35 @@ export const authApi = {
       method: "POST",
       body: JSON.stringify({ phoneNumber, code }),
     }),
+  validateRegistration: (body: {
+    name: string;
+    email: string;
+    password: string;
+    role?: string;
+    employeeProfile?: {
+      firstName: string;
+      lastName: string;
+      dateOfBirth: string;
+      aboutMe: string;
+    };
+    businessProfile?: {
+      companyName: string;
+      contactFirstName: string;
+      contactLastName: string;
+      companyCategory: number;
+      infoForStaff: string;
+    };
+    branch?: {
+      name: string;
+      address: string;
+      city: string;
+      country: string;
+      phoneNumber: string;
+      raionId?: number;
+    };
+    contactDateOfBirth?: string;
+  }) =>
+    api<{ valid: boolean }>("/auth/validate-registration", { method: "POST", body: JSON.stringify(body) }),
   register: (body: {
     name: string;
     email: string;
@@ -149,6 +178,10 @@ export type JobPayload = {
   checkInLat?: number;
   checkInLng?: number;
   checkInRadiusM?: number;
+  
+  // ✅ NEW: region tracking for precise statistics
+  raionId?: number;          // ID from raioane table
+  localitate?: string;       // City/village name (max 200 chars)
 
 };
 
@@ -248,7 +281,7 @@ export const jobsApi = {
       ratingScore?: number;
     }> }>("/jobs/my-applications/list"),
   applications: () =>
-    api<{ applications: Record<string, { id: string; jobId: string; staffId: string; staffName: string; staffEmail?: string; status: string; checkedInAt?: string; checkedOutAt?: string; workSessions?: { workDate: string; checkedInAt?: string; checkedOutAt?: string }[] }[]> }>("/jobs/applications"),
+    api<{ applications: Record<string, { id: string; jobId: string; staffId: string; staffName: string; staffEmail?: string; staffAvatar?: string; status: string; checkedInAt?: string; checkedOutAt?: string; businessConfirmedAt?: string; isBusinessConfirmed?: boolean; workSessions?: { workDate: string; checkedInAt?: string; checkedOutAt?: string }[]; ratingScore?: number }[]> }>("/jobs/applications"),
   setApplicationStatus: (applicationId: string, status: "accepted" | "refused") =>
     api<{ ok: boolean }>(`/jobs/applications/${applicationId}`, {
       method: "PATCH",
@@ -302,6 +335,11 @@ export const jobsApi = {
       financial: { totalBase: number; taxesCollected: number; profit: number };
       companyRanking: Array<{ rank: number; companyName: string; userId: string; acceptedCount: number }>;
     }>("/jobs/admin/statistics"),
+  /** Get raioane (districts/municipalities) with optional search */
+  getRaioane: (search?: string) =>
+    api<{
+      raioane: Array<{ id: number; name: string; type: string }>;
+    }>(`/jobs/raioane${search ? `?search=${encodeURIComponent(search)}` : ""}`),
 };
 
 export type ReviewItem = {

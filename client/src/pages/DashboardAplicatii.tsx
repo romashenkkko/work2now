@@ -93,7 +93,6 @@ function getJobIconId(jobTitle?: string, jobCategoryTitle?: string): string {
   if (title.includes("waiter") || title.includes("ospatar")) return "waiter";
   return "waiter";
 }
-
 type StaffApplication = {
   id: string;
   jobId: string;

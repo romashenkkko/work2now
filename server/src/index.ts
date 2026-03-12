@@ -87,8 +87,12 @@ async function start() {
   try {
     await initDatabase();
   } catch (e) {
-    const err = e as Error;
+    const err = e as Error & { code?: string; errno?: number; sqlMessage?: string };
     console.error("[DB] initDatabase failed:", err.message);
+    if (err.code) console.error("[DB] Error code:", err.code);
+    if (err.errno) console.error("[DB] Error number:", err.errno);
+    if (err.sqlMessage) console.error("[DB] SQL Message:", err.sqlMessage);
+    
     if (err.message.includes("Schema invalid") || err.message.includes("missing")) {
       console.error("[DB] Schema mismatch detected. To reset the database:");
       console.error("[DB]   1. Set DB_FORCE_RESET=1 in .env (or ensure NODE_ENV != 'production')");
@@ -96,6 +100,11 @@ async function start() {
       console.error("[DB] Server will continue but database operations may fail.");
     } else {
       console.error("[DB] Database connection failed. Check MySQL is running and .env settings.");
+      console.error("[DB] Common issues:");
+      console.error("[DB]   - MySQL not running in XAMPP (check XAMPP Control Panel)");
+      console.error("[DB]   - Wrong port (should be 3306 for XAMPP)");
+      console.error("[DB]   - Wrong password (XAMPP default is empty password)");
+      console.error("[DB]   - Firewall blocking connection");
     }
     // Continue anyway - memory fallback will be used
   }

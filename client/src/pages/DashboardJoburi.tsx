@@ -1,5 +1,4 @@
 import { useContext, useState, useEffect, useRef, useCallback } from "react";
-import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "../hooks/useAuth";
 import { DashboardContext, getApplications, setApplications, type JobRow, type Application, type JobType } from "./DashboardLayout";
@@ -8,7 +7,7 @@ import JobsMapModal from "../components/JobsMapModal";
 import JobScheduleModal from "../components/JobScheduleModal";
 import CustomerProfileModal from "../components/CustomerProfileModal";
 import StaffProfileModal from "../components/StaffProfileModal";
-import { MapPin, Clock, Users, Banknote, Calendar, Briefcase, Map, Search, TrendingUp } from "lucide-react";
+import { MapPin, Clock, Users, Banknote, Calendar, Briefcase, Map, Search } from "lucide-react";
 import { getBusinessTotal, roundMoney } from "../utils/salary";
 
 /** Minutes from "HH:mm". Returns NaN if invalid. */
@@ -49,9 +48,8 @@ function getCardDisplayTotal(row: JobRow, viewerIsStaff: boolean): number | null
 
 export default function DashboardJoburi() {
   const { t } = useTranslation();
-  const navigate = useNavigate();
   const { user } = useAuth();
-  const { jobsAdded, openPostJobModal, removeJob, refreshJobs } = useContext(DashboardContext);
+  const { jobsAdded, openPostJobModal, removeJob } = useContext(DashboardContext);
   const [showMapModal, setShowMapModal] = useState(false);
   const [scheduleJob, setScheduleJob] = useState<JobRow | null>(null);
   const [customerProfileModal, setCustomerProfileModal] = useState<{
@@ -135,7 +133,6 @@ export default function DashboardJoburi() {
   const [checkInOutLoading, setCheckInOutLoading] = useState<string | null>(null);
   const [checkInOutConfirm, setCheckInOutConfirm] = useState<{ type: "checkin" | "checkout"; time: string } | null>(null);
   const [checkInOutError, setCheckInOutError] = useState<string | null>(null);
-  const [promoteLoadingId, setPromoteLoadingId] = useState<string | null>(null);
   const [confirmCheckIn, setConfirmCheckIn] = useState<{ applicationId: string; workDate?: string; jobId?: string } | null>(null);
   const [confirmCheckOut, setConfirmCheckOut] = useState<{ applicationId: string; workDate?: string; jobId?: string } | null>(null);
   const optimisticStorageKey = `work2now_optimistic_sessions_${user?.id ?? ""}`;
@@ -170,6 +167,7 @@ export default function DashboardJoburi() {
   const [categoryOpen, setCategoryOpen] = useState(false);
   const [professionOpen, setProfessionOpen] = useState(false);
   const [professionFilter, setProfessionFilter] = useState<string>("all");
+  const [raioane, setRaioane] = useState<Array<{ id: number; name: string; type: string }>>([]);
   const categoryRef = useRef<HTMLDivElement>(null);
   const professionRef = useRef<HTMLDivElement>(null);
 
@@ -269,6 +267,25 @@ export default function DashboardJoburi() {
     const onFocus = () => refreshStaffData();
     window.addEventListener("focus", onFocus);
     return () => window.removeEventListener("focus", onFocus);
+  }, [isStaff]);
+  // Fetch raioane for location filter
+  useEffect(() => {
+    if (!isStaff) return;
+    jobsApi
+      .getRaioane()
+      .then((r) => {
+        // Include: 32 raioane (districts) + UTA Gagauzia cities (Comrat, Ceadir-Lunga, Vulcanesti)
+        const gagauziaCities = ["Comrat", "Ceadir-Lunga", "Vulcanesti"];
+        const raioaneOnly = (r.raioane || []).filter((raion) => 
+          raion.type === "raion" || 
+          (raion.type === "municipiu" && gagauziaCities.includes(raion.name))
+        );
+        setRaioane(raioaneOnly);
+      })
+      .catch((err) => {
+        console.error("Failed to load raioane:", err);
+        setRaioane([]);
+      });
   }, [isStaff]);
   useEffect(() => {
     const close = (e: MouseEvent) => {
@@ -572,8 +589,17 @@ export default function DashboardJoburi() {
       if (!showJobForStaff(row)) return false;
       const matchSearch = !q || (row.job?.toLowerCase().includes(q) || (row.location ?? "").toLowerCase().includes(q));
       const matchCategory = categoryFilter === "all" || (row.jobType ?? "") === categoryFilter;
+      // Match location by raion name: check if job location contains the selected raion name
+      const matchLocation = locationFilter === "all" || (() => {
+        const selectedRaion = raioane.find((r) => r.name === locationFilter);
+        if (!selectedRaion) return false;
+        const jobLocation = (row.location?.trim() ?? "").toLowerCase();
+        const raionName = selectedRaion.name.toLowerCase();
+        // Check if job location contains the raion name
+        return jobLocation.includes(raionName);
+      })();
       const matchProfession = professionFilter === "all" || (row.job?.trim() ?? "") === professionFilter;
-      return matchSearch && matchCategory && matchProfession;
+      return matchSearch && matchCategory && matchLocation && matchProfession;
     });
     const professionLabelKeys = [
       "dashboard.jobTitleBarista",
@@ -601,6 +627,11 @@ export default function DashboardJoburi() {
       { value: "all", label: t("findJobs.allCategories") },
       { value: "one-day", label: t("dashboard.oneDayJob") },
       { value: "multi-day", label: t("dashboard.multiDayJob") },
+      { value: "full-time", label: t("dashboard.fullTimeRecruitment") },
+    ];
+    const locationOptions = [
+      { value: "all", label: t("findJobs.allLocations") },
+      ...raioane.map((raion) => ({ value: raion.name, label: raion.name })),
     ];
     return (
       <>
@@ -1100,7 +1131,15 @@ export default function DashboardJoburi() {
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5 md:gap-6">
-          {jobs.map((row, i) => (
+          {jobs
+            .filter((row) => {
+              // Only customers use the jobs list; staff sees an empty list here.
+              if (!isCustomer || !row.id) return true;
+              const { status } = getCustomerJobStatus(String(row.id));
+              // Hide jobs that are already finished (have check-out recorded).
+              return status !== "finished";
+            })
+            .map((row, i) => (
             <article
               key={row.id ?? `job-${i}-${row.job}-${row.location}`}
               role="button"
@@ -1123,12 +1162,6 @@ export default function DashboardJoburi() {
                       <span className="text-white font-semibold text-base drop-shadow-sm">Work2Now</span>
                     </div>
                   </>
-                )}
-                {row.isPromoted && (
-                  <span className="absolute top-3 left-3 flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-gray-900/80 text-white backdrop-blur-sm">
-                    <TrendingUp className="w-3.5 h-3.5" />
-                    {t("dashboard.promovareBooster", "Promovare Booster")}
-                  </span>
                 )}
                 <span className="absolute top-3 right-3 px-3 py-1 rounded-full text-xs font-medium bg-white/25 text-white backdrop-blur-sm">
                   {getJobSlotBadge(row)}
@@ -1157,25 +1190,6 @@ export default function DashboardJoburi() {
               <div className="p-4 sm:p-5 flex-1 flex flex-col min-h-0">
                 <div className="flex items-start justify-between gap-2 mb-1">
                   <h2 className="text-lg font-bold text-gray-900 leading-tight flex-1 min-w-0">{row.job}</h2>
-                  {isCustomer && row.id && (
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (!row.id || promoteLoadingId) return;
-                        setPromoteLoadingId(row.id);
-                        jobsApi.setPromoted(row.id, !row.isPromoted)
-                          .then(() => refreshJobs())
-                          .catch(() => {})
-                          .finally(() => setPromoteLoadingId(null));
-                      }}
-                      disabled={!!promoteLoadingId}
-                      className={`shrink-0 flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-colors ${row.isPromoted ? "bg-primary text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}
-                    >
-                      <TrendingUp className="w-3.5 h-3.5" />
-                      {promoteLoadingId === row.id ? "..." : (row.isPromoted ? t("dashboard.promovareBoosterOn", "Booster ON") : t("dashboard.promovareBoosterOff", "Booster"))}
-                    </button>
-                  )}
                 </div>
                 <ul className="space-y-2.5 flex-1">
                   <li className="flex items-center gap-3 text-gray-600 text-sm">

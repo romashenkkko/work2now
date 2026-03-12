@@ -18,7 +18,6 @@ import {
   FileText,
   BarChart2,
   Star,
-  MessageCircle,
   Settings,
   UtensilsCrossed,
   CreditCard,
@@ -133,7 +132,6 @@ const NAV_ICONS: Record<string, ComponentType<{ className?: string; size?: numbe
   fileText: FileText as ComponentType<{ className?: string; size?: number }>,
   barChart: BarChart2 as ComponentType<{ className?: string; size?: number }>,
   review: Star as ComponentType<{ className?: string; size?: number }>,
-  messageCircle: MessageCircle as ComponentType<{ className?: string; size?: number }>,
   settings: Settings as ComponentType<{ className?: string; size?: number }>,
   creditCard: CreditCard as ComponentType<{ className?: string; size?: number }>,
 };
@@ -143,14 +141,12 @@ const NAV_CUSTOMER = [
   { to: "/dashboard/joburi", labelKey: "dashboard.joburi", end: false, icon: "briefcase" },
   { to: "/dashboard/aplicatii", labelKey: "dashboard.aplicatii", end: false, icon: "fileText" },
   { to: "/dashboard/rapoarte", labelKey: "dashboard.rapoarte", end: false, icon: "barChart" },
-  { to: "/dashboard/mesaje", labelKey: "dashboard.mesaje", end: false, icon: "messageCircle" },
 ];
 
 const NAV_STAFF = [
   { to: "/dashboard", labelKey: "dashboard.home", end: true, icon: "home" },
   { to: "/dashboard/joburi", labelKey: "dashboard.joburi", end: false, icon: "briefcase" },
   { to: "/dashboard/aplicatii", labelKey: "dashboard.myApplications", end: false, icon: "fileText" },
-  { to: "/dashboard/mesaje", labelKey: "dashboard.mesaje", end: false, icon: "messageCircle" },
 ];
 
 const NAV_ADMIN = [
@@ -245,6 +241,8 @@ export default function DashboardLayout() {
   const [postJobFieldErrors, setPostJobFieldErrors] = useState<{
     hourlyRateBase?: string;
     jobCategoryCode?: string;
+    raionId?: string;
+    localitate?: string;
   }>({});
   const [jobCategories, setJobCategories] = useState<JobCategory[]>([]);
   const [selectedJobCategory, setSelectedJobCategory] = useState<number | null>(null);
@@ -258,6 +256,12 @@ export default function DashboardLayout() {
   const [formEndTime, setFormEndTime] = useState("00:00");
   const [jobAddress, setJobAddress] = useState("");
   const [jobCheckInGeo, setJobCheckInGeo] = useState<{ lat: number; lng: number; radiusM: number } | null>(null);
+  const [selectedRaionId, setSelectedRaionId] = useState<number | null>(null);
+  const [raionSearch, setRaionSearch] = useState("");
+  const [raioane, setRaioane] = useState<Array<{ id: number; name: string; type: string }>>([]);
+  const [raionDropdownOpen, setRaionDropdownOpen] = useState(false);
+  const raionDropdownRef = useRef<HTMLDivElement>(null);
+  const [localitate, setLocalitate] = useState("");
   const [jobDate, setJobDate] = useState("");
   const [jobEndDate, setJobEndDate] = useState("");
   const [jobImage, setJobImage] = useState<string | null>(null);
@@ -418,6 +422,28 @@ export default function DashboardLayout() {
       });
   }, []);
 
+  // Fetch raioane when form opens
+  useEffect(() => {
+    if (showPostJob && postJobStep === "form") {
+      jobsApi
+        .getRaioane()
+        .then((r) => {
+          setRaioane(r.raioane || []);
+        })
+        .catch((err) => {
+          console.error("Failed to load raioane:", err);
+          setRaioane([]);
+        });
+    }
+  }, [showPostJob, postJobStep]);
+
+  // Filter raioane based on search
+  const filteredRaioane = raioane.filter((r) => {
+    if (!raionSearch.trim()) return true;
+    const searchLower = raionSearch.toLowerCase();
+    return r.name.toLowerCase().includes(searchLower);
+  });
+
   // Calculate salary based on hours and hourly rate
   useEffect(() => {
     if (!formStartTime || !formEndTime || !hourlyRate) {
@@ -462,7 +488,7 @@ export default function DashboardLayout() {
     } catch {}
   };
 
-  const addJob = async (job: Omit<JobRow, "id">): Promise<boolean> => {
+  const addJob = async (job: Omit<JobRow, "id"> & { raionId?: number; localitate?: string }): Promise<boolean> => {
     if (job.jobCategoryCode == null || job.hourlyRateBase == null) return false;
     const payload = {
       job: job.job, // Custom title (max 30 chars)
@@ -480,6 +506,8 @@ export default function DashboardLayout() {
       imageUrl: job.imageUrl ?? undefined,
       jobCategoryCode: job.jobCategoryCode ?? 1,
       hourlyRateBase: job.hourlyRateBase ?? 0,
+      ...(job.raionId != null ? { raionId: job.raionId } : {}),
+      ...(job.localitate != null && job.localitate.trim() ? { localitate: job.localitate.trim() } : {}),
       ...(job.checkInLat != null && job.checkInLng != null && job.checkInRadiusM != null
         ? { checkInLat: job.checkInLat, checkInLng: job.checkInLng, checkInRadiusM: job.checkInRadiusM }
         : {}),
@@ -576,6 +604,15 @@ export default function DashboardLayout() {
     document.addEventListener("mousedown", close);
     return () => document.removeEventListener("mousedown", close);
   }, [staffDropdownOpen]);
+
+  useEffect(() => {
+    if (!raionDropdownOpen) return;
+    const close = (e: MouseEvent) => {
+      if (raionDropdownRef.current && !raionDropdownRef.current.contains(e.target as Node)) setRaionDropdownOpen(false);
+    };
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, [raionDropdownOpen]);
 
   useEffect(() => {
     if (!salaryDropdownOpen) return;
@@ -824,6 +861,9 @@ export default function DashboardLayout() {
             setSelectedJobType(null);
             setPostMethod(null);
             setPostJobError("");
+            setSelectedRaionId(null);
+            setRaionSearch("");
+            setLocalitate("");
           }}
         >
           <div
@@ -836,7 +876,15 @@ export default function DashboardLayout() {
                 <p className="text-gray-600 mb-4">{t("dashboard.jobSavedDesc")}</p>
                 <button
                   type="button"
-                  onClick={() => { setJobSubmitted(false); setShowPostJob(false); setPostJobStep("choose-type"); setSelectedJobType(null); }}
+                  onClick={() => { 
+                    setJobSubmitted(false); 
+                    setShowPostJob(false); 
+                    setPostJobStep("choose-type"); 
+                    setSelectedJobType(null);
+                    setSelectedRaionId(null);
+                    setRaionSearch("");
+                    setLocalitate("");
+                  }}
                   className="w-full py-2.5 rounded-xl bg-primary text-white font-medium hover:bg-primary-dark"
                 >
                   {t("dashboard.close")}
@@ -848,7 +896,16 @@ export default function DashboardLayout() {
                   <h3 className="text-lg font-bold text-gray-900">{t("dashboard.addJobTitle")}</h3>
                 <button
                   type="button"
-                  onClick={() => { setShowPostJob(false); setPostJobStep("choose-type"); setSelectedJobType(null); setPostMethod(null); setPostJobError(""); }}
+                  onClick={() => { 
+                    setShowPostJob(false); 
+                    setPostJobStep("choose-type"); 
+                    setSelectedJobType(null); 
+                    setPostMethod(null); 
+                    setPostJobError("");
+                    setSelectedRaionId(null);
+                    setRaionSearch("");
+                    setLocalitate("");
+                  }}
                   className="p-2 rounded-lg text-gray-500 hover:bg-gray-100 hover:text-gray-700 transition-colors"
                   aria-label={t("dashboard.close")}
                 >
@@ -894,7 +951,14 @@ export default function DashboardLayout() {
                 <div className="flex gap-3 p-4 sm:p-6 pt-0 border-t border-gray-100">
                   <button
                     type="button"
-                    onClick={() => { setShowPostJob(false); setPostJobStep("choose-type"); setSelectedJobType(null); }}
+                    onClick={() => { 
+                      setShowPostJob(false); 
+                      setPostJobStep("choose-type"); 
+                      setSelectedJobType(null);
+                      setSelectedRaionId(null);
+                      setRaionSearch("");
+                      setLocalitate("");
+                    }}
                     className="flex-1 py-2.5 rounded-xl border border-gray-300 font-medium text-gray-700 hover:bg-gray-50"
                   >
                     {t("dashboard.cancel")}
@@ -916,7 +980,15 @@ export default function DashboardLayout() {
                   <h3 className="text-lg font-bold text-gray-900">{t("dashboard.addJobTitle")}</h3>
                   <button
                     type="button"
-                    onClick={() => { setShowPostJob(false); setPostJobStep("choose-type"); setSelectedJobType(null); setPostMethod(null); }}
+                    onClick={() => { 
+                      setShowPostJob(false); 
+                      setPostJobStep("choose-type"); 
+                      setSelectedJobType(null); 
+                      setPostMethod(null);
+                      setSelectedRaionId(null);
+                      setRaionSearch("");
+                      setLocalitate("");
+                    }}
                     className="p-2 rounded-lg text-gray-500 hover:bg-gray-100 hover:text-gray-700 transition-colors"
                     aria-label={t("dashboard.close")}
                   >
@@ -985,6 +1057,9 @@ export default function DashboardLayout() {
                       setSelectedJobCategory(null);
                       setHourlyRate("");
                       setCalculatedSalary(null);
+                      setSelectedRaionId(null);
+                      setRaionSearch("");
+                      setLocalitate("");
                       setPostJobFieldErrors({});
                     }}
                     className="p-2 rounded-lg text-gray-500 hover:bg-gray-100 hover:text-gray-700"
@@ -1012,6 +1087,12 @@ export default function DashboardLayout() {
                     // Validate hourly rate
                     if (!hourlyRate || hourlyRate.trim() === "" || isNaN(hourlyRateBase) || hourlyRateBase <= 0) {
                       setPostJobFieldErrors((prev) => ({ ...prev, hourlyRateBase: "Please enter a valid hourly rate" }));
+                      return;
+                    }
+
+                    // Validate raionId (required)
+                    if (!selectedRaionId || selectedRaionId <= 0) {
+                      setPostJobFieldErrors((prev) => ({ ...prev, raionId: "Please select a raion/municipiu" }));
                       return;
                     }
 
@@ -1044,6 +1125,8 @@ export default function DashboardLayout() {
                         peopleNeeded: peopleVal || undefined,
                         estimatedSalary: salaryVal || undefined,
                         imageUrl: jobImage || undefined,
+                        raionId: selectedRaionId,
+                        localitate: localitate.trim() || undefined,
                         ...(jobCheckInGeo
                           ? { checkInLat: jobCheckInGeo.lat, checkInLng: jobCheckInGeo.lng, checkInRadiusM: jobCheckInGeo.radiusM }
                           : {}),
@@ -1076,6 +1159,9 @@ export default function DashboardLayout() {
                     setSelectedJobCategory(null);
                     setHourlyRate("");
                     setCalculatedSalary(null);
+                    setSelectedRaionId(null);
+                    setRaionSearch("");
+                    setLocalitate("");
                     setPostJobFieldErrors({});
                   }}
                   className="p-4 sm:p-6 overflow-y-auto max-h-[calc(100vh-12rem)]"
@@ -1329,6 +1415,92 @@ export default function DashboardLayout() {
                           )}
                         </div>
                       </label>
+                      
+                      {/* Raion Selection */}
+                      <label className="block">
+                        <span className="text-sm font-medium text-gray-700 mb-1 block">
+                          Raion / Municipiu <span className="text-red-500">*</span>
+                        </span>
+                        <div ref={raionDropdownRef} className="relative">
+                          <input
+                            type="text"
+                            value={raionSearch}
+                            onChange={(e) => {
+                              setRaionSearch(e.target.value);
+                              setRaionDropdownOpen(true);
+                              setPostJobFieldErrors((prev) => ({ ...prev, raionId: undefined }));
+                            }}
+                            onFocus={() => setRaionDropdownOpen(true)}
+                            placeholder="Căutare raion (ex: Chișinău, Cahul, Bălți...)"
+                            className={`mt-1 block w-full px-4 py-2.5 rounded-xl border ${
+                              postJobFieldErrors.raionId ? "border-red-400" : "border-gray-200"
+                            } focus:ring-2 focus:ring-primary focus:border-primary transition-colors`}
+                          />
+                          {raionDropdownOpen && filteredRaioane.length > 0 && (
+                            <div className="absolute left-0 right-0 top-full z-[70] mt-1.5 max-h-64 overflow-y-auto rounded-xl border border-gray-200 bg-white shadow-lg py-1.5 dropdown-enter origin-top">
+                              {filteredRaioane.map((raion) => (
+                                <button
+                                  key={raion.id}
+                                  type="button"
+                                  role="option"
+                                  aria-selected={selectedRaionId === raion.id}
+                                  onMouseDown={(e) => {
+                                    e.preventDefault();
+                                    setSelectedRaionId(raion.id);
+                                    setRaionSearch(raion.name);
+                                    setRaionDropdownOpen(false);
+                                    setPostJobFieldErrors((prev) => ({ ...prev, raionId: undefined }));
+                                  }}
+                                  className={`block w-full text-left px-4 py-2.5 text-sm font-medium transition-colors ${
+                                    selectedRaionId === raion.id
+                                      ? "bg-primary/10 text-primary"
+                                      : "text-gray-700 hover:bg-gray-50"
+                                  }`}
+                                >
+                                  <div className="flex items-center justify-between">
+                                    <span>{raion.name}</span>
+                                    <span className="text-xs text-gray-500 capitalize">{raion.type}</span>
+                                  </div>
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                          {selectedRaionId && (
+                            <div className="mt-1 text-xs text-gray-500">
+                              Selectat: {raioane.find((r) => r.id === selectedRaionId)?.name}
+                            </div>
+                          )}
+                        </div>
+                        {postJobFieldErrors.raionId && (
+                          <p className="mt-1 text-sm text-red-600">{postJobFieldErrors.raionId}</p>
+                        )}
+                      </label>
+
+                      {/* Localitate Input */}
+                      <label className="block">
+                        <span className="text-sm font-medium text-gray-700 mb-1 block">
+                          Localitate (Oraș / Sat)
+                        </span>
+                        <input
+                          type="text"
+                          name="localitate"
+                          value={localitate}
+                          onChange={(e) => {
+                            setLocalitate(e.target.value);
+                            setPostJobFieldErrors((prev) => ({ ...prev, localitate: undefined }));
+                          }}
+                          placeholder="ex: Centru, Botanica, Râșcani..."
+                          maxLength={200}
+                          className={`mt-1 block w-full px-4 py-2.5 rounded-xl border ${
+                            postJobFieldErrors.localitate ? "border-red-400" : "border-gray-200"
+                          } focus:ring-2 focus:ring-primary focus:border-primary transition-colors`}
+                        />
+                        <p className="mt-1 text-xs text-gray-500">Numele localității (oraș, sat, cartier)</p>
+                        {postJobFieldErrors.localitate && (
+                          <p className="mt-1 text-sm text-red-600">{postJobFieldErrors.localitate}</p>
+                        )}
+                      </label>
+
                       <div>
                         <span className="text-sm font-medium text-gray-700 mb-1 block">{t("dashboard.address")}</span>
                         <input type="hidden" name="address" value={jobAddress} readOnly />
@@ -1462,7 +1634,15 @@ export default function DashboardLayout() {
                   <div className="flex gap-3 pt-2 border-t border-gray-100">
                     <button
                       type="button"
-                      onClick={() => { setShowPostJob(false); setPostJobStep("choose-type"); setSelectedJobType(null); setPostMethod(null); }}
+                      onClick={() => { 
+                        setShowPostJob(false); 
+                        setPostJobStep("choose-type"); 
+                        setSelectedJobType(null); 
+                        setPostMethod(null);
+                        setSelectedRaionId(null);
+                        setRaionSearch("");
+                        setLocalitate("");
+                      }}
                       className="flex-1 py-2.5 rounded-xl border border-gray-300 font-medium text-gray-700 hover:bg-gray-50"
                     >
                       {t("dashboard.cancel")}

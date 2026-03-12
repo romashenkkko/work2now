@@ -23,7 +23,7 @@ function PlanCard({
 }: {
   plan: (typeof PLANS)[number];
   isCenter: boolean;
-  t: (key: string, fallback?: string) => string;
+  t: (key: string, fallback?: string, options?: Record<string, any>) => string;
 }) {
   const Icon = plan.icon;
   const isPopular = plan.popular === true;
@@ -109,11 +109,25 @@ function PlanCard({
 }
 
 export default function DashboardSubscription() {
-  const { t } = useTranslation();
+  const { t: tOriginal } = useTranslation();
   const { user } = useAuth();
   const [activeIndex, setActiveIndex] = useState(2); // Premium în centru la început
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState(900);
+
+  // Wrapper function to match PlanCard's expected type signature
+  const t = (key: string, fallback?: string, options?: Record<string, any>): string => {
+    if (fallback !== undefined && options !== undefined) {
+      // Called with 3 args: key, fallback, options
+      return tOriginal(key, { defaultValue: fallback, ...options });
+    } else if (fallback !== undefined) {
+      // Called with 2 args: key, fallback
+      return tOriginal(key, { defaultValue: fallback });
+    } else {
+      // Called with 1 arg: key
+      return tOriginal(key);
+    }
+  };
 
   const isCustomer = user?.role?.toLowerCase?.() === "customer";
   const hasBooster = user?.boosterUntil && new Date(user.boosterUntil) > new Date();

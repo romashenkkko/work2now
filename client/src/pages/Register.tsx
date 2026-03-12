@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { authApi } from "../api/client";
+import { authApi, jobsApi } from "../api/client";
 import DatePicker from "../components/DatePicker";
+import { TERMS_AND_CONDITIONS_RO, TERMS_AND_CONDITIONS_EN } from "../content/termsAndConditions";
 
 /** 0 = none, 1 = weak, 2 = fair, 3 = good, 4 = strong */
 function getPasswordStrength(password: string): 0 | 1 | 2 | 3 | 4 {
@@ -30,7 +31,8 @@ const COMPANY_CATEGORY_OPTIONS = [
 ];
 
 export default function Register() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const termsContent = i18n.language?.startsWith("ro") ? TERMS_AND_CONDITIONS_RO : TERMS_AND_CONDITIONS_EN;
   const navigate = useNavigate();
   const { role: roleParam } = useParams<{ role: string }>();
   const [email, setEmail] = useState("");
@@ -65,6 +67,11 @@ export default function Register() {
   const [branchCity, setBranchCity] = useState("");
   const [branchCountry, setBranchCountry] = useState("Moldova");
   const [branchPhone, setBranchPhone] = useState("");
+  // Raion dropdown for customer registration
+  const [raioane, setRaioane] = useState<Array<{ id: number; name: string; type: string }>>([]);
+  const [selectedRaionId, setSelectedRaionId] = useState<number | null>(null);
+  const [raionDropdownOpen, setRaionDropdownOpen] = useState(false);
+  const raionDropdownRef = useRef<HTMLDivElement>(null);
 
   // OTP verification state
   const [otpStep, setOtpStep] = useState<"form" | "otp">("form");
@@ -72,6 +79,12 @@ export default function Register() {
   const [otpLoading, setOtpLoading] = useState(false);
   const [otpError, setOtpError] = useState("");
   const [verifiedPhone, setVerifiedPhone] = useState("");
+
+  // Terms & Conditions modal state
+  const [showTermsModal, setShowTermsModal] = useState(false);
+  const [termsScrolledToBottom, setTermsScrolledToBottom] = useState(false);
+  const [termsAcceptLoading, setTermsAcceptLoading] = useState(false);
+  const termsScrollRef = useRef<HTMLDivElement>(null);
 
   const calculateAgeFromYmd = (value: string): number | null => {
     if (!value) return null;
@@ -96,10 +109,49 @@ export default function Register() {
       if (companyCategoryRef.current && !companyCategoryRef.current.contains(e.target as Node)) {
         setCompanyCategoryOpen(false);
       }
+      if (raionDropdownRef.current && !raionDropdownRef.current.contains(e.target as Node)) {
+        setRaionDropdownOpen(false);
+      }
     };
     document.addEventListener("mousedown", onOutsideClick);
     return () => document.removeEventListener("mousedown", onOutsideClick);
   }, []);
+
+  // Fetch raioane for customer registration
+  useEffect(() => {
+    if (role !== "customer") return;
+    jobsApi
+      .getRaioane()
+      .then((r) => {
+        // Include: 32 raioane (districts) + UTA Gagauzia cities (Comrat, Ceadir-Lunga, Vulcanesti)
+        const gagauziaCities = ["Comrat", "Ceadir-Lunga", "Vulcanesti"];
+        const raioaneOnly = (r.raioane || []).filter((raion) => 
+          raion.type === "raion" || 
+          (raion.type === "municipiu" && gagauziaCities.includes(raion.name))
+        );
+        setRaioane(raioaneOnly);
+      })
+      .catch((err) => {
+        console.error("Failed to load raioane:", err);
+        setRaioane([]);
+      });
+  }, [role]);
+
+  // La deschiderea modalului T&C: verificăm dacă conținutul e scurt (fără scroll necesar)
+  useEffect(() => {
+    if (!showTermsModal) {
+      setTermsScrolledToBottom(false);
+      return;
+    }
+    const check = () => {
+      const el = termsScrollRef.current;
+      if (!el) return;
+      if (el.scrollHeight <= el.clientHeight) setTermsScrolledToBottom(true);
+    };
+    check();
+    const t = setTimeout(check, 100);
+    return () => clearTimeout(t);
+  }, [showTermsModal]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -157,24 +209,61 @@ export default function Register() {
         setError(t("auth.branchFieldsRequired"));
         return;
       }
+      if (!selectedRaionId || selectedRaionId <= 0) {
+        setError(t("auth.raionRequired") || "Selectați raionul");
+        return;
+      }
     }
 
-    // If OTP is not verified yet, send OTP and show OTP screen
+    // If OTP is not verified yet, validate data first, then show Terms & Conditions modal
     if (otpStep === "form") {
-      const phoneToVerify = role === "staff" ? phoneNumber.trim() : contactPhoneNumber.trim();
-      
-      setOtpLoading(true);
-      setOtpError("");
-      try {
-        await authApi.sendOTP(phoneToVerify);
-        setVerifiedPhone(phoneToVerify);
-        setOtpStep("otp");
-      } catch (err) {
-        setOtpError(err instanceof Error ? err.message : t("auth.otpSendError"));
-      } finally {
-        setOtpLoading(false);
+      // Build validation data
+      const validationData: any = {
+        name: role === "staff" ? `${firstName.trim()} ${lastName.trim()}` : companyName.trim(),
+        email,
+        password,
+        role,
+      };
+
+      if (role === "staff") {
+        validationData.employeeProfile = {
+          firstName: firstName.trim(),
+          lastName: lastName.trim(),
+          dateOfBirth: dateOfBirth,
+          aboutMe: aboutMe.trim() || t("auth.aboutMeDefault"),
+        };
+      } else if (role === "customer") {
+        validationData.businessProfile = {
+          companyName: companyName.trim(),
+          contactFirstName: contactFirstName.trim(),
+          contactLastName: contactLastName.trim(),
+          companyCategory: parseInt(companyCategory, 10),
+          infoForStaff: infoForStaff.trim() || t("auth.infoForStaffDefault"),
+        };
+        validationData.contactDateOfBirth = contactDateOfBirth;
+        validationData.branch = {
+          name: branchName.trim(),
+          address: branchAddress.trim(),
+          city: branchCity.trim(),
+          country: branchCountry.trim() || "Moldova",
+          phoneNumber: branchPhone.trim(),
+          raionId: selectedRaionId,
+        };
       }
-      return;
+
+      // Validate data with backend (checks email existence, etc.)
+      setLoading(true);
+      try {
+        await authApi.validateRegistration(validationData);
+        // Validation passed, show Terms & Conditions modal
+        setLoading(false);
+        setShowTermsModal(true);
+        return;
+      } catch (err) {
+        setLoading(false);
+        setError(err instanceof Error ? err.message : t("auth.registerError"));
+        return;
+      }
     }
 
     // If OTP step, verify OTP first
@@ -236,6 +325,7 @@ export default function Register() {
           city: branchCity.trim(),
           country: branchCountry.trim() || "Moldova",
           phoneNumber: branchPhone.trim(),
+          raionId: selectedRaionId,
         };
       }
       
@@ -247,6 +337,30 @@ export default function Register() {
       setError(err instanceof Error ? err.message : t("auth.registerError"));
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleAcceptTerms() {
+    const phoneToVerify = role === "staff" ? phoneNumber.trim() : contactPhoneNumber.trim();
+    
+    // Validate phone number before sending OTP
+    if (!phoneToVerify) {
+      setOtpError(t("auth.phoneNumberRequired"));
+      return;
+    }
+    
+    setTermsAcceptLoading(true);
+    setOtpError("");
+    try {
+      await authApi.sendOTP(phoneToVerify);
+      setVerifiedPhone(phoneToVerify);
+      setShowTermsModal(false);
+      setOtpStep("otp");
+    } catch (err) {
+      setOtpError(err instanceof Error ? err.message : t("auth.otpSendError"));
+      // Keep modal open on error so user can see the error message
+    } finally {
+      setTermsAcceptLoading(false);
     }
   }
 
@@ -573,14 +687,58 @@ export default function Register() {
                   placeholder={t("auth.branchAddressPlaceholder")}
                 />
               </label>
+              <label>
+                Raion <span className="text-red-500">*</span>
+                <div className="auth-custom-dropdown" ref={raionDropdownRef}>
+                  <button
+                    type="button"
+                    className={`auth-custom-dropdown__trigger ${raionDropdownOpen ? "is-open" : ""}`}
+                    onClick={() => setRaionDropdownOpen((v) => !v)}
+                    aria-haspopup="listbox"
+                    aria-expanded={raionDropdownOpen}
+                  >
+                    <span className={selectedRaionId ? "" : "opacity-60"}>
+                      {selectedRaionId 
+                        ? raioane.find((r) => r.id === selectedRaionId)?.name || "Selectați raionul"
+                        : "Selectează"}
+                    </span>
+                    <svg className="auth-custom-dropdown__chevron" viewBox="0 0 24 24" fill="none" aria-hidden>
+                      <path d="M7 10l5 5 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  </button>
+                  {raionDropdownOpen && (
+                    <ul className="auth-custom-dropdown__menu" role="listbox" aria-label="Raion">
+                      {raioane.map((raion) => (
+                        <li key={raion.id}>
+                          <button
+                            type="button"
+                            className={`auth-custom-dropdown__item ${selectedRaionId === raion.id ? "is-selected" : ""}`}
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              setSelectedRaionId(raion.id);
+                              setRaionDropdownOpen(false);
+                            }}
+                            role="option"
+                            aria-selected={selectedRaionId === raion.id}
+                          >
+                            {raion.name}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              </label>
               <div className="auth-field-row auth-field-row--address">
                 <label>
-                  {t("auth.branchCity")}
+                  Oraș
                   <input
                     type="text"
                     value={branchCity}
                     onChange={(e) => setBranchCity(e.target.value)}
                     required
+                    placeholder="ex: Corlateni"
                   />
                 </label>
                 <label>
@@ -608,10 +766,60 @@ export default function Register() {
           
           {otpStep === "form" && (
             <button type="submit" disabled={loading || otpLoading} className="btn-primary w-full py-3.5 disabled:opacity-50" style={{ marginTop: "24px" }}>
-              {otpLoading ? t("auth.sendingOTP") || "Se trimite codul..." : t("auth.continueToOTP") || "Continuă cu verificarea"}
+              {loading ? (t("auth.validating") || "Se validează...") : otpLoading ? (t("auth.sendingOTP") || "Se trimite codul...") : (t("auth.continueToOTP") || "Continuă cu verificarea")}
             </button>
           )}
         </form>
+
+        {/* Terms & Conditions Modal – shown when user clicks Continue */}
+        {showTermsModal && (
+          <div className="auth-terms-overlay" onClick={() => { setShowTermsModal(false); setOtpError(""); setTermsScrolledToBottom(false); }} role="dialog" aria-modal="true" aria-labelledby="terms-modal-title">
+            <div className="auth-terms-modal" onClick={(e) => e.stopPropagation()}>
+              <h2 id="terms-modal-title" className="auth-terms-title">{t("auth.acceptTermsTitle")}</h2>
+              <p className="auth-terms-subtitle">{t("auth.acceptTermsSubtitle")}</p>
+              {otpError && <div className="auth-alert error" style={{ margin: "0 24px 16px" }}>{otpError}</div>}
+              <div
+                ref={termsScrollRef}
+                className="auth-terms-scroll"
+                onScroll={(e) => {
+                  const el = e.currentTarget;
+                  // Dacă nu e nevoie de scroll (conținut scurt), considerăm că e la capăt
+                  const hasScroll = el.scrollHeight > el.clientHeight;
+                  const atBottom = !hasScroll || (el.scrollHeight - el.scrollTop - el.clientHeight < 8);
+                  setTermsScrolledToBottom(atBottom);
+                }}
+              >
+                <pre className="auth-terms-content">{termsContent.trim()}</pre>
+              </div>
+              {!termsScrolledToBottom && (
+                <p className="auth-terms-scroll-hint">{t("auth.termsScrollHint")}</p>
+              )}
+              <div className="auth-terms-actions">
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (!termsAcceptLoading && termsScrolledToBottom) {
+                      handleAcceptTerms();
+                    }
+                  }}
+                  disabled={termsAcceptLoading || !termsScrolledToBottom}
+                  className="btn-primary flex-1 py-3.5 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {termsAcceptLoading ? t("auth.sendingOTP") : t("auth.acceptTerms")}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowTermsModal(false)}
+                  className="btn-secondary flex-1 py-3.5"
+                >
+                  {t("auth.termsDecline")}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* OTP Verification Screen */}
         {otpStep === "otp" && (

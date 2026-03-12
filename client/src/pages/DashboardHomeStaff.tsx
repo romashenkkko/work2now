@@ -62,7 +62,12 @@ export default function DashboardHomeStaff() {
       .then(([jobsRes, appRes, appsListRes]) => {
         const jobsList = (jobsRes.jobs || []) as Array<{ id: string; checkInLat?: number; checkInLng?: number; checkInRadiusM?: number }>;
         setAllJobs(jobsList);
-        const list = jobsList
+        // Hide jobs from the open list if they already have at least one accepted applicant.
+        const openJobs = jobsList.filter((j) => {
+          const acceptedCount = Number((j as any).acceptedCount ?? 0);
+          return !Number.isFinite(acceptedCount) || acceptedCount <= 0;
+        });
+        const list = openJobs
           .slice(0, 3)
           .map((j) => ({
             id: String(j.id ?? ""),

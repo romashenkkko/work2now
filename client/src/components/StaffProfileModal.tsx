@@ -1,7 +1,8 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
-import { Star, Mail, User, MessageSquare, X, LayoutGrid, Calendar } from "lucide-react";
+
+import { Mail, User, MessageSquare, X, LayoutGrid, Calendar } from "lucide-react";
 import StarRating from "./StarRating";
 import { ratingsApi, experiencesApi, type ReviewItem, type Experience } from "../api/client";
 import { JobTitleIcon, JOB_TITLE_OPTIONS } from "../pages/DashboardLayout";
@@ -85,8 +86,6 @@ export type StaffProfileModalProps = {
   currentUserId?: string;
   /** ID aplicație finalizată la care poți lăsa recenzie pentru acest staff. */
   applicationIdForReview?: string;
-  /** Callback când user apasă „Lasă recenzie” (dacă nu e formular inline) – închide modalul și deschide formularul de review pentru applicationId. */
-  onLeaveReview?: (applicationId: string) => void;
   /** Callback după ce recenzia a fost trimisă cu succes (pentru refresh listă aplicații). */
   onReviewSubmitted?: (applicationId: string) => void;
   /** Rating din sidebar (când e profilul propriu), folosit dacă getProfileRatings returnează 0. */
@@ -106,7 +105,6 @@ export default function StaffProfileModal({
   staffAvatar = DEFAULT_AVATAR,
   currentUserId,
   applicationIdForReview,
-  onLeaveReview,
   onReviewSubmitted,
   initialRating,
   userRole,
