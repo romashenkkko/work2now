@@ -230,6 +230,31 @@ const JOB_TITLE_OPTIONS: { id: string; labelKey: string }[] = [
   { id: "waiter", labelKey: "dashboard.jobTitleWaiter" },
 ];
 
+const JOB_CATEGORY_LABEL_KEYS: Record<number, string> = {
+  1: "dashboard.jobCategoryBarback",
+  2: "dashboard.jobTitleBarista",
+  3: "dashboard.jobTitleBartender",
+  4: "dashboard.jobCategoryCashier",
+  5: "dashboard.jobTitleChef",
+  6: "dashboard.jobCategoryChefHead",
+  7: "dashboard.jobCategoryChefPastry",
+  8: "dashboard.jobCategoryChefSous",
+  9: "dashboard.jobCategoryChefSushi",
+  10: "dashboard.jobTitleCleaner",
+  11: "dashboard.jobCategoryCocktailBartender",
+  12: "dashboard.jobTitleDishwasher",
+  13: "dashboard.jobTitleEventCrew",
+  14: "dashboard.jobTitleGrocery",
+  15: "dashboard.jobCategoryHeadWaiter",
+  16: "dashboard.jobCategoryHousekeeper",
+  17: "dashboard.jobTitleMaintenance",
+  18: "dashboard.jobCategoryPizzaiolo",
+  19: "dashboard.jobTitleReceptionist",
+  20: "dashboard.jobCategorySommelier",
+  21: "dashboard.jobCategoryAppTester",
+  22: "dashboard.jobTitleWaiter",
+};
+
 export default function DashboardLayout() {
   const { t } = useTranslation();
   const { user, loading, logout } = useAuth();
@@ -265,6 +290,7 @@ export default function DashboardLayout() {
   const [jobDate, setJobDate] = useState("");
   const [jobEndDate, setJobEndDate] = useState("");
   const [jobImage, setJobImage] = useState<string | null>(null);
+  const [jobImageName, setJobImageName] = useState("");
   const [jobTitleSelected, setJobTitleSelected] = useState("");
   const [showJobTitleModal, setShowJobTitleModal] = useState(false);
   const [showAddressModal, setShowAddressModal] = useState(false);
@@ -272,6 +298,12 @@ export default function DashboardLayout() {
   const [jobDocuments, setJobDocuments] = useState<DocItem[]>([]);
   const [phoneCountryCode, setPhoneCountryCode] = useState("+373");
   const [phoneCountryOpen, setPhoneCountryOpen] = useState(false);
+
+  const getLocalizedJobCategory = useCallback(
+    (category: Pick<JobCategory, "code" | "title">) =>
+      t(JOB_CATEGORY_LABEL_KEYS[category.code] ?? "", category.title),
+    [t]
+  );
   const phoneCountryRef = useRef<HTMLDivElement>(null);
   const [staffCountSelect, setStaffCountSelect] = useState("1");
   const [staffDropdownOpen, setStaffDropdownOpen] = useState(false);
@@ -1027,8 +1059,11 @@ export default function DashboardLayout() {
                   <button
                     type="button"
                     onClick={() => setPostJobStep("choose-type")}
-                    className="flex-1 py-2.5 rounded-xl border border-gray-300 font-medium text-gray-700 hover:bg-gray-50"
+                    className="inline-flex flex-1 items-center justify-center gap-2 rounded-2xl border border-primary/15 bg-primary/5 px-4 py-2.5 font-semibold text-primary shadow-sm transition-all hover:-translate-y-0.5 hover:bg-primary/10 hover:shadow-md"
                   >
+                    <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-white text-primary shadow-sm">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
+                    </span>
                     {t("dashboard.back")}
                   </button>
                   <button
@@ -1150,6 +1185,7 @@ export default function DashboardLayout() {
                     setJobDate("");
                     setJobEndDate("");
                     setJobImage(null);
+                    setJobImageName("");
                     setJobDocuments([]);
                     setPhoneCountryCode("+373");
                     setJobTitleSelected("");
@@ -1175,9 +1211,11 @@ export default function DashboardLayout() {
                   <button
                     type="button"
                     onClick={() => setPostJobStep("how-to-post")}
-                    className="inline-flex items-center gap-2 text-sm font-medium text-primary hover:underline"
+                    className="inline-flex items-center gap-2 rounded-full border border-primary/15 bg-primary/5 px-3.5 py-2 text-sm font-semibold text-primary shadow-sm transition-all hover:-translate-y-0.5 hover:bg-primary/10 hover:shadow-md"
                   >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
+                    <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-white text-primary shadow-sm">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
+                    </span>
                     {t("dashboard.back")}
                   </button>
 
@@ -1185,16 +1223,16 @@ export default function DashboardLayout() {
                     <h4 className="text-sm font-semibold text-gray-900 mb-3">{t("dashboard.jobDetails")}</h4>
                     <div className="space-y-4">
                       <label className="block">
-                        <span className="text-sm font-medium text-gray-700">Title <span className="text-red-500">*</span></span>
+                        <span className="text-sm font-medium text-gray-700">{t("dashboard.jobTitleLabel")} <span className="text-red-500">*</span></span>
                         <input
                           name="job"
                           type="text"
                           maxLength={30}
-                          placeholder="e.g. Cautam Urgent Barista"
+                          placeholder={t("dashboard.jobTitleExample")}
                           className="mt-1 block w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:ring-2 focus:ring-primary"
                           required
                         />
-                        <p className="mt-1 text-xs text-gray-500">Maximum 30 characters</p>
+                        <p className="mt-1 text-xs text-gray-500">{t("dashboard.max30Characters")}</p>
                       </label>
                       <label className="block">
                         <span className="text-sm font-medium text-gray-700">{t("dashboard.eventName")}</span>
@@ -1243,7 +1281,7 @@ export default function DashboardLayout() {
                           </div>
                         </label>
                         <label className="block min-w-0">
-                          <span className="text-sm font-medium text-gray-700">Job Category <span className="text-red-500">*</span></span>
+                          <span className="text-sm font-medium text-gray-700">{t("dashboard.selectJobCategory")} <span className="text-red-500">*</span></span>
                           <div ref={categoryDropdownRef} className="mt-1 relative">
                             <input type="hidden" name="jobCategoryCode" value={selectedJobCategory ?? ""} />
                             <button
@@ -1262,8 +1300,8 @@ export default function DashboardLayout() {
                             >
                               <span className={selectedJobCategory ? "text-gray-900 font-medium" : "text-gray-500"}>
                                 {selectedJobCategory
-                                  ? jobCategories.find((c) => c.code === selectedJobCategory)?.title ?? "—"
-                                  : t("dashboard.chooseCategory", "Choose category")}
+                                  ? getLocalizedJobCategory(jobCategories.find((c) => c.code === selectedJobCategory) ?? { code: selectedJobCategory, title: "—" })
+                                  : t("dashboard.chooseCategory")}
                               </span>
                               <svg className={`w-5 h-5 text-gray-400 flex-shrink-0 ml-2 transition-transform duration-200 ${categoryDropdownOpen ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
                             </button>
@@ -1290,7 +1328,7 @@ export default function DashboardLayout() {
                                           : "text-gray-700 hover:bg-gray-50 hover:text-gray-900"
                                       }`}
                                     >
-                                      {cat.title}
+                                      {getLocalizedJobCategory(cat)}
                                     </button>
                                   ))}
                                 </div>
@@ -1302,14 +1340,14 @@ export default function DashboardLayout() {
                           )}
                         </label>
                         <label className="block min-w-0">
-                          <span className="text-sm font-medium text-gray-700">Hourly rate (MDL/hour) <span className="text-red-500">*</span></span>
+                          <span className="text-sm font-medium text-gray-700">{t("dashboard.hourlyRateLabel")} <span className="text-red-500">*</span></span>
                           <input
                             name="hourlyRateBase"
                             type="number"
                             inputMode="decimal"
                             min="0"
                             step="0.01"
-                            placeholder="e.g. 65"
+                            placeholder={t("dashboard.hourlyRatePlaceholder")}
                             value={hourlyRate}
                             onChange={(e) => {
                               const value = e.target.value;
@@ -1419,7 +1457,7 @@ export default function DashboardLayout() {
                       {/* Raion Selection */}
                       <label className="block">
                         <span className="text-sm font-medium text-gray-700 mb-1 block">
-                          Raion / Municipiu <span className="text-red-500">*</span>
+                          {t("dashboard.raionLabel")} <span className="text-red-500">*</span>
                         </span>
                         <div ref={raionDropdownRef} className="relative">
                           <input
@@ -1431,7 +1469,7 @@ export default function DashboardLayout() {
                               setPostJobFieldErrors((prev) => ({ ...prev, raionId: undefined }));
                             }}
                             onFocus={() => setRaionDropdownOpen(true)}
-                            placeholder="Căutare raion (ex: Chișinău, Cahul, Bălți...)"
+                            placeholder={t("dashboard.raionPlaceholder")}
                             className={`mt-1 block w-full px-4 py-2.5 rounded-xl border ${
                               postJobFieldErrors.raionId ? "border-red-400" : "border-gray-200"
                             } focus:ring-2 focus:ring-primary focus:border-primary transition-colors`}
@@ -1467,7 +1505,7 @@ export default function DashboardLayout() {
                           )}
                           {selectedRaionId && (
                             <div className="mt-1 text-xs text-gray-500">
-                              Selectat: {raioane.find((r) => r.id === selectedRaionId)?.name}
+                              {t("dashboard.selectedRaion")}: {raioane.find((r) => r.id === selectedRaionId)?.name}
                             </div>
                           )}
                         </div>
@@ -1479,7 +1517,7 @@ export default function DashboardLayout() {
                       {/* Localitate Input */}
                       <label className="block">
                         <span className="text-sm font-medium text-gray-700 mb-1 block">
-                          Localitate (Oraș / Sat)
+                          {t("dashboard.localityLabel")}
                         </span>
                         <input
                           type="text"
@@ -1489,13 +1527,13 @@ export default function DashboardLayout() {
                             setLocalitate(e.target.value);
                             setPostJobFieldErrors((prev) => ({ ...prev, localitate: undefined }));
                           }}
-                          placeholder="ex: Centru, Botanica, Râșcani..."
+                          placeholder={t("dashboard.localityPlaceholder")}
                           maxLength={200}
                           className={`mt-1 block w-full px-4 py-2.5 rounded-xl border ${
                             postJobFieldErrors.localitate ? "border-red-400" : "border-gray-200"
                           } focus:ring-2 focus:ring-primary focus:border-primary transition-colors`}
                         />
-                        <p className="mt-1 text-xs text-gray-500">Numele localității (oraș, sat, cartier)</p>
+                        <p className="mt-1 text-xs text-gray-500">{t("dashboard.localityHint")}</p>
                         {postJobFieldErrors.localitate && (
                           <p className="mt-1 text-sm text-red-600">{postJobFieldErrors.localitate}</p>
                         )}
@@ -1523,21 +1561,34 @@ export default function DashboardLayout() {
                       <label className="block">
                         <span className="text-sm font-medium text-gray-700">{t("dashboard.jobImage")}</span>
                         <input
+                          id="post-job-image-input"
                           type="file"
                           accept="image/*"
-                          className="mt-1 block w-full text-sm text-gray-500 file:mr-3 file:py-2 file:px-4 file:rounded-xl file:border-0 file:bg-primary file:text-white file:font-medium"
+                          className="sr-only"
                           onChange={(e) => {
                             const file = e.target.files?.[0];
                             if (!file || !file.type.startsWith("image/")) return;
+                            setJobImageName(file.name);
                             const reader = new FileReader();
                             reader.onload = () => setJobImage(reader.result as string);
                             reader.readAsDataURL(file);
                           }}
                         />
+                        <div className="mt-1 flex flex-wrap items-center gap-3">
+                          <label
+                            htmlFor="post-job-image-input"
+                            className="inline-flex cursor-pointer items-center rounded-xl bg-primary px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-primary/90"
+                          >
+                            {t("dashboard.chooseFile")}
+                          </label>
+                          <span className="text-sm text-gray-500">
+                            {jobImageName || t("dashboard.noFileChosen")}
+                          </span>
+                        </div>
                         {jobImage && (
                           <div className="mt-2 relative inline-block">
                             <img src={jobImage} alt="" className="h-24 w-auto rounded-xl border border-gray-200 object-cover" />
-                            <button type="button" onClick={() => setJobImage(null)} className="absolute -top-1 -right-1 w-6 h-6 rounded-full bg-red-500 text-white text-sm leading-none" aria-label={t("dashboard.removeImage")}>×</button>
+                            <button type="button" onClick={() => { setJobImage(null); setJobImageName(""); }} className="absolute -top-1 -right-1 w-6 h-6 rounded-full bg-red-500 text-white text-sm leading-none" aria-label={t("dashboard.removeImage")}>×</button>
                           </div>
                         )}
                       </label>

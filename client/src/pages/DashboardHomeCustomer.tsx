@@ -13,11 +13,11 @@ function hoursBetween(start: string, end: string): number {
 }
 
 function formatTimeOnly(iso?: string): string {
-  if (!iso) return "Încă nu a făcut";
+  if (!iso) return "—";
   return new Date(iso).toLocaleTimeString("ro-MD", { hour: "2-digit", minute: "2-digit" });
 }
 
-function getCheckInTime(app: AppWithSessions): string {
+function getCheckInTime(app: AppWithSessions, emptyLabel: string): string {
   // Check workSessions first (most recent session with check-in)
   if (app.workSessions && app.workSessions.length > 0) {
     const sessionsWithCheckIn = app.workSessions.filter(s => s.checkedInAt);
@@ -30,10 +30,10 @@ function getCheckInTime(app: AppWithSessions): string {
     }
   }
   // Fallback to application-level check-in
-  return formatTimeOnly(app.checkedInAt);
+  return app.checkedInAt ? formatTimeOnly(app.checkedInAt) : emptyLabel;
 }
 
-function getCheckOutTime(app: AppWithSessions): string {
+function getCheckOutTime(app: AppWithSessions, emptyLabel: string): string {
   // Check workSessions first (most recent session with check-out)
   if (app.workSessions && app.workSessions.length > 0) {
     const sessionsWithCheckOut = app.workSessions.filter(s => s.checkedOutAt);
@@ -46,7 +46,7 @@ function getCheckOutTime(app: AppWithSessions): string {
     }
   }
   // Fallback to application-level check-out
-  return formatTimeOnly(app.checkedOutAt);
+  return app.checkedOutAt ? formatTimeOnly(app.checkedOutAt) : emptyLabel;
 }
 
 type AppWithSessions = { 
@@ -137,6 +137,26 @@ export default function DashboardHomeCustomer() {
   );
   const ratingValue = userRating?.average ?? 0;
   const ratingReviews = userRating?.count ?? 0;
+  const localizedEmptyCheckLabel = t("dashboard.notYetDone");
+
+  const getLocalizedOpenJobStatus = useCallback(
+    (status: string) => {
+      const normalized = status.trim().toLowerCase();
+      if (normalized === "draft") return t("dashboard.draft");
+      if (normalized === "published") return t("dashboard.published");
+      if (normalized === "confirmed") return t("dashboard.confirmed");
+      if (normalized === "pending") return t("dashboard.jobStatusSearching");
+      if (normalized === "accepted") return t("dashboard.jobStatusInProcess");
+      if (normalized === "inprocess" || normalized === "in_process" || normalized === "checkedin" || normalized === "checked_in") {
+        return t("dashboard.inProcess");
+      }
+      if (normalized === "finished" || normalized === "completed" || normalized === "checkedout" || normalized === "checked_out") {
+        return t("dashboard.finished");
+      }
+      return status;
+    },
+    [t]
+  );
   // Compute jobs with no accepted applications
   const jobsWithNoAcceptances = useMemo(() => {
     const noAcceptances: JobRow[] = [];
@@ -248,13 +268,13 @@ export default function DashboardHomeCustomer() {
           </div>
         </header>
 
-        {/* Active Jobs Section - Aplicații În Proces */}
+        {/* Active Jobs Section */}
         <section className="mb-6 md:mb-8">
           <div className="bg-white rounded-xl sm:rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
             <div className="p-3 sm:p-4 border-b border-gray-200">
-              <h2 className="font-bold text-gray-900 text-sm sm:text-base">Aplicații În Proces</h2>
+              <h2 className="font-bold text-gray-900 text-sm sm:text-base">{t("dashboard.applicationsInProcessTitle")}</h2>
               <p className="text-xs text-gray-500 mt-1">
-                Joburi cu angajați acceptați, fără check-in/check-out sau doar cu check-in
+                {t("dashboard.applicationsInProcessDesc")}
               </p>
             </div>
             <div className="overflow-x-auto">
@@ -263,9 +283,9 @@ export default function DashboardHomeCustomer() {
                   <tr className="text-left text-xs sm:text-sm text-gray-500 border-b border-gray-200 bg-gray-50/80">
                     <th className="p-3 sm:p-4 font-medium">{t("dashboard.jobName")}</th>
                     <th className="p-3 sm:p-4 font-medium">{t("dashboard.location")}</th>
-                    <th className="p-3 sm:p-4 font-medium">Check-in</th>
-                    <th className="p-3 sm:p-4 font-medium">Check-out</th>
-                    <th className="p-3 sm:p-4 font-medium">Nume angajat</th>
+                    <th className="p-3 sm:p-4 font-medium">{t("dashboard.checkIn")}</th>
+                    <th className="p-3 sm:p-4 font-medium">{t("dashboard.checkOut")}</th>
+                    <th className="p-3 sm:p-4 font-medium">{t("dashboard.staffName")}</th>
                     <th className="p-3 sm:p-4 font-medium">{t("dashboard.date")}</th>
                     <th className="p-3 sm:p-4 font-medium">{t("dashboard.actions")}</th>
                   </tr>
@@ -274,7 +294,7 @@ export default function DashboardHomeCustomer() {
                   {activeJobs.length === 0 ? (
                     <tr>
                       <td colSpan={7} className="p-8 sm:p-12 text-center">
-                        <p className="text-gray-500 text-sm sm:text-base">Nu aveti aplicatii in progress</p>
+                        <p className="text-gray-500 text-sm sm:text-base">{t("dashboard.noApplicationsInProgress")}</p>
                       </td>
                     </tr>
                   ) : (
@@ -287,8 +307,8 @@ export default function DashboardHomeCustomer() {
                           setSelectedApplication({ job: row, application: firstApp });
                         }
                       };
-                      const checkInTime = firstApp ? getCheckInTime(firstApp) : "Încă nu a făcut";
-                      const checkOutTime = firstApp ? getCheckOutTime(firstApp) : "Încă nu a făcut";
+                      const checkInTime = firstApp ? getCheckInTime(firstApp, localizedEmptyCheckLabel) : localizedEmptyCheckLabel;
+                      const checkOutTime = firstApp ? getCheckOutTime(firstApp, localizedEmptyCheckLabel) : localizedEmptyCheckLabel;
                       return (
                         <tr
                           key={jobId}
@@ -337,12 +357,12 @@ export default function DashboardHomeCustomer() {
           </div>
         </section>
 
-        {/* Posted Jobs (No Acceptances) Section - Aplicații Deschise */}
+        {/* Posted Jobs (No Acceptances) Section */}
         <section className="mb-6 md:mb-8">
           <div className="bg-white rounded-xl sm:rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
             <div className="p-3 sm:p-4 border-b border-gray-200">
-              <h2 className="font-bold text-gray-900 text-sm sm:text-base">Aplicații Deschise</h2>
-              <p className="text-xs text-gray-500 mt-1">Joburi postate care nu au încă angajați acceptați</p>
+              <h2 className="font-bold text-gray-900 text-sm sm:text-base">{t("dashboard.openApplicationsTitle")}</h2>
+              <p className="text-xs text-gray-500 mt-1">{t("dashboard.openApplicationsDesc")}</p>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full min-w-[640px]">
@@ -361,7 +381,7 @@ export default function DashboardHomeCustomer() {
                   {jobsWithNoAcceptances.length === 0 ? (
                     <tr>
                       <td colSpan={7} className="p-8 sm:p-12 text-center">
-                        <p className="text-gray-500 text-sm sm:text-base">Nu aveti aplicatii deschise</p>
+                        <p className="text-gray-500 text-sm sm:text-base">{t("dashboard.noOpenApplications")}</p>
                       </td>
                     </tr>
                   ) : (
@@ -394,7 +414,7 @@ export default function DashboardHomeCustomer() {
                               : "—"}
                           </td>
                           <td className="p-3 sm:p-4">
-                            <span className={`px-2 py-1 rounded-lg text-xs font-medium ${row.statusClass}`}>{row.status}</span>
+                            <span className={`px-2 py-1 rounded-lg text-xs font-medium ${row.statusClass}`}>{getLocalizedOpenJobStatus(row.status)}</span>
                           </td>
                           <td className="p-3 sm:p-4 text-gray-600 text-sm">{row.date}</td>
                           <td className="p-3 sm:p-4 text-gray-600 text-sm">
@@ -456,8 +476,8 @@ export default function DashboardHomeCustomer() {
                   </svg>
                 </span>
                 <div className="text-left">
-                  <h2 className="font-bold text-gray-900 text-sm sm:text-base">Aplicații Închise și Arhivate</h2>
-                  <p className="text-xs text-gray-500 mt-0.5">Joburi finalizate cu check-out completat</p>
+                  <h2 className="font-bold text-gray-900 text-sm sm:text-base">{t("dashboard.closedArchivedApplicationsTitle")}</h2>
+                  <p className="text-xs text-gray-500 mt-0.5">{t("dashboard.closedArchivedApplicationsDesc")}</p>
                 </div>
               </div>
               <div className="flex items-center gap-2">
@@ -483,9 +503,9 @@ export default function DashboardHomeCustomer() {
                     <tr className="text-left text-xs sm:text-sm text-gray-500 border-b border-gray-200 bg-gray-50/80">
                       <th className="p-3 sm:p-4 font-medium">{t("dashboard.jobName")}</th>
                       <th className="p-3 sm:p-4 font-medium">{t("dashboard.location")}</th>
-                      <th className="p-3 sm:p-4 font-medium">Check-in</th>
-                      <th className="p-3 sm:p-4 font-medium">Check-out</th>
-                      <th className="p-3 sm:p-4 font-medium">Nume angajat</th>
+                      <th className="p-3 sm:p-4 font-medium">{t("dashboard.checkIn")}</th>
+                      <th className="p-3 sm:p-4 font-medium">{t("dashboard.checkOut")}</th>
+                      <th className="p-3 sm:p-4 font-medium">{t("dashboard.staffName")}</th>
                       <th className="p-3 sm:p-4 font-medium">{t("dashboard.date")}</th>
                       <th className="p-3 sm:p-4 font-medium">{t("dashboard.actions")}</th>
                     </tr>
@@ -494,9 +514,7 @@ export default function DashboardHomeCustomer() {
                     {archivedJobs.length === 0 ? (
                       <tr>
                         <td colSpan={7} className="p-8 sm:p-12 text-center">
-                          <p className="text-gray-500 text-sm sm:text-base">
-                            Nu aveti aplicatii inchise sau arhivate
-                          </p>
+                          <p className="text-gray-500 text-sm sm:text-base">{t("dashboard.noClosedArchivedApplications")}</p>
                         </td>
                       </tr>
                     ) : (
@@ -509,8 +527,8 @@ export default function DashboardHomeCustomer() {
                             setSelectedApplication({ job: row, application: firstApp });
                           }
                         };
-                        const checkInTime = firstApp ? getCheckInTime(firstApp) : "Încă nu a făcut";
-                        const checkOutTime = firstApp ? getCheckOutTime(firstApp) : "Încă nu a făcut";
+                        const checkInTime = firstApp ? getCheckInTime(firstApp, localizedEmptyCheckLabel) : localizedEmptyCheckLabel;
+                        const checkOutTime = firstApp ? getCheckOutTime(firstApp, localizedEmptyCheckLabel) : localizedEmptyCheckLabel;
                         return (
                           <tr
                             key={jobId}
