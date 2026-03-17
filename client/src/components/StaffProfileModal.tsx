@@ -574,7 +574,7 @@ export default function StaffProfileModal({
                             </div>
                             <div className="min-w-0 flex-1">
                               <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                                <StarRating value={r.score} size={18} />
+                                <StarRating value={r.otherPartyRatingAverage ?? r.score} size={18} />
                                 <span className="text-xs font-medium text-primary px-2 py-0.5 rounded-full bg-primary/15 border border-primary/25">
                                   {r.otherPartyRole === "staff" ? t("dashboard.roleStaff") : r.otherPartyRole === "admin" ? t("dashboard.roleAdmin") : t("dashboard.roleCustomer")}
                                 </span>
@@ -582,6 +582,15 @@ export default function StaffProfileModal({
                               {r.otherPartyName && (
                                 <p className="text-sm font-medium text-gray-800 mt-1">
                                   {t("dashboard.reviewBy", "Recenzie de la")}: <span className="font-semibold text-[#333]">{r.otherPartyName}</span>
+                                </p>
+                              )}
+                              {(r.otherPartyRatingAverage != null || r.score != null) && (
+                                <p className="text-xs text-gray-500 mt-1">
+                                  {r.otherPartyRatingAverage != null
+                                    ? `${t("dashboard.profileRating", "Rating profil")}: ${r.otherPartyRatingAverage.toFixed(1)}${r.otherPartyRatingCount ? ` (${r.otherPartyRatingCount})` : ""}`
+                                    : ""}
+                                  {r.otherPartyRatingAverage != null ? " • " : ""}
+                                  {t("dashboard.reviewScore", "Scor recenzie")}: {r.score.toFixed(1)}
                                 </p>
                               )}
                               {r.createdAt && (

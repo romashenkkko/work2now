@@ -17,6 +17,7 @@ function getApiBase(): string {
 }
 
 function getToken(): string | null {
+  if (typeof window === "undefined") return null;
   return localStorage.getItem("token");
 }
 
@@ -347,8 +348,11 @@ export type ReviewItem = {
   applicationId: string;
   jobTitle?: string;
   otherPartyName?: string;
+  otherPartyUserId?: string;
   otherPartyAvatar?: string;
   otherPartyRole?: string;
+  otherPartyRatingAverage?: number;
+  otherPartyRatingCount?: number;
   score: number;
   comment?: string;
   photoUrl?: string;

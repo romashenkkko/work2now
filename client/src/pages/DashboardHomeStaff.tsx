@@ -68,6 +68,11 @@ export default function DashboardHomeStaff() {
           return !Number.isFinite(acceptedCount) || acceptedCount <= 0;
         });
         const list = openJobs
+          .filter((job, index, arr) => {
+            const jobId = String(job.id ?? "").trim();
+            if (!jobId) return index === arr.findIndex((item) => String(item.id ?? "").trim() === "");
+            return index === arr.findIndex((item) => String(item.id ?? "").trim() === jobId);
+          })
           .slice(0, 3)
           .map((j) => ({
             id: String(j.id ?? ""),
@@ -593,12 +598,14 @@ export default function DashboardHomeStaff() {
                           <button
                             type="button"
                             onClick={() => setExpandedJobId(isExpanded ? null : app.jobId)}
-                            className="text-xs text-primary hover:underline flex items-center gap-1"
+                            className="inline-flex items-center gap-1.5 rounded-full border border-primary/15 bg-primary/5 px-3 py-1.5 text-xs font-semibold text-primary shadow-sm transition-all hover:-translate-y-0.5 hover:bg-primary/10 hover:shadow-md"
                           >
+                            <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-white text-primary shadow-sm">
+                              <svg className={`w-3 h-3 transition-transform ${isExpanded ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                              </svg>
+                            </span>
                             {isExpanded ? t("dashboard.hideDetails") || "Ascunde detalii" : t("dashboard.showDetails") || "Vezi detalii"}
-                            <svg className={`w-3 h-3 transition-transform ${isExpanded ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                            </svg>
                           </button>
                         </div>
                       </div>
@@ -672,12 +679,12 @@ export default function DashboardHomeStaff() {
               ) : recommendedJobs.length === 0 ? (
                 <div className="p-4 text-center text-gray-500 text-sm">{t("dashboard.noRecommendedJobs") || "Niciun job public disponibil."}</div>
               ) : (
-                recommendedJobs.map((j) => {
+                recommendedJobs.map((j, idx) => {
                   const appInfo = applicationsByJob[j.id];
                   const applied = !!appInfo;
                   return (
                     <div
-                      key={j.id}
+                      key={`${j.id || "job"}-${idx}`}
                       className="p-3 sm:p-4 flex items-center justify-between gap-3 hover:bg-gray-50/50"
                     >
                       <div className="min-w-0">
