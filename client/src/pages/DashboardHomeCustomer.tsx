@@ -67,7 +67,7 @@ type AppWithSessions = {
 export default function DashboardHomeCustomer() {
   const { t } = useTranslation();
   const { user } = useAuth();
-  const { openPostJobModal, jobsAdded, removeJob, userRating } = useContext(DashboardContext);
+  const { openPostJobModal, jobsAdded, removeJob } = useContext(DashboardContext);
   const [toast] = useState<string | null>(null);
   const [applicationsByJob, setApplicationsByJob] = useState<Record<string, AppWithSessions[]>>({});
   const [jobsArchiveExpanded, setJobsArchiveExpanded] = useState(false);
@@ -130,13 +130,6 @@ export default function DashboardHomeCustomer() {
   }, [user?.id, fetchApplications]);
 
   const allJobs = useMemo(() => [...jobsAdded], [jobsAdded]);
-
-  const totalApplications = useMemo(
-    () => allJobs.reduce((sum, j) => sum + (j.applicationsCount ?? 0), 0),
-    [allJobs]
-  );
-  const ratingValue = userRating?.average ?? 0;
-  const ratingReviews = userRating?.count ?? 0;
   const localizedEmptyCheckLabel = t("dashboard.notYetDone");
 
   const getLocalizedOpenJobStatus = useCallback(

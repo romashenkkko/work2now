@@ -167,6 +167,7 @@ export default function DashboardJoburi() {
   const [categoryOpen, setCategoryOpen] = useState(false);
   const [professionOpen, setProfessionOpen] = useState(false);
   const [professionFilter, setProfessionFilter] = useState<string>("all");
+  const [locationFilter] = useState<string>("all");
   const [raioane, setRaioane] = useState<Array<{ id: number; name: string; type: string }>>([]);
   const categoryRef = useRef<HTMLDivElement>(null);
   const professionRef = useRef<HTMLDivElement>(null);
@@ -628,10 +629,6 @@ export default function DashboardJoburi() {
       { value: "one-day", label: t("dashboard.oneDayJob") },
       { value: "multi-day", label: t("dashboard.multiDayJob") },
       { value: "full-time", label: t("dashboard.fullTimeRecruitment") },
-    ];
-    const locationOptions = [
-      { value: "all", label: t("findJobs.allLocations") },
-      ...raioane.map((raion) => ({ value: raion.name, label: raion.name })),
     ];
     return (
       <>

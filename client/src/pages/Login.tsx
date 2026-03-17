@@ -20,7 +20,7 @@ export default function Login() {
     try {
       const user = await login(email, password);
       const role = user?.role?.toLowerCase?.();
-      
+
       // Check if staff needs onboarding
       if (role === "staff") {
         try {
@@ -33,9 +33,9 @@ export default function Login() {
           // If check fails, proceed to dashboard
         }
       }
-      
-      const isCustomerOrStaff = role === "customer" || role === "staff";
-      navigate(isCustomerOrStaff ? "/dashboard/joburi" : "/dashboard", { replace: true });
+
+      // After successful login, send ALL users (staff, business, admin) to the main dashboard home
+      navigate("/dashboard", { replace: true });
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Autentificare esuata.";
       const isServerError = /Internal Server Error|Eroare|server|Failed to fetch|nu raspunde/i.test(msg);

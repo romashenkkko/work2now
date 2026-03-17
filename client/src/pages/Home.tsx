@@ -1,15 +1,17 @@
-import { Link } from "react-router-dom";
+import { Link, Navigate } from "react-router-dom";
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { Building2, UserRound, Zap, Monitor, Sparkles, CalendarClock, ClipboardList, UsersRound, Landmark } from "lucide-react";
 import { useRoleModal } from "../context/RoleModalContext";
 import { useInView } from "../hooks/useInView";
+import { useAuth } from "../hooks/useAuth";
 
 const statsIcons = [ClipboardList, UsersRound, Landmark] as const;
 const STATS_ANIMATION_DURATION_MS = 900;
 
 export default function Home() {
   const { t } = useTranslation();
+  const { user, loading } = useAuth();
   const roleModal = useRoleModal();
   const statsInView = useInView({ threshold: 0.15 });
   const [statsAnimationLocked, setStatsAnimationLocked] = useState(false);
@@ -43,6 +45,11 @@ export default function Home() {
     { key: "matching", desc: "matchingDesc", primary: false },
     { key: "flex", desc: "flexDesc", primary: false },
   ];
+
+  // If the user is already logged in, redirect them to the main dashboard home
+  if (!loading && user) {
+    return <Navigate to="/dashboard" replace />;
+  }
 
   return (
     <>

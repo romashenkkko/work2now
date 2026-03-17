@@ -28,25 +28,6 @@ function ApplicantAvatar({ staffAvatar }: { staffAvatar?: string }) {
   );
 }
 
-function formatAppTime(iso: string): string {
-  try {
-    const d = new Date(iso);
-    return d.toLocaleTimeString("ro-RO", { hour: "2-digit", minute: "2-digit" });
-  } catch {
-    return iso;
-  }
-}
-
-function formatAppDate(ymd: string): string {
-  try {
-    const [y, m, day] = ymd.split("-").map(Number);
-    const d = new Date(y, (m ?? 1) - 1, day ?? 1);
-    return d.toLocaleDateString("ro-RO", { day: "numeric", month: "short" });
-  } catch {
-    return ymd;
-  }
-}
-
 function getIsoDatePart(value?: string): string {
   if (!value) return "";
   if (/^\d{4}-\d{2}-\d{2}/.test(value)) return value.slice(0, 10);
