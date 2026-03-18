@@ -1,15 +1,10 @@
-import dotenv from "dotenv";
-import path from "path";
-
-// Always load .env from /server folder, even when running from /src
-dotenv.config({
-  path: path.resolve(__dirname, "../.env"),
-});
+import "./env";
 import "express-async-errors";
 import express from "express";
 import cors from "cors";
 import fs from "fs";
 import os from "os";
+import path from "path";
 import authRoutes, { ensureDefaultAdmin } from "./routes/auth";
 import jobsRoutes from "./routes/jobs";
 import ratingsRoutes from "./routes/ratings";

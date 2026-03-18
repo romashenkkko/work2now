@@ -1,3 +1,5 @@
+import "./env";
+import "./env";
 import { PrismaClient } from "@prisma/client";
 
 // Single shared PrismaClient instance for the whole API.

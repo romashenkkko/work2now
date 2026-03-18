@@ -371,19 +371,10 @@ export async function registerUser(input: RegisterInput) {
     await sendTermsAcceptanceEmail(emailTrim, displayName || nameTrim);
     return { message: "Cont creat cu succes. Acum te poti autentifica." };
   } catch (error) {
-    if (useMemoryFallback() && isDbConnectionError(error)) {
-      const existing = memoryUsers.find((u) => u.email.toLowerCase() === emailTrim.toLowerCase());
-      if (existing) throw new ServiceError("Email deja folosit.", 400);
-      memoryUsers.push({
-        id: `memory-${randomUUID()}`,
-        name: nameTrim,
-        email: emailTrim,
-        passwordHash: await bcrypt.hash(password, 10),
-        role: allowedRole === "customer" ? "customer" : allowedRole === "admin" ? "admin" : "staff",
-      });
-      await sendTermsAcceptanceEmail(emailTrim, nameTrim);
-      return { message: "Cont creat cu succes. Acum te poti autentifica." };
-    }
+    // In development we previously fell back to an in-memory user list when Prisma failed.
+    // That made the UI show success while data was NOT saved to the real database.
+    // To keep behavior predictable and ensure persistence, we now always surface the real DB error.
+    console.error("[Auth] registerUser failed (no memory fallback):", error);
     throw error;
   }
 }
