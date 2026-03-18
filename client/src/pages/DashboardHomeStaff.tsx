@@ -550,8 +550,8 @@ export default function DashboardHomeStaff() {
           </div>
         </header>
 
-        <section className="grid grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-6 mb-6 md:mb-8">
-          <article className="p-4 sm:p-6 rounded-xl sm:rounded-2xl bg-white border border-gray-200 shadow-sm flex items-start gap-3 sm:gap-4">
+        <section className="w-full min-w-0 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-6 mb-6 md:mb-8 overflow-x-hidden">
+          <article className="p-4 sm:p-6 rounded-xl sm:rounded-2xl bg-white border border-gray-200 shadow-sm flex items-start gap-3 sm:gap-4 min-w-0">
             <div className="flex-shrink-0 w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-primary/10 flex items-center justify-center">
               <svg className="w-6 h-6 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
@@ -562,7 +562,7 @@ export default function DashboardHomeStaff() {
               <p className="text-xl sm:text-2xl font-bold text-gray-900">{pendingCount}</p>
             </div>
           </article>
-          <article className="p-4 sm:p-6 rounded-xl sm:rounded-2xl bg-white border border-gray-200 shadow-sm flex items-start gap-3 sm:gap-4">
+          <article className="p-4 sm:p-6 rounded-xl sm:rounded-2xl bg-white border border-gray-200 shadow-sm flex items-start gap-3 sm:gap-4 min-w-0">
             <div className="flex-shrink-0 w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-green-100 flex items-center justify-center">
               <CheckCircle2 className="w-6 h-6 text-green-600" />
             </div>
@@ -571,7 +571,7 @@ export default function DashboardHomeStaff() {
               <p className="text-xl sm:text-2xl font-bold text-gray-900">{acceptedJobsCount}</p>
             </div>
           </article>
-          <article className="p-4 sm:p-6 rounded-xl sm:rounded-2xl bg-white border border-gray-200 shadow-sm flex items-start gap-3 sm:gap-4">
+          <article className="p-4 sm:p-6 rounded-xl sm:rounded-2xl bg-white border border-gray-200 shadow-sm flex items-start gap-3 sm:gap-4 min-w-0">
             <div className="flex-shrink-0 w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-blue-100 flex items-center justify-center">
               <ClipboardCheck className="w-6 h-6 text-blue-600" />
             </div>
@@ -580,7 +580,7 @@ export default function DashboardHomeStaff() {
               <p className="text-xl sm:text-2xl font-bold text-gray-900">{finishedJobsCount}</p>
             </div>
           </article>
-          <article className="p-4 sm:p-6 rounded-xl sm:rounded-2xl bg-white border border-gray-200 shadow-sm flex items-start gap-3 sm:gap-4">
+          <article className="p-4 sm:p-6 rounded-xl sm:rounded-2xl bg-white border border-gray-200 shadow-sm flex items-start gap-3 sm:gap-4 min-w-0">
             <div className="flex-shrink-0 w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-primary/10 flex items-center justify-center">
               {RATING_ICON}
             </div>
@@ -594,7 +594,7 @@ export default function DashboardHomeStaff() {
               </div>
             </div>
           </article>
-          <article className="p-4 sm:p-6 rounded-xl sm:rounded-2xl bg-white border border-primary/30 bg-primary/5 shadow-sm flex items-start gap-3 sm:gap-4">
+          <article className="p-4 sm:p-6 rounded-xl sm:rounded-2xl bg-white border border-primary/30 bg-primary/5 shadow-sm flex items-start gap-3 sm:gap-4 min-w-0">
             <div className="flex-shrink-0 w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-primary/10 flex items-center justify-center">
               <svg className="w-6 h-6 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -802,8 +802,9 @@ export default function DashboardHomeStaff() {
                             </span>
                           )}
                         </p>
-                        <span className="text-xs sm:text-sm text-gray-500">
-                          {j.location}{j.jobType ? ` · ${j.jobType}` : ""}
+                        <span className="text-xs sm:text-sm text-gray-500 truncate">
+                          {j.location}
+                          {j.jobType ? ` · ${j.jobType}` : ""}
                         </span>
                       </div>
                       {applied ? (
