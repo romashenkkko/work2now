@@ -128,6 +128,17 @@ export default function DashboardHomeCustomer() {
 
   const allJobs = useMemo(() => [...jobsAdded], [jobsAdded]);
 
+  /** Joburi cu cel puțin o aplicare vs fără (pentru diagramă acasă) */
+  const jobsAppDistribution = useMemo(() => {
+    let withApps = 0;
+    allJobs.forEach((job, i) => {
+      const jobId = ("id" in job && job.id != null ? String(job.id) : `job-${i}`);
+      if ((applicationsByJob[jobId] ?? []).length > 0) withApps++;
+    });
+    const total = allJobs.length;
+    return { withApps, withoutApps: total - withApps, total };
+  }, [allJobs, applicationsByJob]);
+
   const localizedEmptyCheckLabel = t("dashboard.notYetDone");
   // Compute jobs with no accepted applications
   const jobsWithNoAcceptances = useMemo(() => {
@@ -630,116 +641,132 @@ export default function DashboardHomeCustomer() {
           </div>
         </section>
 
-      {/* Branch distribution – pie chart + legend (same component as in reports) */}
+      {/* Distribuție joburi: cu / fără aplicații — donut + bare (responsive) */}
       <section className="mt-6 md:mt-8">
-        <div className="bg-white rounded-xl sm:rounded-2xl border border-gray-200 shadow-sm p-4 sm:p-6">
-          <h3 className="text-sm font-semibold text-gray-900 mb-4">
-            {t("dashboard.branchesDistribution") || "Distribuția joburilor pe filiale"}
-          </h3>
-          <div className="flex flex-col sm:flex-row gap-6 items-center sm:items-start">
-            <div className="flex-shrink-0">
-              {/* Simple 2-slice pie: jobs with applications vs without (per current business) */}
-              {(() => {
-                const withApps = allJobs.filter((job, i) => {
-                  const jobId = ("id" in job && job.id != null ? String(job.id) : `job-${i}`);
-                  const apps = applicationsByJob[jobId] ?? [];
-                  return apps.length > 0;
-                }).length;
-                const withoutApps = allJobs.length - withApps;
-                const data = [
-                  { code: "with", title: t("dashboard.jobsWithApplications", "Joburi cu aplicații"), count: withApps },
-                  { code: "without", title: t("dashboard.jobsWithoutApplications", "Joburi fără aplicații"), count: withoutApps },
-                ];
-                const total = data.reduce((sum, d) => sum + d.count, 0);
-                if (total === 0) {
+        <div className="overflow-hidden rounded-2xl border border-gray-200/80 bg-white shadow-sm">
+          <div className="border-b border-primary/10 bg-gradient-to-br from-primary/[0.07] via-white to-violet-50/60 px-4 py-3 sm:px-6 sm:py-4">
+            <h3 className="text-base font-bold tracking-tight text-gray-900">
+              {t("dashboard.branchesDistribution") || "Distribuția joburilor pe filiale"}
+            </h3>
+            <p className="mt-0.5 text-xs text-gray-500 sm:text-sm">
+              {t("dashboard.jobsWithVsWithoutAppsHint", "Câte joburi au primit aplicații și câte nu.")}
+            </p>
+          </div>
+          <div className="p-4 sm:p-6">
+            {jobsAppDistribution.total === 0 ? (
+              <div className="flex min-h-[160px] flex-col items-center justify-center rounded-xl border border-dashed border-gray-200 bg-gray-50/80 py-10 text-center">
+                <p className="text-sm font-medium text-gray-600">{t("dashboard.noJobsYetShort", "Încă nu ai joburi postate.")}</p>
+                <p className="mt-1 max-w-sm text-xs text-gray-500">{t("dashboard.noData") || "Fără date"}</p>
+              </div>
+            ) : (
+              <div className="flex flex-col items-stretch gap-8 lg:flex-row lg:items-center lg:gap-10">
+                {(() => {
+                  const { withApps, withoutApps, total } = jobsAppDistribution;
+                  const withPct = total > 0 ? (withApps / total) * 100 : 0;
+                  const withoutPct = total > 0 ? (withoutApps / total) * 100 : 0;
                   return (
-                    <div className="w-48 h-48 rounded-full bg-gray-100 flex items-center justify-center">
-                      <span className="text-sm text-gray-500">
-                        {t("dashboard.noData") || "Fără date"}
-                      </span>
+                    <div className="relative mx-auto w-full max-w-[280px] shrink-0 overflow-hidden rounded-3xl border border-primary/12 bg-white px-6 py-8 text-center shadow-[0_12px_40px_-16px_rgba(122,99,241,0.35)] sm:px-8 sm:py-9">
+                      <div
+                        className="pointer-events-none absolute -right-12 -top-12 h-36 w-36 rounded-full bg-gradient-to-br from-primary/20 to-violet-300/25 blur-2xl"
+                        aria-hidden
+                      />
+                      <div
+                        className="pointer-events-none absolute -bottom-10 -left-10 h-32 w-32 rounded-full bg-violet-200/35 blur-2xl"
+                        aria-hidden
+                      />
+                      <p
+                        className="relative text-4xl font-bold tabular-nums tracking-tight text-transparent sm:text-5xl"
+                        style={{
+                          backgroundImage: "linear-gradient(135deg, #4f46e5 0%, #7a63f1 45%, #9d7bff 100%)",
+                          WebkitBackgroundClip: "text",
+                          backgroundClip: "text",
+                        }}
+                      >
+                        {total}
+                      </p>
+                      <p className="relative mt-1 text-xs font-semibold uppercase tracking-[0.2em] text-gray-500 sm:text-sm sm:tracking-[0.15em]">
+                        {t("dashboard.jobsTotalLabel", "joburi")}
+                      </p>
+                      <p className="relative mt-3 text-[0.7rem] leading-snug text-gray-500 sm:text-xs">
+                        {t("dashboard.jobsDistributionStripHint", "Repartiție rapidă")}
+                      </p>
+                      <div
+                        className="relative mt-4 flex h-3 overflow-hidden rounded-full bg-gray-100 ring-1 ring-gray-200/80"
+                        role="img"
+                        aria-label={t("dashboard.jobsWithApplications", "Joburi cu aplicații") + ` ${Math.round(withPct)}%, ` + t("dashboard.jobsWithoutApplications", "Joburi fără aplicații") + ` ${Math.round(withoutPct)}%`}
+                      >
+                        {withApps > 0 && (
+                          <div
+                            className="h-full min-w-0 bg-gradient-to-r from-[#6d5ae0] to-primary transition-all duration-500 first:rounded-l-full last:rounded-r-full"
+                            style={{ width: `${withPct}%` }}
+                          />
+                        )}
+                        {withoutApps > 0 && (
+                          <div
+                            className="h-full min-w-0 bg-gradient-to-r from-violet-300 to-[#d8b4fe] transition-all duration-500 first:rounded-l-full last:rounded-r-full"
+                            style={{ width: `${withoutPct}%` }}
+                          />
+                        )}
+                      </div>
+                      <div className="relative mt-3 flex justify-center gap-4 text-[0.65rem] text-gray-500 sm:text-xs">
+                        <span className="flex items-center gap-1.5">
+                          <span className="h-2 w-2 shrink-0 rounded-full bg-primary" />
+                          {withApps}
+                        </span>
+                        <span className="flex items-center gap-1.5">
+                          <span className="h-2 w-2 shrink-0 rounded-full bg-violet-300" />
+                          {withoutApps}
+                        </span>
+                      </div>
                     </div>
                   );
-                }
-
-                const colors = ["rgb(122 99 241)", "rgb(192 132 252)"];
-                let currentAngle = -90;
-                const radius = 60;
-                const centerX = 70;
-                const centerY = 70;
-
-                const paths = data.map((item, idx) => {
-                  const percentage = item.count / total;
-                  const angle = percentage * 360;
-                  const startAngle = currentAngle;
-                  const endAngle = currentAngle + angle;
-                  currentAngle += angle;
-
-                  const startAngleRad = (startAngle * Math.PI) / 180;
-                  const endAngleRad = (endAngle * Math.PI) / 180;
-
-                  const x1 = centerX + radius * Math.cos(startAngleRad);
-                  const y1 = centerY + radius * Math.sin(startAngleRad);
-                  const x2 = centerX + radius * Math.cos(endAngleRad);
-                  const y2 = centerY + radius * Math.sin(endAngleRad);
-
-                  const largeArcFlag = angle > 180 ? 1 : 0;
-
-                  const pathData = [
-                    `M ${centerX} ${centerY}`,
-                    `L ${x1} ${y1}`,
-                    `A ${radius} ${radius} 0 ${largeArcFlag} 1 ${x2} ${y2}`,
-                    "Z",
-                  ].join(" ");
-
-                  return (
-                    <path
-                      key={item.code}
-                      d={pathData}
-                      fill={colors[idx % colors.length]}
-                      stroke="white"
-                      strokeWidth={1.5}
-                    />
-                  );
-                });
-
-                return (
-                  <svg width={140} height={140} viewBox="0 0 140 140">
-                    <defs>
-                      <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
-                        <feDropShadow dx="0" dy="4" stdDeviation="4" floodColor="rgba(15,23,42,0.18)" />
-                      </filter>
-                    </defs>
-                    <g filter="url(#shadow)">{paths}</g>
-                  </svg>
-                );
-              })()}
-            </div>
-            <div className="flex-1 space-y-2 min-w-0">
-              {(() => {
-                const withApps = allJobs.filter((job, i) => {
-                  const jobId = ("id" in job && job.id != null ? String(job.id) : `job-${i}`);
-                  const apps = applicationsByJob[jobId] ?? [];
-                  return apps.length > 0;
-                }).length;
-                const withoutApps = allJobs.length - withApps;
-                const data = [
-                  { title: t("dashboard.jobsWithApplications", "Joburi cu aplicații"), count: withApps, color: "rgb(122 99 241)" },
-                  { title: t("dashboard.jobsWithoutApplications", "Joburi fără aplicații"), count: withoutApps, color: "rgb(192 132 252)" },
-                ];
-                const total = data.reduce((sum, d) => sum + d.count, 0) || 1;
-                return data.map((item) => {
-                  const percentage = Math.round((item.count / total) * 100);
-                  return (
-                    <div key={item.title} className="flex items-center gap-3">
-                      <div className="w-4 h-4 rounded flex-shrink-0" style={{ backgroundColor: item.color }} />
-                      <span className="text-sm text-gray-700 flex-1 truncate">{item.title}</span>
-                      <span className="text-sm font-semibold text-gray-900">{item.count}</span>
-                      <span className="text-xs text-gray-500">({percentage}%)</span>
-                    </div>
-                  );
-                });
-              })()}
-            </div>
+                })()}
+                <div className="w-full min-w-0 flex-1 space-y-3">
+                  {[
+                    {
+                      title: t("dashboard.jobsWithApplications", "Joburi cu aplicații"),
+                      count: jobsAppDistribution.withApps,
+                      color: "#7a63f1",
+                    },
+                    {
+                      title: t("dashboard.jobsWithoutApplications", "Joburi fără aplicații"),
+                      count: jobsAppDistribution.withoutApps,
+                      color: "#c084fc",
+                    },
+                  ].map((item) => {
+                    const pct =
+                      jobsAppDistribution.total > 0
+                        ? Math.round((item.count / jobsAppDistribution.total) * 100)
+                        : 0;
+                    return (
+                      <div
+                        key={item.title}
+                        className="rounded-xl border border-gray-100 bg-gray-50/60 p-3.5 shadow-sm transition-shadow hover:shadow-md sm:p-4"
+                      >
+                        <div className="mb-2 flex flex-wrap items-center gap-2 gap-y-1">
+                          <span className="h-2.5 w-2.5 shrink-0 rounded-full ring-2 ring-white shadow-sm" style={{ backgroundColor: item.color }} />
+                          <span className="min-w-0 flex-1 text-sm font-semibold text-gray-800">{item.title}</span>
+                          <span className="shrink-0 text-sm tabular-nums">
+                            <strong className="text-gray-900">{item.count}</strong>
+                            <span className="ml-1.5 text-xs font-medium text-gray-500">({pct}%)</span>
+                          </span>
+                        </div>
+                        <div className="h-2 overflow-hidden rounded-full bg-gray-200/80">
+                          <div
+                            className="h-full rounded-full transition-all duration-500 ease-out"
+                            style={{
+                              width: `${pct}%`,
+                              backgroundColor: item.color,
+                              minWidth: item.count > 0 ? "4px" : undefined,
+                            }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </section>

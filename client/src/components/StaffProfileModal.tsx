@@ -574,7 +574,8 @@ export default function StaffProfileModal({
                             </div>
                             <div className="min-w-0 flex-1">
                               <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                                <StarRating value={r.otherPartyRatingAverage ?? r.score} size={18} />
+                                {/* Scorul acestei recenzii, nu media profilului celuilalt */}
+                                <StarRating value={Math.max(0, Math.min(5, Number(r.score) || 0))} size={18} />
                                 <span className="text-xs font-medium text-primary px-2 py-0.5 rounded-full bg-primary/15 border border-primary/25">
                                   {r.otherPartyRole === "staff" ? t("dashboard.roleStaff") : r.otherPartyRole === "admin" ? t("dashboard.roleAdmin") : t("dashboard.roleCustomer")}
                                 </span>

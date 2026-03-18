@@ -18,6 +18,10 @@ type Props = {
   filledClassName?: string;
   emptyClassName?: string;
   size?: number;
+  /** Clase pe wrapper (ex. min-w-0 max-w-full pentru carduri înguste) */
+  className?: string;
+  /** Dacă true, stelele pot trece pe rândul următor (implicit false = un singur rând) */
+  allowWrap?: boolean;
 };
 
 export default function StarRating({
@@ -27,6 +31,8 @@ export default function StarRating({
   filledClassName = "text-amber-400",
   emptyClassName = "text-gray-300",
   size = 20,
+  className = "",
+  allowWrap = false,
 }: Props) {
   const v = Math.max(0, Math.min(MAX, value));
   const [hoverValue, setHoverValue] = useState<number | null>(null);
@@ -60,9 +66,15 @@ export default function StarRating({
     []
   );
 
+  const rootClass = editable
+    ? `inline-flex items-center gap-0.5 ${className}`.trim()
+    : allowWrap
+      ? `flex flex-wrap items-center gap-0.5 min-w-0 max-w-full ${className}`.trim()
+      : `inline-flex flex-nowrap items-center gap-0.5 shrink-0 ${className}`.trim();
+
   return (
     <div
-      className="inline-flex items-center gap-0.5"
+      className={rootClass}
       role={editable ? "group" : "img"}
       aria-label={editable ? undefined : `Rating: ${v.toFixed(1)} din ${MAX}`}
       onMouseLeave={() => editable && setHoverValue(null)}

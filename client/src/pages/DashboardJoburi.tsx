@@ -1,4 +1,4 @@
-import { useContext, useState, useEffect, useRef, useCallback } from "react";
+import { useContext, useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "../hooks/useAuth";
 import { DashboardContext, getApplications, setApplications, type JobRow, type Application, type JobType } from "./DashboardLayout";
@@ -7,7 +7,8 @@ import JobsMapModal from "../components/JobsMapModal";
 import JobScheduleModal from "../components/JobScheduleModal";
 import CustomerProfileModal from "../components/CustomerProfileModal";
 import StaffProfileModal from "../components/StaffProfileModal";
-import { MapPin, Clock, Users, Banknote, Calendar, Briefcase, Map, Search } from "lucide-react";
+import { MapPin, Clock, Users, Banknote, Calendar, Briefcase, Map, Search, Archive } from "lucide-react";
+import { addStaffArchivedJob, getArchivedApplicationIds } from "../utils/staffJobArchive";
 import { getBusinessTotal, roundMoney } from "../utils/salary";
 
 /** Minutes from "HH:mm". Returns NaN if invalid. */
@@ -168,6 +169,7 @@ export default function DashboardJoburi() {
   const [professionOpen, setProfessionOpen] = useState(false);
   const [professionFilter, setProfessionFilter] = useState<string>("all");
   const [locationFilter] = useState<string>("all");
+  const [staffArchiveTick, setStaffArchiveTick] = useState(0);
   const [raioane, setRaioane] = useState<Array<{ id: number; name: string; type: string }>>([]);
   const categoryRef = useRef<HTMLDivElement>(null);
   const professionRef = useRef<HTMLDivElement>(null);
@@ -296,6 +298,11 @@ export default function DashboardJoburi() {
     document.addEventListener("click", close);
     return () => document.removeEventListener("click", close);
   }, []);
+
+  const staffArchivedAppIds = useMemo(() => {
+    if (!isStaff || user?.id == null) return new Set<string>();
+    return getArchivedApplicationIds(String(user.id));
+  }, [isStaff, user?.id, staffArchiveTick]);
   const handleApply = (job: JobRow) => {
     if (!user || !job.id) return;
     if (applicationsByJob[job.id]) return;
@@ -581,6 +588,14 @@ export default function DashboardJoburi() {
   };
 
   if (isStaff) {
+    const staffCheckoutDone = (app: MyAppInfo, jobId: string) => {
+      const jid = normJobId(jobId);
+      if (app.checkedOutAt) return true;
+      if ((app.workSessions ?? []).some((s) => !!s.checkedOutAt)) return true;
+      return Object.keys(optimisticSessions).some(
+        (k) => k.startsWith(`${jid}-`) && !!optimisticSessions[k]?.checkedOutAt
+      );
+    };
     const myApp = (jobId: string) => applicationsByJob[String(jobId)];
     const isAcceptedToJob = (row: JobRow) => myApp(normJobId(row.id))?.status === "accepted";
     const showJobForStaff = (row: JobRow) => !isJobFull(row) || isAcceptedToJob(row);
@@ -588,6 +603,8 @@ export default function DashboardJoburi() {
     const q = searchQuery.trim().toLowerCase();
     const filteredJobs = publicJobs.filter((row) => {
       if (!showJobForStaff(row)) return false;
+      const acc = myApp(normJobId(row.id));
+      if (acc?.applicationId && staffArchivedAppIds.has(acc.applicationId)) return false;
       const matchSearch = !q || (row.job?.toLowerCase().includes(q) || (row.location ?? "").toLowerCase().includes(q));
       const matchCategory = categoryFilter === "all" || (row.jobType ?? "") === categoryFilter;
       // Match location by raion name: check if job location contains the selected raion name
@@ -1020,6 +1037,33 @@ export default function DashboardJoburi() {
                               <p className="text-sm text-gray-600 py-1">
                                 {t("dashboard.checkedInAt")} {formatTime(todaySession.checkedInAt)} · {t("dashboard.checkedOutAt")} {formatTime(todaySession.checkedOutAt)}
                               </p>
+                            )}
+                            {staffCheckoutDone(app, normJobId(row.id)) && !staffArchivedAppIds.has(app.applicationId) && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  const ws = app.workSessions ?? [];
+                                  let checkedOutAt = app.checkedOutAt;
+                                  for (const s of ws) {
+                                    if (!s.checkedOutAt) continue;
+                                    if (!checkedOutAt || new Date(s.checkedOutAt) > new Date(checkedOutAt)) checkedOutAt = s.checkedOutAt;
+                                  }
+                                  addStaffArchivedJob(String(user?.id ?? ""), {
+                                    applicationId: app.applicationId,
+                                    jobId: normJobId(row.id),
+                                    jobTitle: row.job,
+                                    jobLocation: row.location,
+                                    customerName: row.postedBy,
+                                    checkedOutAt,
+                                  });
+                                  setStaffArchiveTick((n) => n + 1);
+                                }}
+                                className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl border border-gray-200 bg-gray-50 py-2.5 text-sm font-medium text-gray-700 transition-colors hover:border-primary/30 hover:bg-primary/5 hover:text-primary"
+                              >
+                                <Archive className="h-4 w-4 shrink-0" strokeWidth={2} />
+                                {t("dashboard.archiveJob", "Arhivează jobul")}
+                              </button>
                             )}
                           </>
                         );

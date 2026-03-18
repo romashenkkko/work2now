@@ -5,7 +5,13 @@ import { useAuth } from "../hooks/useAuth";
 import { jobsApi, type StaffApplicationItem } from "../api/client";
 import { DashboardContext, JobTitleIcon } from "./DashboardLayout";
 import StarRating from "../components/StarRating";
-import { MapPin, Clock, Calendar, CheckCircle2, XCircle, ClipboardCheck } from "lucide-react";
+import { MapPin, Clock, Calendar, CheckCircle2, XCircle, ClipboardCheck, Archive } from "lucide-react";
+import {
+  addStaffArchivedJob,
+  getArchivedApplicationIds,
+  loadStaffArchivedJobs,
+  removeStaffArchivedJob,
+} from "../utils/staffJobArchive";
 
 const RATING_ICON = (
   <svg className="w-6 h-6 sm:w-7 sm:h-7 text-primary" fill="currentColor" viewBox="0 0 24 24" aria-hidden>
@@ -49,6 +55,16 @@ export default function DashboardHomeStaff() {
   const [confirmCheckIn, setConfirmCheckIn] = useState<{ applicationId: string; workDate: string; jobId?: string } | null>(null);
   const [confirmCheckOut, setConfirmCheckOut] = useState<{ applicationId: string; workDate: string; jobId?: string } | null>(null);
   const [expandedJobId, setExpandedJobId] = useState<string | null>(null);
+  const [staffArchiveTick, setStaffArchiveTick] = useState(0);
+  const [staffJobsArchiveExpanded, setStaffJobsArchiveExpanded] = useState(false);
+
+  const staffUserId = String(user?.id ?? "");
+  const staffArchivedIds = useMemo(() => getArchivedApplicationIds(staffUserId), [staffUserId, staffArchiveTick]);
+  const staffArchivedList = useMemo(() => loadStaffArchivedJobs(staffUserId), [staffUserId, staffArchiveTick]);
+  const acceptedApplicationsVisible = useMemo(
+    () => acceptedApplications.filter((a) => !staffArchivedIds.has(a.id)),
+    [acceptedApplications, staffArchivedIds]
+  );
 
   const showToast = (msg: string) => {
     setToast(msg);
@@ -550,59 +566,60 @@ export default function DashboardHomeStaff() {
           </div>
         </header>
 
-        <section className="w-full min-w-0 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-6 mb-6 md:mb-8 overflow-x-hidden">
-          <article className="p-4 sm:p-6 rounded-xl sm:rounded-2xl bg-white border border-gray-200 shadow-sm flex items-start gap-3 sm:gap-4 min-w-0">
-            <div className="flex-shrink-0 w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-primary/10 flex items-center justify-center">
-              <svg className="w-6 h-6 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        {/* 1 col mobil → 2 col → 3 col (tablet/laptop) → 5 col doar pe ecrane foarte late (evită carduri înguste) */}
+        <section className="w-full min-w-0 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-5 gap-4 sm:gap-5 mb-6 md:mb-8">
+          <article className="p-4 sm:p-5 rounded-xl sm:rounded-2xl bg-white border border-gray-200 shadow-sm flex items-start gap-3 min-w-0">
+            <div className="flex-shrink-0 w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-primary/10 flex items-center justify-center">
+              <svg className="w-5 h-5 sm:w-6 sm:h-6 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
               </svg>
             </div>
             <div className="min-w-0 flex-1">
-              <h3 className="text-xs sm:text-sm font-medium text-gray-500 mb-1 truncate">{t("dashboard.statsMyApplications")}</h3>
-              <p className="text-xl sm:text-2xl font-bold text-gray-900">{pendingCount}</p>
+              <h3 className="text-xs sm:text-sm font-medium text-gray-500 mb-1 leading-snug line-clamp-2">{t("dashboard.statsMyApplications")}</h3>
+              <p className="text-xl sm:text-2xl font-bold text-gray-900 tabular-nums">{pendingCount}</p>
             </div>
           </article>
-          <article className="p-4 sm:p-6 rounded-xl sm:rounded-2xl bg-white border border-gray-200 shadow-sm flex items-start gap-3 sm:gap-4 min-w-0">
-            <div className="flex-shrink-0 w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-green-100 flex items-center justify-center">
-              <CheckCircle2 className="w-6 h-6 text-green-600" />
+          <article className="p-4 sm:p-5 rounded-xl sm:rounded-2xl bg-white border border-gray-200 shadow-sm flex items-start gap-3 min-w-0">
+            <div className="flex-shrink-0 w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-green-100 flex items-center justify-center">
+              <CheckCircle2 className="w-5 h-5 sm:w-6 sm:h-6 text-green-600" />
             </div>
             <div className="min-w-0 flex-1">
-              <h3 className="text-xs sm:text-sm font-medium text-gray-500 mb-1 truncate">{t("dashboard.statsAcceptedJobs") || "Joburi acceptate"}</h3>
-              <p className="text-xl sm:text-2xl font-bold text-gray-900">{acceptedJobsCount}</p>
+              <h3 className="text-xs sm:text-sm font-medium text-gray-500 mb-1 leading-snug line-clamp-2">{t("dashboard.statsAcceptedJobs") || "Joburi acceptate"}</h3>
+              <p className="text-xl sm:text-2xl font-bold text-gray-900 tabular-nums">{acceptedJobsCount}</p>
             </div>
           </article>
-          <article className="p-4 sm:p-6 rounded-xl sm:rounded-2xl bg-white border border-gray-200 shadow-sm flex items-start gap-3 sm:gap-4 min-w-0">
-            <div className="flex-shrink-0 w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-blue-100 flex items-center justify-center">
-              <ClipboardCheck className="w-6 h-6 text-blue-600" />
+          <article className="p-4 sm:p-5 rounded-xl sm:rounded-2xl bg-white border border-gray-200 shadow-sm flex items-start gap-3 min-w-0">
+            <div className="flex-shrink-0 w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-blue-100 flex items-center justify-center">
+              <ClipboardCheck className="w-5 h-5 sm:w-6 sm:h-6 text-blue-600" />
             </div>
             <div className="min-w-0 flex-1">
-              <h3 className="text-xs sm:text-sm font-medium text-gray-500 mb-1 truncate">{t("dashboard.statsFinishedJobs") || "Joburi finisate"}</h3>
-              <p className="text-xl sm:text-2xl font-bold text-gray-900">{finishedJobsCount}</p>
+              <h3 className="text-xs sm:text-sm font-medium text-gray-500 mb-1 leading-snug line-clamp-2">{t("dashboard.statsFinishedJobs") || "Joburi finisate"}</h3>
+              <p className="text-xl sm:text-2xl font-bold text-gray-900 tabular-nums">{finishedJobsCount}</p>
             </div>
           </article>
-          <article className="p-4 sm:p-6 rounded-xl sm:rounded-2xl bg-white border border-gray-200 shadow-sm flex items-start gap-3 sm:gap-4 min-w-0">
-            <div className="flex-shrink-0 w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-primary/10 flex items-center justify-center">
+          <article className="p-4 sm:p-5 rounded-xl sm:rounded-2xl bg-white border border-gray-200 shadow-sm flex items-start gap-3 min-w-0">
+            <div className="flex-shrink-0 w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-primary/10 flex items-center justify-center [&_svg]:w-5 [&_svg]:h-5 sm:[&_svg]:w-6 sm:[&_svg]:h-6">
               {RATING_ICON}
             </div>
             <div className="min-w-0 flex-1">
-              <h3 className="text-xs sm:text-sm font-medium text-gray-500 mb-1 truncate">{t("dashboard.statsMyRating")}</h3>
-              <div className="flex items-center gap-1.5 mt-2">
-                <StarRating value={userRating?.average ?? 0} size={18} />
+              <h3 className="text-xs sm:text-sm font-medium text-gray-500 mb-1 leading-snug line-clamp-2">{t("dashboard.statsMyRating")}</h3>
+              <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1">
+                <StarRating value={userRating?.average ?? 0} size={16} />
                 {userRating && userRating.count > 0 && (
-                  <span className="text-xs text-gray-500">({userRating.count})</span>
+                  <span className="text-xs text-gray-500 whitespace-nowrap">({userRating.count})</span>
                 )}
               </div>
             </div>
           </article>
-          <article className="p-4 sm:p-6 rounded-xl sm:rounded-2xl bg-white border border-primary/30 bg-primary/5 shadow-sm flex items-start gap-3 sm:gap-4 min-w-0">
-            <div className="flex-shrink-0 w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-primary/10 flex items-center justify-center">
-              <svg className="w-6 h-6 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <article className="p-4 sm:p-5 rounded-xl sm:rounded-2xl bg-white border border-primary/30 bg-primary/5 shadow-sm flex items-start gap-3 min-w-0">
+            <div className="flex-shrink-0 w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-primary/10 flex items-center justify-center">
+              <svg className="w-5 h-5 sm:w-6 sm:h-6 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
             </div>
             <div className="min-w-0 flex-1">
-              <h3 className="text-xs sm:text-sm font-medium text-gray-500 mb-1 truncate">{t("dashboard.statsAvailability")}</h3>
-              <p className="text-xl sm:text-2xl font-bold text-gray-900">
+              <h3 className="text-xs sm:text-sm font-medium text-gray-500 mb-1 leading-snug line-clamp-2">{t("dashboard.statsAvailability")}</h3>
+              <p className="text-lg sm:text-xl lg:text-2xl font-bold text-gray-900 break-words leading-tight">
                 {availableToWork ? t("dashboard.statsAvailabilityActive") : t("dashboard.statsAvailabilityInactive")}
               </p>
             </div>
@@ -615,8 +632,13 @@ export default function DashboardHomeStaff() {
               <div className="p-3 sm:p-4 border-b border-gray-200 flex items-center justify-between gap-2">
                 <h2 className="font-bold text-gray-900 text-sm sm:text-base truncate">{t("dashboard.myAcceptedJobs") || "Joburile mele acceptate"}</h2>
               </div>
+              {acceptedApplicationsVisible.length === 0 ? (
+                <div className="px-4 py-8 text-center text-sm text-gray-500 sm:px-6">
+                  {t("dashboard.allAcceptedJobsInArchive", "Toate joburile acceptate sunt în arhivă. Vezi secțiunea Joburi arhivate mai jos.")}
+                </div>
+              ) : (
               <div className="divide-y divide-gray-100">
-                  {acceptedApplications.map((app) => {
+                  {acceptedApplicationsVisible.map((app) => {
                     const todayWorkDate = getCurrentWorkDate();
                     const { session, effectiveWorkDate } = getEffectiveSession(app, todayWorkDate);
                   const isExpanded = expandedJobId === app.jobId;
@@ -670,41 +692,68 @@ export default function DashboardHomeStaff() {
                             )}
                           </div>
                         </div>
-                        <div className="flex flex-col items-end gap-2 flex-shrink-0">
+                        <div className="mt-3 flex w-full min-w-0 flex-shrink-0 flex-col items-stretch gap-2 sm:mt-0 sm:w-52">
                           {!hasAnyCheckedIn ? (
                             <button
                               type="button"
                               onClick={(e) => { e.stopPropagation(); setConfirmCheckIn({ applicationId: app.id, workDate: effectiveWorkDate, jobId: app.jobId }); }}
                               disabled={!!isLoading}
-                              className="px-4 py-2 rounded-lg bg-green-600 text-white text-sm font-medium hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                              className="flex w-full items-center justify-center gap-2 rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-50"
                             >
                               <CheckCircle2 className="w-4 h-4" />
                               {isLoading ? "..." : t("dashboard.checkIn") || "Check-in"}
                             </button>
                           ) : !hasAnyCheckedOut ? (
                             <>
-                              <p className="text-xs text-gray-500 text-right">
+                              <p className="text-center text-xs text-gray-500 sm:text-right">
                                 {t("dashboard.checkedInAt")} {formatTime(checkedInAtToShow)}
                               </p>
                               <button
                                 type="button"
                                 onClick={(e) => { e.stopPropagation(); setConfirmCheckOut({ applicationId: app.id, workDate: effectiveWorkDate, jobId: app.jobId }); }}
                                 disabled={!!isLoading}
-                                className="px-4 py-2 rounded-lg bg-amber-600 text-white text-sm font-medium hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                                className="flex w-full items-center justify-center gap-2 rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-50"
                               >
                                 <XCircle className="w-4 h-4" />
                                 {isLoading ? "..." : t("dashboard.checkOut") || "Check-out"}
                               </button>
                             </>
                           ) : (
-                            <p className="text-sm text-gray-600 text-right py-1">
+                            <p className="py-1 text-center text-sm text-gray-600 sm:text-right">
                               {t("dashboard.checkedInAt")} {formatTime(checkedInAtToShow)} · {t("dashboard.checkedOutAt")} {formatTime(checkedOutAtToShow)}
                             </p>
+                          )}
+                          {hasAnyCheckedOut && !staffArchivedIds.has(app.id) && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                let checkedOutAt = app.checkedOutAt;
+                                for (const s of sessionsArr) {
+                                  if (!s.checkedOutAt) continue;
+                                  if (!checkedOutAt || new Date(s.checkedOutAt) > new Date(checkedOutAt)) checkedOutAt = s.checkedOutAt;
+                                }
+                                addStaffArchivedJob(staffUserId, {
+                                  applicationId: app.id,
+                                  jobId: String(app.jobId ?? ""),
+                                  jobTitle: app.jobTitle,
+                                  jobLocation: app.jobLocation,
+                                  customerName: app.customerName,
+                                  checkedOutAt,
+                                });
+                                setStaffArchiveTick((n) => n + 1);
+                                showToast(t("dashboard.jobArchivedToast", "Job mutat în arhivă."));
+                              }}
+                              className="flex w-full items-center justify-center gap-1.5 rounded-full border border-gray-200 bg-gray-50 px-3 py-2.5 text-xs font-semibold text-gray-700 shadow-sm transition-all hover:border-primary/30 hover:bg-primary/5 hover:text-primary"
+                            >
+                              <Archive className="h-3.5 w-3.5 shrink-0" strokeWidth={2} />
+                              {t("dashboard.archiveJob", "Arhivează")}
+                            </button>
                           )}
                           <button
                             type="button"
                             onClick={() => setExpandedJobId(isExpanded ? null : app.jobId)}
-                            className="inline-flex items-center gap-1.5 rounded-full border border-primary/15 bg-primary/5 px-3 py-1.5 text-xs font-semibold text-primary shadow-sm transition-all hover:-translate-y-0.5 hover:bg-primary/10 hover:shadow-md"
+                            className="flex w-full items-center justify-center gap-1.5 rounded-full border border-primary/15 bg-primary/5 px-3 py-2.5 text-xs font-semibold text-primary shadow-sm transition-all hover:-translate-y-0.5 hover:bg-primary/10 hover:shadow-md"
                           >
                             <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-white text-primary shadow-sm">
                               <svg className={`w-3 h-3 transition-transform ${isExpanded ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -767,23 +816,116 @@ export default function DashboardHomeStaff() {
                   );
                 })}
               </div>
+              )}
             </div>
           </section>
         )}
 
-        <section>
-          <div className="bg-white rounded-xl sm:rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-            <div className="p-3 sm:p-4 border-b border-gray-200 flex items-center justify-between gap-2">
-              <h2 className="font-bold text-gray-900 text-sm sm:text-base truncate">{t("dashboard.recommendedJobs")}</h2>
-              <Link to="/dashboard/joburi" className="text-sm text-primary font-medium hover:underline flex-shrink-0">
+        <section className="mb-6 md:mb-8">
+          <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm sm:rounded-2xl">
+            <button
+              type="button"
+              onClick={() => setStaffJobsArchiveExpanded((v) => !v)}
+              className="flex w-full items-center justify-between border-b border-gray-200 p-3 transition-colors hover:bg-gray-50 sm:p-4"
+            >
+              <div className="flex min-w-0 items-center gap-3">
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                  <Archive className="h-5 w-5" strokeWidth={2} />
+                </span>
+                <div className="min-w-0 text-left">
+                  <h2 className="truncate text-sm font-bold text-gray-900 sm:text-base">
+                    {t("dashboard.staffArchivedJobsTitle", "Joburi arhivate")}
+                  </h2>
+                  <p className="mt-0.5 text-xs text-gray-500">
+                    {t("dashboard.staffArchivedJobsDesc", "Joburi finalizate pe care le-ai mutat din listă.")}
+                  </p>
+                </div>
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
+                {staffArchivedList.length > 0 && (
+                  <span className="rounded-lg bg-primary/10 px-2.5 py-1 text-xs font-semibold text-primary">
+                    {staffArchivedList.length}
+                  </span>
+                )}
+                <svg
+                  className={`h-5 w-5 text-gray-400 transition-transform ${staffJobsArchiveExpanded ? "rotate-180" : ""}`}
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                  aria-hidden
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </div>
+            </button>
+            <div
+              className={`grid transition-[grid-template-rows] duration-300 ease-out ${staffJobsArchiveExpanded ? "grid-rows-[1fr]" : "grid-rows-[0fr]"}`}
+              aria-hidden={!staffJobsArchiveExpanded}
+            >
+              <div className="min-h-0 overflow-hidden">
+                <div className="divide-y divide-gray-100">
+                  {staffArchivedList.length === 0 ? (
+                    <div className="px-4 py-10 text-center text-sm text-gray-500 sm:px-6">
+                      {t("dashboard.staffArchivedJobsEmpty", "Niciun job arhivat. După check-out final, folosește „Arhivează” pe cardul jobului.")}
+                    </div>
+                  ) : (
+                    staffArchivedList.map((entry) => (
+                      <div
+                        key={entry.applicationId}
+                        className="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-5 sm:py-4"
+                      >
+                        <div className="min-w-0">
+                          <p className="font-semibold text-gray-900">{entry.jobTitle || t("dashboard.job")}</p>
+                          {entry.jobLocation && (
+                            <p className="mt-0.5 flex items-start gap-1.5 text-xs text-gray-600">
+                              <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
+                              <span className="line-clamp-2">{entry.jobLocation}</span>
+                            </p>
+                          )}
+                          {entry.customerName && (
+                            <p className="mt-1 text-xs text-gray-500">
+                              {t("dashboard.customer")}: <span className="font-medium text-gray-700">{entry.customerName}</span>
+                            </p>
+                          )}
+                          {entry.checkedOutAt && (
+                            <p className="mt-1 text-xs text-gray-500">
+                              {t("dashboard.checkedOutAt")} {formatTime(entry.checkedOutAt)}
+                            </p>
+                          )}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            removeStaffArchivedJob(staffUserId, entry.applicationId);
+                            setStaffArchiveTick((n) => n + 1);
+                            showToast(t("dashboard.jobRestoredFromArchive", "Job readus în lista activă."));
+                          }}
+                          className="shrink-0 self-start rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-700 hover:border-primary/30 hover:bg-primary/5 hover:text-primary sm:self-center"
+                        >
+                          {t("dashboard.restoreFromArchive", "Restaurează")}
+                        </button>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section className="mb-6 md:mb-8">
+          <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm sm:rounded-2xl">
+            <div className="flex items-center justify-between gap-2 border-b border-gray-200 p-3 sm:p-4">
+              <h2 className="truncate text-sm font-bold text-gray-900 sm:text-base">{t("dashboard.recommendedJobs")}</h2>
+              <Link to="/dashboard/joburi" className="flex-shrink-0 text-sm font-medium text-primary hover:underline">
                 {t("dashboard.seeAll")}
               </Link>
             </div>
             <div className="divide-y divide-gray-100">
               {jobsLoading ? (
-                <div className="p-4 text-center text-gray-500 text-sm">{t("dashboard.loading") || "Se încarcă..."}</div>
+                <div className="p-4 text-center text-sm text-gray-500">{t("dashboard.loading") || "Se încarcă..."}</div>
               ) : recommendedJobs.length === 0 ? (
-                <div className="p-4 text-center text-gray-500 text-sm">{t("dashboard.noRecommendedJobs") || "Niciun job public disponibil."}</div>
+                <div className="p-4 text-center text-sm text-gray-500">{t("dashboard.noRecommendedJobs") || "Niciun job public disponibil."}</div>
               ) : (
                 recommendedJobs.map((j, idx) => {
                   const appInfo = applicationsByJob[j.id];
@@ -791,24 +933,24 @@ export default function DashboardHomeStaff() {
                   return (
                     <div
                       key={`${j.id || "job"}-${idx}`}
-                      className="p-3 sm:p-4 flex items-center justify-between gap-3 hover:bg-gray-50/50"
+                      className="flex items-center justify-between gap-3 p-3 hover:bg-gray-50/50 sm:p-4"
                     >
                       <div className="min-w-0">
-                        <p className="font-semibold text-gray-900 text-sm sm:text-base truncate flex items-center gap-2">
+                        <p className="flex items-center gap-2 truncate text-sm font-semibold text-gray-900 sm:text-base">
                           {j.job}
                           {j.isPromoted && (
-                            <span className="shrink-0 px-1.5 py-0.5 rounded text-xs font-medium bg-gray-800 text-white">
+                            <span className="shrink-0 rounded bg-gray-800 px-1.5 py-0.5 text-xs font-medium text-white">
                               {t("dashboard.promovareBoosterShort", "Booster")}
                             </span>
                           )}
                         </p>
-                        <span className="text-xs sm:text-sm text-gray-500 truncate">
+                        <span className="truncate text-xs text-gray-500 sm:text-sm">
                           {j.location}
                           {j.jobType ? ` · ${j.jobType}` : ""}
                         </span>
                       </div>
                       {applied ? (
-                        <span className="text-gray-500 text-sm flex-shrink-0">
+                        <span className="flex-shrink-0 text-sm text-gray-500">
                           {appInfo?.status === "accepted" ? t("dashboard.accepted") : t("dashboard.pending")}
                         </span>
                       ) : (
@@ -816,7 +958,7 @@ export default function DashboardHomeStaff() {
                           type="button"
                           onClick={() => handleApply(j)}
                           disabled={!!applyingId}
-                          className="text-primary text-sm font-medium flex-shrink-0 hover:underline disabled:opacity-50"
+                          className="flex-shrink-0 text-sm font-medium text-primary hover:underline disabled:opacity-50"
                         >
                           {applyingId === j.id ? "..." : t("dashboard.apply")}
                         </button>
