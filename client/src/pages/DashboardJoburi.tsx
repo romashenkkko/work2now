@@ -630,10 +630,6 @@ export default function DashboardJoburi() {
       { value: "multi-day", label: t("dashboard.multiDayJob") },
       { value: "full-time", label: t("dashboard.fullTimeRecruitment") },
     ];
-    const locationOptions = [
-      { value: "all", label: t("findJobs.allLocations") },
-      ...raioane.map((raion) => ({ value: raion.name, label: raion.name })),
-    ];
     return (
       <>
         {checkInOutConfirm && (

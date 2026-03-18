@@ -838,10 +838,32 @@ export async function checkOut(
     if (!geo.valid) throw new ServiceError(geo.error, geo.statusCode);
   }
   const workDateStr = body.workDate ? String(body.workDate).trim().slice(0, 10) : null;
+  const now = new Date();
   await prisma.applications.update({
     where: { id: appId },
-    data: { checked_out_at: new Date() },
+    data: { checked_out_at: now },
   });
+
+  // Close the currently open work session (checked_in_at exists but checked_out_at is null),
+  // regardless of what `workDate` the frontend sends.
+  //
+  // This prevents UI inconsistencies when `workDate` was off by 1 day (timezone / user selection)
+  // and the session was saved under a different work_date value.
+  const openSession = await prisma.application_work_sessions.findFirst({
+    where: { application_id: appId, checked_out_at: null },
+    select: { id: true, work_date: true },
+    orderBy: { work_date: "asc" },
+  });
+
+  if (openSession) {
+    await prisma.application_work_sessions.update({
+      where: { id: openSession.id },
+      data: { checked_out_at: now },
+    });
+    return {};
+  }
+
+  // If there's no open session row, use the provided workDate to upsert.
   if (workDateStr && /^\d{4}-\d{2}-\d{2}$/.test(workDateStr)) {
     const workDate = new Date(workDateStr + "T12:00:00Z");
     const existing = await prisma.application_work_sessions.findFirst({
@@ -850,7 +872,7 @@ export async function checkOut(
     if (existing) {
       await prisma.application_work_sessions.update({
         where: { id: existing.id },
-        data: { checked_out_at: new Date() },
+        data: { checked_out_at: now },
       });
     } else {
       await prisma.application_work_sessions.create({
@@ -858,7 +880,7 @@ export async function checkOut(
           application_id: appId,
           work_date: workDate,
           checked_in_at: app.checked_in_at,
-          checked_out_at: new Date(),
+          checked_out_at: now,
         },
       });
     }

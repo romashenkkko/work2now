@@ -38,7 +38,7 @@ export default function DashboardHomeStaff() {
   const { userRating, availableToWork } = useContext(DashboardContext);
   const [toast, setToast] = useState<string | null>(null);
   const [recommendedJobs, setRecommendedJobs] = useState<JobItem[]>([]);
-  const [applicationsByJob, setApplicationsByJob] = useState<Record<string, { status: string; applicationId: string; checkedInAt?: string; checkedOutAt?: string }>>({});
+  const [applicationsByJob, setApplicationsByJob] = useState<Record<string, { status: string; applicationId: string; checkedInAt?: string; checkedOutAt?: string; workSessions?: { workDate: string; checkedInAt?: string; checkedOutAt?: string }[] }>>({});
   const [acceptedApplications, setAcceptedApplications] = useState<StaffApplicationItem[]>([]);
   const [allJobs, setAllJobs] = useState<Array<{ id: string; checkInLat?: number; checkInLng?: number; checkInRadiusM?: number }>>([]);
   const [jobsLoading, setJobsLoading] = useState(true);
@@ -82,8 +82,24 @@ export default function DashboardHomeStaff() {
             isPromoted: !!(j as any).isPromoted,
           }));
         setRecommendedJobs(list);
-        setApplicationsByJob(appRes.byJob ?? {});
-        const accepted = (appsListRes.applications || []).filter((app) => app.status === "accepted");
+        const byJob = appRes.byJob ?? {};
+        setApplicationsByJob(byJob);
+        const accepted = (appsListRes.applications || [])
+          .filter((app) => app.status === "accepted")
+          .map((app) => {
+            const latestByJob = app.jobId ? byJob[String(app.jobId)] : undefined;
+            if (!latestByJob) return app;
+            const mergedWorkSessions =
+              latestByJob.workSessions && latestByJob.workSessions.length > 0
+                ? latestByJob.workSessions
+                : app.workSessions;
+            return {
+              ...app,
+              checkedInAt: latestByJob.checkedInAt ?? app.checkedInAt,
+              checkedOutAt: latestByJob.checkedOutAt ?? app.checkedOutAt,
+              workSessions: mergedWorkSessions,
+            };
+          });
         setAcceptedApplications(accepted);
       })
       .catch(() => {
@@ -117,18 +133,94 @@ export default function DashboardHomeStaff() {
     return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
   };
 
-  const getCurrentSession = (app: StaffApplicationItem, workDate: string) => {
-    // First check workSessions (for multi-day jobs)
-    const session = app.workSessions?.find((s) => normDate(s.workDate) === normDate(workDate));
-    if (session) return { ...session, workDate: normDate(workDate) };
-    // Fallback: check checkedInAt/checkedOutAt directly on the app (for single-day jobs or legacy data)
-    if (app.checkedInAt) {
-      const checkedInDate = normDate(app.checkedInAt);
-      if (checkedInDate === normDate(workDate)) {
-        return { workDate: normDate(workDate), checkedInAt: app.checkedInAt, checkedOutAt: app.checkedOutAt };
-      }
+  type WorkSession = NonNullable<StaffApplicationItem["workSessions"]>[number];
+
+  const getEffectiveSession = (
+    app: StaffApplicationItem,
+    fallbackWorkDate: string
+  ): { session: WorkSession | null; effectiveWorkDate: string } => {
+    const sessions = app.workSessions ?? [];
+    const targetKey = normDate(fallbackWorkDate);
+
+    const parseTime = (iso?: string) => {
+      if (!iso) return 0;
+      const t = new Date(iso).getTime();
+      return Number.isFinite(t) ? t : 0;
+    };
+
+    const localDateKey = (iso?: string) => {
+      if (!iso) return "";
+      const d = new Date(iso);
+      if (Number.isNaN(d.getTime())) return "";
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    };
+
+    // Prefer the most recent session that has timestamps (works even if workDate != "azi").
+    // This fixes cases where the backend stores the session under a different workDate string
+    // (timezone / previous day) and the UI would previously show "Check-in" incorrectly.
+    const sessionCandidates = sessions
+      .filter((s) => !!s.checkedInAt || !!s.checkedOutAt)
+      .map((s) => {
+        const hasOut = !!s.checkedOutAt;
+        const t = Math.max(parseTime(s.checkedOutAt), parseTime(s.checkedInAt));
+        const workDateKey = normDate(s.workDate);
+        return { s, hasOut, t, workDateKey };
+      })
+      .sort((a, b) => {
+        if (a.hasOut !== b.hasOut) return a.hasOut ? -1 : 1; // prefer checked-out sessions
+        return b.t - a.t;
+      });
+
+    // If application-level timestamps exist for the same day, prefer them.
+    // This covers cases where `application_work_sessions` row may be missing/partial,
+    // but the job is already completed in `applications.checked_out_at`.
+    if (app.checkedOutAt && localDateKey(app.checkedOutAt) === targetKey) {
+      return {
+        session: {
+          workDate: targetKey,
+          checkedInAt: app.checkedInAt,
+          checkedOutAt: app.checkedOutAt,
+        },
+        effectiveWorkDate: targetKey,
+      };
     }
-    return null;
+
+    if (!app.checkedOutAt && app.checkedInAt && localDateKey(app.checkedInAt) === targetKey) {
+      return {
+        session: {
+          workDate: targetKey,
+          checkedInAt: app.checkedInAt,
+          checkedOutAt: app.checkedOutAt,
+        },
+        effectiveWorkDate: targetKey,
+      };
+    }
+
+    if (sessionCandidates.length > 0) {
+      const forTarget = sessionCandidates.filter((c) => c.workDateKey === targetKey);
+      const best = (forTarget.length > 0 ? forTarget : sessionCandidates)[0].s;
+      return { session: best, effectiveWorkDate: normDate(best.workDate) };
+    }
+
+    // Fallback: legacy data (application.checkedInAt / checkedOutAt)
+    if (app.checkedOutAt) {
+      const d = normDate(app.checkedOutAt);
+      return {
+        session: { workDate: d, checkedInAt: app.checkedInAt, checkedOutAt: app.checkedOutAt },
+        effectiveWorkDate: d,
+      };
+    }
+
+    if (app.checkedInAt) {
+      const d = normDate(app.checkedInAt);
+      return {
+        session: { workDate: d, checkedInAt: app.checkedInAt, checkedOutAt: app.checkedOutAt },
+        effectiveWorkDate: d,
+      };
+    }
+
+    // Nothing recorded yet: default to today's workDate for the action buttons.
+    return { session: null, effectiveWorkDate: targetKey };
   };
 
   const normDate = (s: string) => (s || "").trim().slice(0, 10);
@@ -524,11 +616,23 @@ export default function DashboardHomeStaff() {
                 <h2 className="font-bold text-gray-900 text-sm sm:text-base truncate">{t("dashboard.myAcceptedJobs") || "Joburile mele acceptate"}</h2>
               </div>
               <div className="divide-y divide-gray-100">
-                {acceptedApplications.map((app) => {
-                  const workDate = getCurrentWorkDate();
-                  const session = getCurrentSession(app, workDate);
+                  {acceptedApplications.map((app) => {
+                    const todayWorkDate = getCurrentWorkDate();
+                    const { session, effectiveWorkDate } = getEffectiveSession(app, todayWorkDate);
                   const isExpanded = expandedJobId === app.jobId;
-                  const isLoading = checkInOutLoading?.startsWith(`${app.id}-${workDate}`);
+                    const isLoading = checkInOutLoading?.startsWith(`${app.id}-${effectiveWorkDate}`);
+
+                    const sessionsArr = app.workSessions ?? [];
+                    const hasAnyCheckedIn =
+                      !!(session?.checkedInAt ?? app.checkedInAt) ||
+                      sessionsArr.some((s) => !!s.checkedInAt) ||
+                      false;
+                    const hasAnyCheckedOut =
+                      !!(session?.checkedOutAt ?? app.checkedOutAt) ||
+                      sessionsArr.some((s) => !!s.checkedOutAt) ||
+                      false;
+                    const checkedInAtToShow = session?.checkedInAt ?? app.checkedInAt;
+                    const checkedOutAtToShow = session?.checkedOutAt ?? app.checkedOutAt;
                   
                   return (
                     <div key={app.id} className="p-4 sm:p-5">
@@ -567,22 +671,24 @@ export default function DashboardHomeStaff() {
                           </div>
                         </div>
                         <div className="flex flex-col items-end gap-2 flex-shrink-0">
-                          {!session?.checkedInAt ? (
+                          {!hasAnyCheckedIn ? (
                             <button
                               type="button"
-                              onClick={(e) => { e.stopPropagation(); setConfirmCheckIn({ applicationId: app.id, workDate, jobId: app.jobId }); }}
+                              onClick={(e) => { e.stopPropagation(); setConfirmCheckIn({ applicationId: app.id, workDate: effectiveWorkDate, jobId: app.jobId }); }}
                               disabled={!!isLoading}
                               className="px-4 py-2 rounded-lg bg-green-600 text-white text-sm font-medium hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                             >
                               <CheckCircle2 className="w-4 h-4" />
                               {isLoading ? "..." : t("dashboard.checkIn") || "Check-in"}
                             </button>
-                          ) : !session?.checkedOutAt ? (
+                          ) : !hasAnyCheckedOut ? (
                             <>
-                              <p className="text-xs text-gray-500 text-right">{t("dashboard.checkedInAt")} {formatTime(session.checkedInAt)}</p>
+                              <p className="text-xs text-gray-500 text-right">
+                                {t("dashboard.checkedInAt")} {formatTime(checkedInAtToShow)}
+                              </p>
                               <button
                                 type="button"
-                                onClick={(e) => { e.stopPropagation(); setConfirmCheckOut({ applicationId: app.id, workDate, jobId: app.jobId }); }}
+                                onClick={(e) => { e.stopPropagation(); setConfirmCheckOut({ applicationId: app.id, workDate: effectiveWorkDate, jobId: app.jobId }); }}
                                 disabled={!!isLoading}
                                 className="px-4 py-2 rounded-lg bg-amber-600 text-white text-sm font-medium hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                               >
@@ -592,7 +698,7 @@ export default function DashboardHomeStaff() {
                             </>
                           ) : (
                             <p className="text-sm text-gray-600 text-right py-1">
-                              {t("dashboard.checkedInAt")} {formatTime(session.checkedInAt)} · {t("dashboard.checkedOutAt")} {formatTime(session.checkedOutAt)}
+                              {t("dashboard.checkedInAt")} {formatTime(checkedInAtToShow)} · {t("dashboard.checkedOutAt")} {formatTime(checkedOutAtToShow)}
                             </p>
                           )}
                           <button
