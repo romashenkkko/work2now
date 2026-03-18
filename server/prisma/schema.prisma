@@ -1,0 +1,464 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model about {
+  id               Int      @id @default(autoincrement())
+  section_label    String?  @db.VarChar(100)
+  title            String   @db.VarChar(255)
+  content          String?  @db.Text
+  image_url        String?  @db.Text
+  counters_enabled Boolean? @default(true)
+  created_at       DateTime @default(now()) @db.Timestamp(0)
+  updated_at       DateTime @default(now()) @db.Timestamp(0)
+}
+
+model about_stats {
+  id           Int      @id @default(autoincrement())
+  icon_svg     String?  @db.Text
+  number_value Int
+  suffix       String?  @db.VarChar(20)
+  label        String   @db.VarChar(100)
+  sort_order   Int?     @default(0)
+  enabled      Boolean? @default(true)
+  created_at   DateTime @default(now()) @db.Timestamp(0)
+  updated_at   DateTime @default(now()) @db.Timestamp(0)
+}
+
+model admin_users {
+  id            Int       @id @default(autoincrement())
+  username      String    @unique(map: "username") @db.VarChar(100)
+  password_hash String    @db.VarChar(255)
+  email         String?   @db.VarChar(255)
+  last_login    DateTime? @db.Timestamp(0)
+  created_at    DateTime  @default(now()) @db.Timestamp(0)
+  updated_at    DateTime  @default(now()) @db.Timestamp(0)
+}
+
+model application_work_sessions {
+  id             Int          @id @default(autoincrement()) @db.UnsignedInt
+  application_id Int          @db.UnsignedInt
+  work_date      DateTime     @db.Date
+  checked_in_at  DateTime?    @db.Timestamp(0)
+  checked_out_at DateTime?    @db.Timestamp(0)
+  created_at     DateTime     @default(now()) @db.Timestamp(0)
+  applications   applications @relation(fields: [application_id], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "fk_app_work_sessions_application_id")
+
+  @@unique([application_id, work_date], map: "uq_app_date")
+  @@index([application_id], map: "idx_application_id")
+}
+
+model applications {
+  id                        Int                         @id @default(autoincrement()) @db.UnsignedInt
+  job_id                    Int                         @db.UnsignedInt
+  staff_id                  String?                     @db.Char(36)
+  staff_name                String                      @db.VarChar(100)
+  staff_email               String?
+  status                    String                      @default("pending") @db.VarChar(20)
+  status_code               Int?
+  checked_in_at             DateTime?                   @db.Timestamp(0)
+  checked_out_at            DateTime?                   @db.Timestamp(0)
+  created_at                DateTime                    @default(now()) @db.Timestamp(0)
+  business_confirmed_at     DateTime?                   @db.Timestamp(0)
+  application_work_sessions application_work_sessions[]
+  jobs                      jobs                        @relation(fields: [job_id], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "fk_applications_job_id_jobs_id")
+  users                     users?                      @relation(fields: [staff_id], references: [Id], onUpdate: Restrict, map: "fk_applications_staff_id_users_id")
+  ratings                   ratings[]
+
+  @@index([job_id], map: "idx_app_job_id")
+  @@index([staff_id], map: "idx_app_staff_id")
+}
+
+model branches {
+  Id                   String            @id @db.Char(36)
+  BusinessProfileId    String            @db.Char(36)
+  Name                 String            @db.VarChar(200)
+  Address              String            @db.VarChar(300)
+  City                 String            @db.VarChar(120)
+  Country              String            @db.VarChar(120)
+  PhoneNumber          String            @db.VarChar(50)
+  IsActive             Boolean           @default(true)
+  CreatedAt            DateTime          @db.DateTime(0)
+  ContactPersonName    String            @default("") @db.VarChar(100)
+  ContactPersonSurname String            @default("") @db.VarChar(100)
+  business_profiles    business_profiles @relation(fields: [BusinessProfileId], references: [Id], onDelete: Cascade, onUpdate: Restrict, map: "fk_branches_businessprofileid_business_profiles_id")
+
+  @@index([BusinessProfileId], map: "idx_branches_business_profile_id")
+}
+
+model business_profiles {
+  Id                   String     @id @db.Char(36)
+  UserId               String     @unique(map: "UserId") @db.Char(36)
+  CompanyName          String     @db.VarChar(200)
+  ContactPersonName    String     @db.VarChar(100)
+  ContactPersonSurname String     @db.VarChar(100)
+  IDNO                 String?    @db.VarChar(13)
+  CompanyCategory      Int
+  InfoForStaff         String     @default("") @db.VarChar(2000)
+  branches             branches[]
+  users                users      @relation(fields: [UserId], references: [Id], onDelete: Cascade, onUpdate: Restrict, map: "fk_business_profiles_userid_users_id")
+
+  @@index([UserId], map: "idx_business_profiles_user_id")
+}
+
+model client_reviews {
+  id               Int                    @id @default(autoincrement())
+  client_name      String                 @db.VarChar(255)
+  client_email     String                 @db.VarChar(255)
+  client_location  String?                @db.VarChar(255)
+  testimonial_text String                 @db.Text
+  rating           Int?                   @default(5)
+  status           client_reviews_status? @default(pending)
+  ip_address       String?                @db.VarChar(45)
+  user_agent       String?                @db.Text
+  created_at       DateTime               @default(now()) @db.Timestamp(0)
+  updated_at       DateTime               @default(now()) @db.Timestamp(0)
+  approved_at      DateTime?              @db.Timestamp(0)
+  approved_by      Int?
+
+  @@index([created_at], map: "idx_created_at")
+  @@index([status], map: "idx_status")
+}
+
+model contact {
+  id               Int      @id @default(autoincrement())
+  section_label    String?  @db.VarChar(100)
+  title            String?  @db.VarChar(255)
+  description      String?  @db.Text
+  phone            String?  @db.VarChar(50)
+  phone_icon       String?  @db.Text
+  phone_enabled    Boolean? @default(true)
+  whatsapp         String?  @db.VarChar(50)
+  whatsapp_icon    String?  @db.Text
+  whatsapp_enabled Boolean? @default(true)
+  email            String?  @db.VarChar(255)
+  email_icon       String?  @db.Text
+  email_enabled    Boolean? @default(true)
+  address          String?  @db.Text
+  address_icon     String?  @db.Text
+  address_enabled  Boolean? @default(true)
+  map_embed        String?  @db.Text
+  map_enabled      Boolean? @default(true)
+  form_title       String?  @db.VarChar(255)
+  created_at       DateTime @default(now()) @db.Timestamp(0)
+  updated_at       DateTime @default(now()) @db.Timestamp(0)
+}
+
+model employee_profiles {
+  Id                   String        @id @db.Char(36)
+  UserId               String        @unique(map: "UserId") @db.Char(36)
+  IDNP                 String        @db.VarChar(13)
+  Name                 String        @db.VarChar(100)
+  Surname              String        @db.VarChar(100)
+  DateOfBirth          DateTime      @db.DateTime(0)
+  AboutMe              String        @default("") @db.VarChar(1000)
+  ProfilePictureFileId String?       @db.Char(36)
+  users                users         @relation(fields: [UserId], references: [Id], onDelete: Cascade, onUpdate: Restrict, map: "fk_employee_profiles_userid_users_id")
+  experiences          experiences[]
+
+  @@index([UserId], map: "idx_employee_profiles_user_id")
+}
+
+model experiences {
+  Id                String            @id @db.Char(36)
+  EmployeeProfileId String            @db.Char(36)
+  JobCategory       Int
+  Duration          Int
+  Description       String            @db.Text
+  employee_profiles employee_profiles @relation(fields: [EmployeeProfileId], references: [Id], onDelete: Cascade, onUpdate: Restrict, map: "fk_experiences_employeeprofileid_employee_profiles_id")
+
+  @@index([EmployeeProfileId], map: "idx_experiences_employee_profile_id")
+}
+
+model faq {
+  id         Int      @id @default(autoincrement())
+  question   String   @db.VarChar(500)
+  answer     String   @db.Text
+  sort_order Int?     @default(0)
+  enabled    Boolean? @default(true)
+  created_at DateTime @default(now()) @db.Timestamp(0)
+  updated_at DateTime @default(now()) @db.Timestamp(0)
+}
+
+model faq_section {
+  id            Int      @id @default(autoincrement())
+  section_label String?  @db.VarChar(100)
+  title         String?  @db.VarChar(255)
+  created_at    DateTime @default(now()) @db.Timestamp(0)
+  updated_at    DateTime @default(now()) @db.Timestamp(0)
+}
+
+model hero {
+  id                Int              @id @default(autoincrement())
+  title             String           @db.VarChar(255)
+  subtitle          String?          @db.Text
+  cta_text          String?          @db.VarChar(100)
+  cta_link          String?          @db.VarChar(255)
+  image_url         String?          @db.Text
+  video_url         String?          @db.Text
+  video_type        hero_video_type? @default(upload)
+  media_type        hero_media_type? @default(image)
+  trust_bar_enabled Boolean?         @default(true)
+  created_at        DateTime         @default(now()) @db.Timestamp(0)
+  updated_at        DateTime         @default(now()) @db.Timestamp(0)
+}
+
+model hero_trust_items {
+  id         Int      @id @default(autoincrement())
+  icon_svg   String?  @db.Text
+  text       String   @db.VarChar(255)
+  sort_order Int?     @default(0)
+  enabled    Boolean? @default(true)
+  created_at DateTime @default(now()) @db.Timestamp(0)
+  updated_at DateTime @default(now()) @db.Timestamp(0)
+}
+
+model job_categories {
+  Id        String   @id @db.Char(36)
+  Code      Int      @unique(map: "uq_job_categories_code")
+  Title     String   @db.VarChar(150)
+  HourlyMin Int
+  CreatedAt DateTime @default(now()) @db.Timestamp(0)
+  jobs      jobs[]
+
+  @@index([Title], map: "idx_job_categories_title")
+}
+
+model jobs {
+  id                 Int             @id @default(autoincrement()) @db.UnsignedInt
+  user_id            String?         @db.Char(36)
+  location           String?         @db.Text
+  status             String          @default("Draft") @db.VarChar(50)
+  status_class       String          @default("bg-gray-100 text-gray-700") @db.VarChar(100)
+  date               String          @db.VarChar(50)
+  end_date           String?         @db.VarChar(50)
+  job_type           String?         @db.VarChar(30)
+  applications_count Int             @default(0) @db.UnsignedInt
+  start_time         String?         @db.VarChar(20)
+  end_time           String?         @db.VarChar(20)
+  people_needed      String?         @db.VarChar(50)
+  duration           String?         @db.VarChar(100)
+  estimated_salary   String?         @db.VarChar(100)
+  image_url          String?         @db.Text
+  created_at         DateTime        @default(now()) @db.Timestamp(0)
+  check_in_lat       Float?
+  check_in_lng       Float?
+  check_in_radius_m  Int?
+  job_category_code  Int?
+  hourly_rate_base   Decimal?        @db.Decimal(10, 2)
+  Title              String          @db.VarChar(30)
+  is_promoted        Boolean         @default(false)
+  raion_id           Int?            @db.UnsignedInt
+  localitate         String?         @db.VarChar(200)
+  applications       applications[]
+  job_categories     job_categories? @relation(fields: [job_category_code], references: [Code], onUpdate: Restrict, map: "fk_jobs_job_category_code_job_categories_code")
+  raioane            raioane?        @relation(fields: [raion_id], references: [id], onUpdate: Restrict, map: "fk_jobs_raion_id_raioane_id")
+  users              users?          @relation(fields: [user_id], references: [Id], onUpdate: Restrict, map: "fk_jobs_user_id_users_id")
+
+  @@index([job_category_code], map: "fk_jobs_job_category_code_job_categories_code")
+  @@index([raion_id], map: "idx_jobs_raion_id")
+  @@index([user_id], map: "idx_jobs_user_id")
+}
+
+model media {
+  id            Int      @id @default(autoincrement())
+  filename      String   @db.VarChar(255)
+  original_name String?  @db.VarChar(255)
+  file_url      String   @db.Text
+  file_type     String?  @db.VarChar(50)
+  file_size     Int?
+  folder        String?  @db.VarChar(100)
+  created_at    DateTime @default(now()) @db.Timestamp(0)
+}
+
+model process_section {
+  id            Int      @id @default(autoincrement())
+  section_label String?  @db.VarChar(100)
+  title         String?  @db.VarChar(255)
+  description   String?  @db.Text
+  created_at    DateTime @default(now()) @db.Timestamp(0)
+  updated_at    DateTime @default(now()) @db.Timestamp(0)
+}
+
+model process_steps {
+  id          Int      @id @default(autoincrement())
+  step_number Int
+  title       String   @db.VarChar(255)
+  description String?  @db.Text
+  image_url   String?  @db.Text
+  features    String?  @db.Text
+  sort_order  Int?     @default(0)
+  enabled     Boolean? @default(true)
+  created_at  DateTime @default(now()) @db.Timestamp(0)
+  updated_at  DateTime @default(now()) @db.Timestamp(0)
+}
+
+model raioane {
+  id         Int          @id @default(autoincrement()) @db.UnsignedInt
+  name       String       @unique(map: "name") @db.VarChar(100)
+  type       raioane_type @default(raion)
+  created_at DateTime     @default(now()) @db.Timestamp(0)
+  jobs       jobs[]
+
+  @@index([name], map: "idx_raioane_name")
+  @@index([type], map: "idx_raioane_type")
+}
+
+model ratings {
+  id                            Int          @id @default(autoincrement()) @db.UnsignedInt
+  application_id                Int          @db.UnsignedInt
+  rater_id                      String?      @db.Char(36)
+  rated_id                      String?      @db.Char(36)
+  score                         Decimal      @db.Decimal(2, 1)
+  created_at                    DateTime     @default(now()) @db.Timestamp(0)
+  comment                       String?      @db.Text
+  photo_url                     String?      @db.MediumText
+  job_title                     String?      @db.VarChar(255)
+  applications                  applications @relation(fields: [application_id], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "fk_ratings_application_id_applications_id")
+  users_ratings_rated_idTousers users?       @relation("ratings_rated_idTousers", fields: [rated_id], references: [Id], onUpdate: Restrict, map: "fk_ratings_rated_id_users_id")
+  users_ratings_rater_idTousers users?       @relation("ratings_rater_idTousers", fields: [rater_id], references: [Id], onUpdate: Restrict, map: "fk_ratings_rater_id_users_id")
+
+  @@unique([application_id, rater_id], map: "idx_ratings_application_rater")
+  @@unique([application_id, rater_id], map: "ratings_app_rater")
+  @@index([rated_id], map: "idx_rated_id")
+  @@index([rater_id], map: "idx_rater_id")
+}
+
+model reviews {
+  id          Int       @id @default(autoincrement()) @db.UnsignedInt
+  name        String    @db.VarChar(80)
+  email       String    @db.VarChar(120)
+  title       String    @db.VarChar(100)
+  message     String    @db.Text
+  rating      Int       @db.UnsignedTinyInt
+  approved    Boolean   @default(false)
+  ip_address  String?   @db.VarChar(45)
+  user_agent  String?   @db.VarChar(255)
+  created_at  DateTime  @default(now()) @db.Timestamp(0)
+  approved_at DateTime? @db.Timestamp(0)
+
+  @@index([approved], map: "idx_reviews_approved")
+  @@index([created_at], map: "idx_reviews_created_at")
+}
+
+model services {
+  id          Int      @id @default(autoincrement())
+  title       String   @db.VarChar(255)
+  description String?  @db.Text
+  image_url   String?  @db.Text
+  icon_svg    String?  @db.Text
+  features    String?  @db.Text
+  sort_order  Int?     @default(0)
+  enabled     Boolean? @default(true)
+  created_at  DateTime @default(now()) @db.Timestamp(0)
+  updated_at  DateTime @default(now()) @db.Timestamp(0)
+}
+
+model services_section {
+  id            Int      @id @default(autoincrement())
+  section_label String?  @db.VarChar(100)
+  title         String?  @db.VarChar(255)
+  description   String?  @db.Text
+  created_at    DateTime @default(now()) @db.Timestamp(0)
+  updated_at    DateTime @default(now()) @db.Timestamp(0)
+}
+
+model settings {
+  id            Int      @id @default(autoincrement())
+  setting_key   String   @unique(map: "setting_key") @db.VarChar(100)
+  setting_value String?  @db.Text
+  created_at    DateTime @default(now()) @db.Timestamp(0)
+  updated_at    DateTime @default(now()) @db.Timestamp(0)
+}
+
+model testimonials {
+  id               Int      @id @default(autoincrement())
+  client_name      String   @db.VarChar(255)
+  client_location  String?  @db.VarChar(255)
+  client_photo     String?  @db.Text
+  testimonial_text String   @db.Text
+  rating           Int?     @default(5)
+  sort_order       Int?     @default(0)
+  enabled          Boolean? @default(true)
+  created_at       DateTime @default(now()) @db.Timestamp(0)
+  updated_at       DateTime @default(now()) @db.Timestamp(0)
+}
+
+model testimonials_section {
+  id            Int      @id @default(autoincrement())
+  section_label String?  @db.VarChar(100)
+  title         String?  @db.VarChar(255)
+  description   String?  @db.Text
+  created_at    DateTime @default(now()) @db.Timestamp(0)
+  updated_at    DateTime @default(now()) @db.Timestamp(0)
+}
+
+model users {
+  Id                              String             @id @db.Char(36)
+  Email                           String             @unique(map: "Email")
+  PasswordHash                    String             @db.VarChar(255)
+  Role                            Int
+  CreatedAt                       DateTime           @db.DateTime(0)
+  Avatar                          String?            @db.MediumText
+  IsActive                        Boolean            @default(true)
+  LastActiveAt                    DateTime?          @db.DateTime(0)
+  PhoneNumber                     String?            @db.VarChar(50)
+  BoosterUntil                    DateTime?          @db.DateTime(0)
+  applications                    applications[]
+  business_profiles               business_profiles?
+  employee_profiles               employee_profiles?
+  jobs                            jobs[]
+  ratings_ratings_rated_idTousers ratings[]          @relation("ratings_rated_idTousers")
+  ratings_ratings_rater_idTousers ratings[]          @relation("ratings_rater_idTousers")
+
+  @@index([Email], map: "idx_users_email")
+  @@index([Role], map: "idx_users_role")
+}
+
+model why_us {
+  id            Int      @id @default(autoincrement())
+  section_label String?  @db.VarChar(100)
+  title         String?  @db.VarChar(255)
+  image_url     String?  @db.Text
+  created_at    DateTime @default(now()) @db.Timestamp(0)
+  updated_at    DateTime @default(now()) @db.Timestamp(0)
+}
+
+model why_us_items {
+  id          Int      @id @default(autoincrement())
+  icon_svg    String?  @db.Text
+  title       String   @db.VarChar(255)
+  description String?  @db.Text
+  sort_order  Int?     @default(0)
+  enabled     Boolean? @default(true)
+  created_at  DateTime @default(now()) @db.Timestamp(0)
+  updated_at  DateTime @default(now()) @db.Timestamp(0)
+}
+
+enum raioane_type {
+  raion
+  municipiu
+  unitate_autonoma
+}
+
+enum client_reviews_status {
+  pending
+  approved
+  rejected
+}
+
+enum hero_video_type {
+  upload
+  youtube
+  vimeo
+}
+
+enum hero_media_type {
+  image
+  video
+}

@@ -333,6 +333,11 @@
   paint-order: stroke fill;
 }
 
+.hero-title__two--accent {
+  display: inline-block;
+  animation: heroTwoPulse 1.35s cubic-bezier(0.22, 1, 0.36, 1) 0.88s both;
+}
+
 @media (min-width: 1024px) {
   .hero-title {
     font-size: 3.75rem;
@@ -370,6 +375,143 @@
   flex-wrap: wrap;
   gap: 0.75rem;
   margin-top: 0.25rem;
+}
+
+.hero-appear-badge,
+.hero-appear-title,
+.hero-appear-lead,
+.hero-appear-actions,
+.hero-appear-illustration {
+  will-change: transform, opacity, filter, clip-path;
+}
+
+.hero-appear-badge {
+  opacity: 0;
+  animation: heroBadgeOrbitIn 0.95s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.hero-appear-title {
+  opacity: 0;
+  transform-origin: 50% 100%;
+  animation: heroTitlePrismIn 1.15s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.hero-appear-lead {
+  opacity: 0;
+  animation: heroLeadRevealIn 1.05s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.hero-appear-actions {
+  opacity: 0;
+  animation: heroActionsLiftIn 0.95s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.hero-appear-illustration {
+  opacity: 0;
+  transform-origin: 50% 100%;
+  animation: heroIllustrationWarpIn 1.15s cubic-bezier(0.18, 1, 0.3, 1);
+}
+
+@keyframes heroBadgeOrbitIn {
+  0% {
+    opacity: 0;
+    transform: translateY(-28px) rotate(-8deg) scale(0.82);
+    filter: blur(10px);
+  }
+  62% {
+    opacity: 1;
+    transform: translateY(6px) rotate(2deg) scale(1.04);
+    filter: blur(0);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) rotate(0) scale(1);
+    filter: blur(0);
+  }
+}
+
+@keyframes heroTitlePrismIn {
+  0% {
+    opacity: 0;
+    transform: perspective(1100px) rotateX(68deg) rotateY(-14deg) translateY(34px) scale(0.72);
+    filter: blur(18px);
+  }
+  58% {
+    opacity: 1;
+    transform: perspective(1100px) rotateX(-10deg) rotateY(4deg) translateY(-4px) scale(1.03);
+    filter: blur(0);
+  }
+  100% {
+    opacity: 1;
+    transform: perspective(1100px) rotateX(0) rotateY(0) translateY(0) scale(1);
+    filter: blur(0);
+  }
+}
+
+@keyframes heroLeadRevealIn {
+  0% {
+    opacity: 0;
+    transform: translateY(18px) scale(0.98);
+    clip-path: inset(0 100% 0 0 round 18px);
+    filter: blur(8px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    clip-path: inset(0 0 0 0 round 18px);
+    filter: blur(0);
+  }
+}
+
+@keyframes heroActionsLiftIn {
+  0% {
+    opacity: 0;
+    transform: translateY(20px) scale(0.92);
+    filter: blur(8px);
+  }
+  64% {
+    opacity: 1;
+    transform: translateY(-2px) scale(1.02);
+    filter: blur(0);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0);
+  }
+}
+
+@keyframes heroIllustrationWarpIn {
+  0% {
+    opacity: 0;
+    transform: translateY(42px) rotate(8deg) scale(0.82);
+    filter: blur(16px) saturate(0.75);
+  }
+  55% {
+    opacity: 1;
+    transform: translateY(-6px) rotate(-2deg) scale(1.03);
+    filter: blur(0) saturate(1);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) rotate(0) scale(1);
+    filter: blur(0) saturate(1);
+  }
+}
+
+@keyframes heroTwoPulse {
+  0% {
+    transform: scale(0.72) rotate(-14deg);
+    text-shadow: 0 0 0 rgba(122, 99, 241, 0);
+  }
+  65% {
+    transform: scale(1.18) rotate(3deg);
+    text-shadow: 0 0 24px rgba(122, 99, 241, 0.35);
+  }
+  100% {
+    transform: scale(1) rotate(0);
+    text-shadow: 0 0 0 rgba(122, 99, 241, 0);
+  }
 }
 
 @media (min-width: 640px) {

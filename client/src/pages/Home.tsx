@@ -68,10 +68,10 @@ export default function Home() {
         <div className="container relative z-[2] mx-auto px-4 sm:px-6 py-8 sm:py-14 md:py-28 max-w-[1100px] min-w-0">
           <div className="grid grid-cols-1 md:grid-cols-[1.1fr_1fr] gap-6 sm:gap-10 md:gap-20 items-center">
             <div className="hero-content order-1 text-center md:text-left min-w-0">
-              <p className="hero-eyebrow animate-fade-in-up opacity-100 mx-auto md:mx-0" style={{ animationDelay: "0.1s", animationFillMode: "forwards" }}>
+              <p className="hero-eyebrow hero-appear-badge mx-auto md:mx-0" style={{ animationDelay: "0.08s", animationFillMode: "both" }}>
                 {t("hero.eyebrow")}
               </p>
-              <h1 className="hero-title animate-fade-in-up opacity-100" style={{ animationDelay: "0.2s", animationFillMode: "forwards" }}>
+              <h1 className="hero-title hero-appear-title" style={{ animationDelay: "0.18s", animationFillMode: "both" }}>
                 {(() => {
                   const title = t("hero.title");
                   const parts = title.split("2");
@@ -79,7 +79,7 @@ export default function Home() {
                     return (
                       <>
                         {parts[0]}
-                        <span className="hero-title__two">2</span>
+                        <span className="hero-title__two hero-title__two--accent">2</span>
                         {parts[1]}
                       </>
                     );
@@ -87,10 +87,10 @@ export default function Home() {
                   return title;
                 })()}
               </h1>
-              <p className="hero-lead animate-fade-in-up opacity-100 mx-auto md:mx-0" style={{ animationDelay: "0.35s", animationFillMode: "forwards" }}>
+              <p className="hero-lead hero-appear-lead mx-auto md:mx-0" style={{ animationDelay: "0.34s", animationFillMode: "both" }}>
                 {t("hero.lead")}
               </p>
-              <div className="hero-actions animate-fade-in-up opacity-100 flex flex-col sm:flex-row flex-wrap justify-center md:justify-start gap-3 sm:gap-3" style={{ animationDelay: "0.5s", animationFillMode: "forwards" }}>
+              <div className="hero-actions hero-appear-actions flex flex-col sm:flex-row flex-wrap justify-center md:justify-start gap-3 sm:gap-3" style={{ animationDelay: "0.5s", animationFillMode: "both" }}>
                 <Link to="/about" className="hero-btn hero-btn--primary w-full sm:w-auto min-w-0">
                   {t("hero.details")}
                 </Link>
@@ -104,7 +104,8 @@ export default function Home() {
                 <img
                   src="/Illustration/White human coffe.png"
                   alt="Work2Now"
-                  className="hero-illus relative z-[1] w-full h-auto max-h-[38vh] sm:max-h-[320px] md:max-h-none object-contain object-bottom drop-shadow-[0_20px_40px_rgba(122,99,241,0.15)] hover:-translate-y-1 hover:scale-[1.02] transition-transform duration-300"
+                  className="hero-illus hero-appear-illustration relative z-[1] w-full h-auto max-h-[38vh] sm:max-h-[320px] md:max-h-none object-contain object-bottom drop-shadow-[0_20px_40px_rgba(122,99,241,0.15)] hover:-translate-y-1 hover:scale-[1.02] transition-transform duration-300"
+                  style={{ animationDelay: "0.26s", animationFillMode: "both" }}
                 />
               </div>
             </div>

@@ -123,13 +123,8 @@ export default function DashboardHomeCustomer() {
   }, [user?.id, fetchApplications]);
 
   // Set up periodic refresh every 10 seconds to catch check-ins/check-outs
-  useEffect(() => {
-    if (!user?.id) return;
-    const intervalId = setInterval(() => {
-      fetchApplications();
-    }, 10000); // Refresh every 10 seconds
-    return () => clearInterval(intervalId);
-  }, [user?.id, fetchApplications]);
+  // NOTE: fetchApplications is intentionally called only once on mount.
+  // If live auto-refresh is needed in future, add a polling effect here.
 
   const allJobs = useMemo(() => [...jobsAdded], [jobsAdded]);
   const localizedEmptyCheckLabel = t("dashboard.notYetDone");
@@ -547,8 +542,12 @@ export default function DashboardHomeCustomer() {
                 </svg>
               </div>
             </button>
-            {jobsArchiveExpanded && (
-              <div className="overflow-x-auto">
+            <div
+              className={`grid transition-[grid-template-rows] duration-300 ease-out ${jobsArchiveExpanded ? "grid-rows-[1fr]" : "grid-rows-[0fr]"}`}
+              aria-hidden={!jobsArchiveExpanded}
+            >
+              <div className="min-h-0 overflow-hidden">
+                <div className="overflow-x-auto">
                 <table className="w-full min-w-[640px]">
                   <thead>
                     <tr className="text-left text-xs sm:text-sm text-gray-500 border-b border-gray-200 bg-gray-50/80">
@@ -624,8 +623,9 @@ export default function DashboardHomeCustomer() {
                     )}
                   </tbody>
                 </table>
+                </div>
               </div>
-            )}
+            </div>
           </div>
         </section>
 
@@ -853,21 +853,39 @@ function ApplicationDetailsModal({
     return new Date(iso).toLocaleTimeString("ro-MD", { hour: "2-digit", minute: "2-digit" });
   };
 
+  // Derive a more meaningful status for the application
+  const hasAnyCheckOut =
+    (application.workSessions && application.workSessions.some((s) => s.checkedOutAt)) ||
+    !!application.checkedOutAt ||
+    !!application.businessConfirmedAt;
+
+  const normalizedStatus = (application.status || "").toLowerCase();
+
   const statusMeta =
-    application.status === "accepted"
-      ? {
-          label: t("dashboard.accepted"),
-          className: "bg-emerald-100 text-emerald-700 border-emerald-200",
-        }
-      : application.status === "pending"
+    normalizedStatus === "accepted"
+      ? hasAnyCheckOut
+        ? {
+            label: t("dashboard.finished"),
+            className: "bg-indigo-100 text-indigo-700 border-indigo-200",
+          }
+        : {
+            label: t("dashboard.jobStatusInProcess"),
+            className: "bg-emerald-100 text-emerald-700 border-emerald-200",
+          }
+      : normalizedStatus === "pending"
         ? {
             label: t("dashboard.pending"),
             className: "bg-amber-100 text-amber-700 border-amber-200",
           }
-        : {
-            label: t("dashboard.refused"),
-            className: "bg-rose-100 text-rose-700 border-rose-200",
-          };
+        : normalizedStatus === "refused"
+          ? {
+              label: t("dashboard.refused"),
+              className: "bg-rose-100 text-rose-700 border-rose-200",
+            }
+          : {
+              label: application.status || "—",
+              className: "bg-gray-100 text-gray-700 border-gray-200",
+            };
 
   const jobTypeLabel =
     job.jobType === "one-day"

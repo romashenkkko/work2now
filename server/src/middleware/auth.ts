@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
-import db from "../db";
+import { prisma } from "../prismaClient";
 
 export interface JwtPayload {
   userId: string; // GUID in new schema
@@ -23,12 +23,12 @@ export async function authMiddleware(req: Request, res: Response, next: NextFunc
     const decoded = jwt.verify(token, secret) as JwtPayload;
     (req as Request & { user?: JwtPayload }).user = decoded;
     try {
-      const [rows] = await db.query(
-        "SELECT COALESCE(IsActive, 1) AS IsActive FROM users WHERE Id = ? LIMIT 1",
-        [decoded.userId]
-      ) as [{ IsActive: number }[], unknown];
-      const active = Array.isArray(rows) && rows[0] ? Number(rows[0].IsActive) : 1;
-      if (active === 0) {
+      const dbUser = await prisma.users.findUnique({
+        where: { Id: decoded.userId },
+        select: { IsActive: true, LastActiveAt: true },
+      });
+      const isActive = dbUser?.IsActive ?? true;
+      if (!isActive) {
         res.status(403).json({ error: "Contul dumneavoastră a fost blocat din cauza încălcării regulilor.", code: "ACCOUNT_BLOCKED" });
         return;
       }
@@ -36,7 +36,12 @@ export async function authMiddleware(req: Request, res: Response, next: NextFunc
       const last = lastActiveUpdates.get(decoded.userId) ?? 0;
       if (now - last >= THROTTLE_MS) {
         lastActiveUpdates.set(decoded.userId, now);
-        db.query("UPDATE users SET LastActiveAt = NOW() WHERE Id = ?", [decoded.userId]).catch(() => {});
+        prisma.users
+          .update({
+            where: { Id: decoded.userId },
+            data: { LastActiveAt: new Date() },
+          })
+          .catch(() => {});
       }
     } catch (_) {
       /* Dacă tabelul nu are IsActive/LastActiveAt sau DB e indisponibil, permitem accesul */
