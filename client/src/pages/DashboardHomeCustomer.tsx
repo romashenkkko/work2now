@@ -71,6 +71,8 @@ export default function DashboardHomeCustomer() {
   const [toast] = useState<string | null>(null);
   const [applicationsByJob, setApplicationsByJob] = useState<Record<string, AppWithSessions[]>>({});
   const [jobsArchiveExpanded, setJobsArchiveExpanded] = useState(false);
+  const [activeAppsExpanded, setActiveAppsExpanded] = useState(true);
+  const [openAppsExpanded, setOpenAppsExpanded] = useState(true);
   const [selectedApplication, setSelectedApplication] = useState<{ job: JobRow; application: AppWithSessions } | null>(null);
 
   const fetchApplications = useCallback(() => {
@@ -127,25 +129,6 @@ export default function DashboardHomeCustomer() {
   const allJobs = useMemo(() => [...jobsAdded], [jobsAdded]);
 
   const localizedEmptyCheckLabel = t("dashboard.notYetDone");
-
-  const getLocalizedOpenJobStatus = useCallback(
-    (status: string) => {
-      const normalized = status.trim().toLowerCase();
-      if (normalized === "draft") return t("dashboard.draft");
-      if (normalized === "published") return t("dashboard.published");
-      if (normalized === "confirmed") return t("dashboard.confirmed");
-      if (normalized === "pending") return t("dashboard.jobStatusSearching");
-      if (normalized === "accepted") return t("dashboard.jobStatusInProcess");
-      if (normalized === "inprocess" || normalized === "in_process" || normalized === "checkedin" || normalized === "checked_in") {
-        return t("dashboard.inProcess");
-      }
-      if (normalized === "finished" || normalized === "completed" || normalized === "checkedout" || normalized === "checked_out") {
-        return t("dashboard.finished");
-      }
-      return status;
-    },
-    [t]
-  );
   // Compute jobs with no accepted applications
   const jobsWithNoAcceptances = useMemo(() => {
     const noAcceptances: JobRow[] = [];
@@ -165,41 +148,34 @@ export default function DashboardHomeCustomer() {
     return noAcceptances;
   }, [allJobs, applicationsByJob]);
 
-  // Compute active jobs (jobs with accepted applications that are pending or in progress)
-  const activeJobs = useMemo(() => {
-    const active: JobRow[] = [];
-    allJobs.forEach((job, i) => {
-      const jobId = ("id" in job && job.id != null ? String(job.id) : `job-${i}`);
-      const apps = applicationsByJob[jobId] ?? [];
+  // Compute active applications grouped by job (one row per job, with all active applications listed)
+  const activeJobs = useMemo(
+    () =>
+      allJobs
+        .map((job, i) => {
+          const jobId = ("id" in job && job.id != null ? String(job.id) : `job-${i}`);
+          const apps = (applicationsByJob[jobId] ?? []).filter((app) => {
+            const status = String(app.status).toLowerCase();
+            if (status === "pending") return true;
+            if (status === "accepted") {
+              const isConfirmed = app.isBusinessConfirmed || !!app.businessConfirmedAt;
+              if (isConfirmed) return false;
 
-      const hasAcceptedApp = apps.some((app) => {
-        const status = String(app.status).toLowerCase();
-        return status === "accepted";
-      });
-      if (!hasAcceptedApp) return;
+              if (app.workSessions && app.workSessions.length > 0) {
+                return app.workSessions.some((s) => s.checkedInAt && !s.checkedOutAt);
+              }
 
-      const hasActiveApp = apps.some((app) => {
-        const status = String(app.status).toLowerCase();
-        if (status === "pending") return true;
-        if (status === "accepted") {
-          const isConfirmed = app.isBusinessConfirmed || !!app.businessConfirmedAt;
-          if (isConfirmed) return false;
+              return !app.checkedInAt || (app.checkedInAt && !app.checkedOutAt);
+            }
+            return false;
+          });
 
-          if (app.workSessions && app.workSessions.length > 0) {
-            return app.workSessions.some((s) => s.checkedInAt && !s.checkedOutAt);
-          }
-
-          return !app.checkedInAt || (app.checkedInAt && !app.checkedOutAt);
-        }
-        return false;
-      });
-
-      if (hasActiveApp) {
-        active.push(job);
-      }
-    });
-    return active;
-  }, [allJobs, applicationsByJob]);
+          if (apps.length === 0) return null;
+          return { job, apps };
+        })
+        .filter((entry): entry is { job: JobRow; apps: AppWithSessions[] } => entry !== null),
+    [allJobs, applicationsByJob]
+  );
 
   const archivedJobs = useMemo(() => {
     const archived: JobRow[] = [];
@@ -260,12 +236,39 @@ export default function DashboardHomeCustomer() {
         {/* Active Jobs Section */}
         <section className="mb-6 md:mb-8">
           <div className="bg-white rounded-xl sm:rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-            <div className="p-3 sm:p-4 border-b border-gray-200">
-              <h2 className="font-bold text-gray-900 text-sm sm:text-base">{t("dashboard.applicationsInProcessTitle")}</h2>
-              <p className="text-xs text-gray-500 mt-1">
-                {t("dashboard.applicationsInProcessDesc")}
-              </p>
-            </div>
+            <button
+              type="button"
+              onClick={() => setActiveAppsExpanded((v) => !v)}
+              className="w-full p-3 sm:p-4 border-b border-gray-200 flex items-center justify-between hover:bg-gray-50 transition-colors"
+            >
+              <div className="flex items-center gap-3">
+                <span className="flex-shrink-0 w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M12 6v6m0 4h.01M5 4h14a2 2 0 012 2v12a2 2 0 01-2 2H5a2 2 0 01-2-2V6a2 2 0 012-2z"
+                    />
+                  </svg>
+                </span>
+                <div className="text-left">
+                  <h2 className="font-bold text-gray-900 text-sm sm:text-base">{t("dashboard.applicationsInProcessTitle")}</h2>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    {t("dashboard.applicationsInProcessDesc")}
+                  </p>
+                </div>
+              </div>
+              <svg
+                className={`w-5 h-5 text-gray-400 transition-transform ${activeAppsExpanded ? "rotate-180" : ""}`}
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+            {activeAppsExpanded && (
             <div className="overflow-x-auto">
               <table className="w-full min-w-[640px]">
                 <thead>
@@ -287,34 +290,50 @@ export default function DashboardHomeCustomer() {
                       </td>
                     </tr>
                   ) : (
-                    activeJobs.map((row, i) => {
-                      const jobId = ("id" in row && row.id != null ? String(row.id) : `job-${i}`);
-                      const apps = applicationsByJob[jobId] ?? [];
-                      const firstApp = apps.length > 0 ? apps[0] : null;
+                    activeJobs.map(({ job, apps }, index) => {
+                      const jobId = ("id" in job && job.id != null ? String(job.id) : `job-${index}`);
+                      // First active application used for default row-level check-in/out display
+                      const primaryApp = apps[0];
+                      const checkInTime = getCheckInTime(primaryApp, localizedEmptyCheckLabel);
+                      const checkOutTime = getCheckOutTime(primaryApp, localizedEmptyCheckLabel);
+
                       const handleRowClick = () => {
-                        if (firstApp) {
-                          setSelectedApplication({ job: row, application: firstApp });
-                        }
+                        setSelectedApplication({ job, application: primaryApp });
                       };
-                      const checkInTime = firstApp ? getCheckInTime(firstApp, localizedEmptyCheckLabel) : localizedEmptyCheckLabel;
-                      const checkOutTime = firstApp ? getCheckOutTime(firstApp, localizedEmptyCheckLabel) : localizedEmptyCheckLabel;
+
                       return (
                         <tr
                           key={jobId}
                           onClick={handleRowClick}
-                          className={`border-b border-gray-100 hover:bg-gray-50/50 ${firstApp ? "cursor-pointer" : ""}`}
+                          className="border-b border-gray-100 hover:bg-gray-50/50 cursor-pointer align-top"
                         >
-                          <td className="p-3 sm:p-4 font-medium text-gray-900 text-sm">{row.job}</td>
-                          <td className="p-3 sm:p-4 text-gray-600 text-sm">{row.location}</td>
+                          <td className="p-3 sm:p-4 font-medium text-gray-900 text-sm">{job.job}</td>
+                          <td className="p-3 sm:p-4 text-gray-600 text-sm">{job.location}</td>
                           <td className="p-3 sm:p-4 text-gray-600 text-sm">{checkInTime}</td>
                           <td className="p-3 sm:p-4 text-gray-600 text-sm">{checkOutTime}</td>
-                          <td className="p-3 sm:p-4 text-gray-600 text-sm font-medium">{firstApp?.staffName || "—"}</td>
-                          <td className="p-3 sm:p-4 text-gray-600 text-sm">{row.date}</td>
+                          <td className="p-3 sm:p-4 text-gray-600 text-sm font-medium">
+                            <div className="flex flex-col gap-1">
+                              {apps.map((app) => (
+                                <button
+                                  key={app.id ?? app.staffId}
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setSelectedApplication({ job, application: app });
+                                  }}
+                                  className="text-left hover:text-primary transition-colors"
+                                >
+                                  {app.staffName || "—"}
+                                </button>
+                              ))}
+                            </div>
+                          </td>
+                          <td className="p-3 sm:p-4 text-gray-600 text-sm">{job.date}</td>
                           <td className="p-3 sm:p-4" onClick={(e) => e.stopPropagation()}>
-                            {row.id && (
+                            {job.id && (
                               <button
                                 type="button"
-                                onClick={() => removeJob(row.id!)}
+                                onClick={() => removeJob(job.id!)}
                                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium text-red-600 border border-red-200 bg-red-50/80 hover:bg-red-100 hover:border-red-300 transition-colors"
                                 aria-label={t("dashboard.delete")}
                               >
@@ -343,16 +362,44 @@ export default function DashboardHomeCustomer() {
                 </tbody>
               </table>
             </div>
+            )}
           </div>
         </section>
 
         {/* Posted Jobs (No Acceptances) Section */}
         <section className="mb-6 md:mb-8">
           <div className="bg-white rounded-xl sm:rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-            <div className="p-3 sm:p-4 border-b border-gray-200">
-              <h2 className="font-bold text-gray-900 text-sm sm:text-base">{t("dashboard.openApplicationsTitle")}</h2>
-              <p className="text-xs text-gray-500 mt-1">{t("dashboard.openApplicationsDesc")}</p>
-            </div>
+            <button
+              type="button"
+              onClick={() => setOpenAppsExpanded((v) => !v)}
+              className="w-full p-3 sm:p-4 border-b border-gray-200 flex items-center justify-between hover:bg-gray-50 transition-colors"
+            >
+              <div className="flex items-center gap-3">
+                <span className="flex-shrink-0 w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M4 7h16M4 7a2 2 0 110-4h16a2 2 0 110 4M4 7v10a2 2 0 002 2h12a2 2 0 002-2V7"
+                    />
+                  </svg>
+                </span>
+                <div className="text-left">
+                  <h2 className="font-bold text-gray-900 text-sm sm:text-base">{t("dashboard.openApplicationsTitle")}</h2>
+                  <p className="text-xs text-gray-500 mt-0.5">{t("dashboard.openApplicationsDesc")}</p>
+                </div>
+              </div>
+              <svg
+                className={`w-5 h-5 text-gray-400 transition-transform ${openAppsExpanded ? "rotate-180" : ""}`}
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+            {openAppsExpanded && (
             <div className="overflow-x-auto">
               <table className="w-full min-w-[640px]">
                 <thead>
@@ -360,7 +407,8 @@ export default function DashboardHomeCustomer() {
                     <th className="p-3 sm:p-4 font-medium">{t("dashboard.jobName")}</th>
                     <th className="p-3 sm:p-4 font-medium">{t("dashboard.location")}</th>
                     <th className="p-3 sm:p-4 font-medium">{t("dashboard.jobTitle")}</th>
-                    <th className="p-3 sm:p-4 font-medium">{t("dashboard.status")}</th>
+                    {/* Column showing how many people are applied vs needed (e.g. 2/3, 0/1) */}
+                    <th className="p-3 sm:p-4 font-medium">Oameni</th>
                     <th className="p-3 sm:p-4 font-medium">{t("dashboard.date")}</th>
                     <th className="p-3 sm:p-4 font-medium">{t("dashboard.time")}</th>
                     <th className="p-3 sm:p-4 font-medium">{t("dashboard.actions")}</th>
@@ -403,7 +451,16 @@ export default function DashboardHomeCustomer() {
                               : "—"}
                           </td>
                           <td className="p-3 sm:p-4">
-                            <span className={`px-2 py-1 rounded-lg text-xs font-medium ${row.statusClass}`}>{getLocalizedOpenJobStatus(row.status)}</span>
+                            {(() => {
+                              const needed = parseInt(String(row.peopleNeeded ?? "1"), 10) || 1;
+                              // Count only applications that are not refused (pending or accepted)
+                              const activeApps = apps.filter((app) => String(app.status).toLowerCase() !== "refused").length;
+                              return (
+                                <span className="inline-flex items-center justify-center min-w-[3.5rem] px-2 py-1 rounded-lg text-xs font-semibold bg-primary/10 text-primary">
+                                  {activeApps}/{needed}
+                                </span>
+                              );
+                            })()}
                           </td>
                           <td className="p-3 sm:p-4 text-gray-600 text-sm">{row.date}</td>
                           <td className="p-3 sm:p-4 text-gray-600 text-sm">
@@ -442,6 +499,7 @@ export default function DashboardHomeCustomer() {
                 </tbody>
               </table>
             </div>
+            )}
           </div>
         </section>
 
@@ -571,9 +629,123 @@ export default function DashboardHomeCustomer() {
             </div>
           </div>
         </section>
-      </div>
+
+      {/* Branch distribution – pie chart + legend (same component as in reports) */}
+      <section className="mt-6 md:mt-8">
+        <div className="bg-white rounded-xl sm:rounded-2xl border border-gray-200 shadow-sm p-4 sm:p-6">
+          <h3 className="text-sm font-semibold text-gray-900 mb-4">
+            {t("dashboard.branchesDistribution") || "Distribuția joburilor pe filiale"}
+          </h3>
+          <div className="flex flex-col sm:flex-row gap-6 items-center sm:items-start">
+            <div className="flex-shrink-0">
+              {/* Simple 2-slice pie: jobs with applications vs without (per current business) */}
+              {(() => {
+                const withApps = allJobs.filter((job, i) => {
+                  const jobId = ("id" in job && job.id != null ? String(job.id) : `job-${i}`);
+                  const apps = applicationsByJob[jobId] ?? [];
+                  return apps.length > 0;
+                }).length;
+                const withoutApps = allJobs.length - withApps;
+                const data = [
+                  { code: "with", title: t("dashboard.jobsWithApplications", "Joburi cu aplicații"), count: withApps },
+                  { code: "without", title: t("dashboard.jobsWithoutApplications", "Joburi fără aplicații"), count: withoutApps },
+                ];
+                const total = data.reduce((sum, d) => sum + d.count, 0);
+                if (total === 0) {
+                  return (
+                    <div className="w-48 h-48 rounded-full bg-gray-100 flex items-center justify-center">
+                      <span className="text-sm text-gray-500">
+                        {t("dashboard.noData") || "Fără date"}
+                      </span>
+                    </div>
+                  );
+                }
+
+                const colors = ["rgb(122 99 241)", "rgb(192 132 252)"];
+                let currentAngle = -90;
+                const radius = 60;
+                const centerX = 70;
+                const centerY = 70;
+
+                const paths = data.map((item, idx) => {
+                  const percentage = item.count / total;
+                  const angle = percentage * 360;
+                  const startAngle = currentAngle;
+                  const endAngle = currentAngle + angle;
+                  currentAngle += angle;
+
+                  const startAngleRad = (startAngle * Math.PI) / 180;
+                  const endAngleRad = (endAngle * Math.PI) / 180;
+
+                  const x1 = centerX + radius * Math.cos(startAngleRad);
+                  const y1 = centerY + radius * Math.sin(startAngleRad);
+                  const x2 = centerX + radius * Math.cos(endAngleRad);
+                  const y2 = centerY + radius * Math.sin(endAngleRad);
+
+                  const largeArcFlag = angle > 180 ? 1 : 0;
+
+                  const pathData = [
+                    `M ${centerX} ${centerY}`,
+                    `L ${x1} ${y1}`,
+                    `A ${radius} ${radius} 0 ${largeArcFlag} 1 ${x2} ${y2}`,
+                    "Z",
+                  ].join(" ");
+
+                  return (
+                    <path
+                      key={item.code}
+                      d={pathData}
+                      fill={colors[idx % colors.length]}
+                      stroke="white"
+                      strokeWidth={1.5}
+                    />
+                  );
+                });
+
+                return (
+                  <svg width={140} height={140} viewBox="0 0 140 140">
+                    <defs>
+                      <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+                        <feDropShadow dx="0" dy="4" stdDeviation="4" floodColor="rgba(15,23,42,0.18)" />
+                      </filter>
+                    </defs>
+                    <g filter="url(#shadow)">{paths}</g>
+                  </svg>
+                );
+              })()}
+            </div>
+            <div className="flex-1 space-y-2 min-w-0">
+              {(() => {
+                const withApps = allJobs.filter((job, i) => {
+                  const jobId = ("id" in job && job.id != null ? String(job.id) : `job-${i}`);
+                  const apps = applicationsByJob[jobId] ?? [];
+                  return apps.length > 0;
+                }).length;
+                const withoutApps = allJobs.length - withApps;
+                const data = [
+                  { title: t("dashboard.jobsWithApplications", "Joburi cu aplicații"), count: withApps, color: "rgb(122 99 241)" },
+                  { title: t("dashboard.jobsWithoutApplications", "Joburi fără aplicații"), count: withoutApps, color: "rgb(192 132 252)" },
+                ];
+                const total = data.reduce((sum, d) => sum + d.count, 0) || 1;
+                return data.map((item) => {
+                  const percentage = Math.round((item.count / total) * 100);
+                  return (
+                    <div key={item.title} className="flex items-center gap-3">
+                      <div className="w-4 h-4 rounded flex-shrink-0" style={{ backgroundColor: item.color }} />
+                      <span className="text-sm text-gray-700 flex-1 truncate">{item.title}</span>
+                      <span className="text-sm font-semibold text-gray-900">{item.count}</span>
+                      <span className="text-xs text-gray-500">({percentage}%)</span>
+                    </div>
+                  );
+                });
+              })()}
+            </div>
+          </div>
+        </div>
+      </section>
 
       {/* Application Details Modal */}
+      </div>
       {selectedApplication && (
         <ApplicationDetailsModal
           open={!!selectedApplication}
@@ -584,6 +756,7 @@ export default function DashboardHomeCustomer() {
       )}
     </>
   );
+
 }
 
 /** Application Details Modal Component */

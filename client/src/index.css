@@ -872,21 +872,21 @@
 }
 
 .stats-card--center-in {
-  animation: statsCenterAppear 0.45s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  animation: statsCenterAppear 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 .stats-card--slide-left-out {
   opacity: 0;
   transform: translateX(100%);
 }
 .stats-card--slide-left {
-  animation: statsSlideFromCenterLeft 0.5s cubic-bezier(0.22, 1, 0.36, 1) 0.28s forwards;
+  animation: statsSlideFromCenterLeft 0.5s cubic-bezier(0.22, 1, 0.36, 1) 0.28s both;
 }
 .stats-card--slide-right-out {
   opacity: 0;
   transform: translateX(-100%);
 }
 .stats-card--slide-right {
-  animation: statsSlideFromCenterRight 0.5s cubic-bezier(0.22, 1, 0.36, 1) 0.28s forwards;
+  animation: statsSlideFromCenterRight 0.5s cubic-bezier(0.22, 1, 0.36, 1) 0.28s both;
 }
 
 @keyframes statsCenterAppear {

@@ -167,7 +167,7 @@ export default function DashboardJoburi() {
   const [categoryOpen, setCategoryOpen] = useState(false);
   const [professionOpen, setProfessionOpen] = useState(false);
   const [professionFilter, setProfessionFilter] = useState<string>("all");
-  const [locationFilter, setLocationFilter] = useState<string>("all");
+  const [locationFilter] = useState<string>("all");
   const [raioane, setRaioane] = useState<Array<{ id: number; name: string; type: string }>>([]);
   const categoryRef = useRef<HTMLDivElement>(null);
   const professionRef = useRef<HTMLDivElement>(null);
@@ -810,7 +810,7 @@ export default function DashboardJoburi() {
               </div>
               <button
                 type="button"
-                onClick={() => { setSearchQuery(""); setCategoryFilter("all"); setProfessionFilter("all"); setLocationFilter("all"); }}
+                onClick={() => { setSearchQuery(""); setCategoryFilter("all"); setProfessionFilter("all"); }}
                 className="h-12 px-6 shrink-0 bg-[#8A63F2] text-white font-semibold text-sm hover:opacity-90 transition-opacity rounded-b-[24px] sm:rounded-b-none sm:rounded-r-[24px]"
               >
                 {t("findJobs.searchBtn")}

@@ -342,6 +342,9 @@ export async function initDatabase(): Promise<void> {
     `);
     await ensureInnoDB(conn, "business_profiles");
 
+    // Align with Prisma schema: optional IDNO column for business_profiles
+    await ensureColumn(conn, "business_profiles", "IDNO", "VARCHAR(13) NULL");
+
     // Branches (BusinessProfile has ICollection<Branch>)
     await conn.query(`
       CREATE TABLE IF NOT EXISTS \`branches\` (
@@ -451,7 +454,9 @@ export async function initDatabase(): Promise<void> {
     await ensureInnoDB(conn, "raioane");
     
     // Populate raioane table with Moldova's administrative divisions
-    const raioaneList = [
+    // NOTE: `name` is UNIQUE in schema, so we cannot have the same "Cahul" as both raion and municipiu.
+    // For municipii that share a name with a raion, we prefix with "mun. " to keep uniqueness.
+    const raioaneList: Array<{ name: string; type: "raion" | "municipiu" | "unitate_autonoma" }> = [
       // 32 Raioane
       { name: "Anenii Noi", type: "raion" },
       { name: "Basarabeasca", type: "raion" },
@@ -490,31 +495,27 @@ export async function initDatabase(): Promise<void> {
       { name: "Balti", type: "municipiu" },
       { name: "Tiraspol", type: "municipiu" },
       { name: "Bender", type: "municipiu" },
+      { name: "Tighina", type: "municipiu" },
       { name: "Ribnita", type: "municipiu" },
-      { name: "Cahul", type: "municipiu" },
-      { name: "Ungheni", type: "municipiu" },
-      { name: "Soroca", type: "municipiu" },
-      { name: "Orhei", type: "municipiu" },
+      { name: "mun. Cahul", type: "municipiu" },
+      { name: "mun. Ungheni", type: "municipiu" },
+      { name: "mun. Soroca", type: "municipiu" },
+      { name: "mun. Orhei", type: "municipiu" },
       { name: "Comrat", type: "municipiu" },
       { name: "Ceadir-Lunga", type: "municipiu" },
       { name: "Vulcanesti", type: "municipiu" },
-      { name: "Taraclia", type: "municipiu" },
+      { name: "mun. Taraclia", type: "municipiu" },
       // 2 Unitati teritoriale autonome
       { name: "Gagauzia", type: "unitate_autonoma" },
       { name: "Stinga Nistrului", type: "unitate_autonoma" },
     ];
     
-    // Insert raioane if table is empty
-    const [raioaneCountRows] = await conn.query("SELECT COUNT(*) AS c FROM `raioane`") as [Record<string, unknown>[], unknown];
-    const raioaneCount = Number((Array.isArray(raioaneCountRows) ? raioaneCountRows[0] : null)?.c ?? 0);
-    if (raioaneCount === 0) {
-      for (const raion of raioaneList) {
-        await conn.query(
-          "INSERT INTO `raioane` (`name`, `type`) VALUES (?, ?) ON DUPLICATE KEY UPDATE `name` = `name`",
-          [raion.name, raion.type]
-        );
-      }
-      console.log(`[DB] Inserted ${raioaneList.length} raioane into database`);
+    // Upsert raioane on every start so new items added in code appear without requiring a DB reset.
+    for (const raion of raioaneList) {
+      await conn.query(
+        "INSERT INTO `raioane` (`name`, `type`) VALUES (?, ?) ON DUPLICATE KEY UPDATE `type` = VALUES(`type`)",
+        [raion.name, raion.type]
+      );
     }
     
     await conn.query(`
