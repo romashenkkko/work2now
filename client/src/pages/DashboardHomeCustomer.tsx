@@ -172,6 +172,9 @@ export default function DashboardHomeCustomer() {
               const isConfirmed = app.isBusinessConfirmed || !!app.businessConfirmedAt;
               if (isConfirmed) return false;
 
+              // If checkout is stored at application-level, the job should no longer be shown as "in process".
+              if (app.checkedOutAt) return false;
+
               if (app.workSessions && app.workSessions.length > 0) {
                 return app.workSessions.some((s) => s.checkedInAt && !s.checkedOutAt);
               }
@@ -204,7 +207,10 @@ export default function DashboardHomeCustomer() {
         if (isConfirmed) return true;
 
         if (app.workSessions && app.workSessions.length > 0) {
-          return app.workSessions.every((s) => s.checkedOutAt);
+          const allSessionsOut = app.workSessions.every((s) => !!s.checkedOutAt);
+          // Some APIs store checkout at application-level without checkedOutAt in each work session.
+          // Treat job as archived in that case as well.
+          return allSessionsOut || !!app.checkedOutAt;
         }
 
         return !!app.checkedOutAt;
@@ -824,17 +830,37 @@ function ApplicationDetailsModal({
   const workSessionsDetails: Array<{ date: string; checkIn?: string; checkOut?: string; hours: number }> = [];
   
   if (application.workSessions && application.workSessions.length > 0) {
-    application.workSessions.forEach((session) => {
-      if (session.checkedInAt && session.checkedOutAt) {
-        const hours = hoursBetween(session.checkedInAt, session.checkedOutAt);
+    const appCheckOut = application.checkedOutAt;
+
+    // Some APIs store checkout at application-level even when each work session misses `checkedOutAt`.
+    // Use `application.checkedOutAt` for the latest open session (checkedInAt exists, checkedOutAt missing).
+    const openSessions = appCheckOut
+      ? application.workSessions
+          .map((s, idx) => ({ s, idx }))
+          .filter(({ s }) => s.checkedInAt && !s.checkedOutAt)
+      : [];
+
+    const latestOpenIdx =
+      openSessions.length > 0
+        ? openSessions
+            .sort((a, b) => new Date(b.s.checkedInAt!).getTime() - new Date(a.s.checkedInAt!).getTime())[0]!.idx
+        : null;
+
+    application.workSessions.forEach((session, idx) => {
+      if (!session.checkedInAt) return;
+
+      const effectiveCheckOut = session.checkedOutAt || (appCheckOut && latestOpenIdx === idx ? appCheckOut : undefined);
+
+      if (effectiveCheckOut) {
+        const hours = hoursBetween(session.checkedInAt, effectiveCheckOut);
         totalHours += hours;
         workSessionsDetails.push({
           date: session.workDate || "—",
           checkIn: session.checkedInAt,
-          checkOut: session.checkedOutAt,
+          checkOut: effectiveCheckOut,
           hours,
         });
-      } else if (session.checkedInAt) {
+      } else {
         workSessionsDetails.push({
           date: session.workDate || "—",
           checkIn: session.checkedInAt,
@@ -842,6 +868,25 @@ function ApplicationDetailsModal({
         });
       }
     });
+
+    // If sessions exist but none had check-in recorded, fallback to application-level check-in/out.
+    if (workSessionsDetails.length === 0 && application.checkedInAt) {
+      if (application.checkedOutAt) {
+        totalHours = hoursBetween(application.checkedInAt, application.checkedOutAt);
+        workSessionsDetails.push({
+          date: job.date || "—",
+          checkIn: application.checkedInAt,
+          checkOut: application.checkedOutAt,
+          hours: totalHours,
+        });
+      } else {
+        workSessionsDetails.push({
+          date: job.date || "—",
+          checkIn: application.checkedInAt,
+          hours: 0,
+        });
+      }
+    }
   } else if (application.checkedInAt && application.checkedOutAt) {
     // Fallback to application-level check-in/out
     totalHours = hoursBetween(application.checkedInAt, application.checkedOutAt);
@@ -1047,6 +1092,15 @@ function ApplicationDetailsModal({
             </h3>
             {workSessionsDetails.length > 0 ? (
               <div className="space-y-3">
+                {hasAnyCheckOut && (
+                  <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 font-medium">
+                    {t("dashboard.finished")}
+                    {": "}
+                    <span className="font-normal">
+                      {t("dashboard.closedArchivedApplicationsTitle") || "Aplicații închise și arhivate"}
+                    </span>
+                  </div>
+                )}
                 {workSessionsDetails.map((session, idx) => (
                   <div key={idx} className="rounded-2xl p-4 border border-primary/10 bg-gradient-to-br from-[#faf8ff] to-white">
                     <div className="flex items-center justify-between gap-3 mb-3">

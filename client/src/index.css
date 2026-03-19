@@ -2084,6 +2084,151 @@
   .report-content-enter { animation: none !important; opacity: 1; transform: none; }
 }
 
+/* Card rată ocupare job – donut dashboard Rapoarte */
+@keyframes occupancyCardEnter {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+.occupancy-card {
+  transition: transform 200ms ease-out, box-shadow 200ms ease-out;
+}
+.occupancy-card-enter {
+  animation: occupancyCardEnter 500ms ease-out forwards;
+}
+@keyframes occupancyRingPulse {
+  0%,
+  100% {
+    filter: drop-shadow(0 0 8px rgba(124, 108, 246, 0.2));
+  }
+  50% {
+    filter: drop-shadow(0 0 20px rgba(90, 79, 207, 0.38));
+  }
+}
+.occupancy-card--pulse svg {
+  animation: occupancyRingPulse 1.1s ease-out 1;
+}
+@media (prefers-reduced-motion: reduce) {
+  .occupancy-card-enter {
+    animation: none !important;
+    opacity: 1;
+    transform: none;
+  }
+  .occupancy-card--pulse svg {
+    animation: none !important;
+  }
+}
+
+/* Stat card „Oameni angajați” – Rapoarte */
+@keyframes peopleEmployedCardEnter {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.people-employed-stat-card {
+  transition: transform 200ms ease-out, box-shadow 200ms ease-out;
+}
+.people-employed-stat-card-enter {
+  animation: peopleEmployedCardEnter 400ms ease-out forwards;
+}
+@keyframes peopleEmployedIconIn {
+  from {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+.people-employed-stat-icon-enter {
+  opacity: 0;
+  transform: scale(0.92);
+  animation: peopleEmployedIconIn 280ms ease-out 200ms forwards;
+}
+.people-employed-stat-number {
+  display: inline-block;
+  transition:
+    transform 200ms ease-out,
+    filter 200ms ease-out;
+}
+.people-employed-stat-card:hover .people-employed-stat-number {
+  transform: scale(1.05);
+  filter: drop-shadow(0 0 14px rgba(124, 108, 246, 0.45));
+}
+@media (prefers-reduced-motion: reduce) {
+  .people-employed-stat-card-enter {
+    animation: none !important;
+    opacity: 1;
+    transform: none;
+  }
+  .people-employed-stat-icon-enter {
+    animation: none !important;
+    opacity: 1;
+    transform: none;
+  }
+  .people-employed-stat-card:hover .people-employed-stat-number {
+    transform: none;
+    filter: none;
+  }
+}
+
+/* Card pie – distribuție categorii joburi (Rapoarte) */
+@keyframes jobCatPieTilt {
+  from {
+    opacity: 0.85;
+    transform: rotate(-10deg);
+  }
+  to {
+    opacity: 1;
+    transform: rotate(0deg);
+  }
+}
+.job-cat-pie-tilt-enter {
+  animation: jobCatPieTilt 480ms ease-out forwards;
+  transform-origin: center center;
+}
+@keyframes jobCatLegendIn {
+  from {
+    opacity: 0;
+    transform: translateX(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+.job-cat-legend-row--animate {
+  opacity: 0;
+  animation: jobCatLegendIn 0.42s ease-out forwards;
+  animation-delay: var(--legend-delay, 0ms);
+}
+@media (prefers-reduced-motion: reduce) {
+  .job-cat-pie-tilt-enter {
+    animation: none !important;
+    opacity: 1;
+    transform: none;
+  }
+  .job-cat-legend-row--animate {
+    animation: none !important;
+    opacity: 1;
+    transform: none;
+  }
+  .job-categories-pie-card:hover {
+    transform: none !important;
+  }
+}
+
 /* Animație la selectarea unei zile în calendar (ex. din Toate zilele → ziua 17) */
 @keyframes calendarDaySelect {
   0% { transform: scale(1); box-shadow: none; }
