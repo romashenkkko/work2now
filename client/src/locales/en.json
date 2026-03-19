@@ -213,6 +213,8 @@
     "clearAllPending": "Clear All",
     "markCompleted": "Mark as completed",
     "confirmFinished": "Confirm finished",
+    "confirmCheckoutPrompt": "Are you sure you want to confirm checkout?",
+    "checkoutConfirmedAt": "Checkout confirmed at",
     "jobStatusSearching": "Searching",
     "jobStatusInProcess": "In process",
     "inProcess": "In process",

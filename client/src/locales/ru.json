@@ -213,6 +213,8 @@
     "clearAllPending": "Отклонить все",
     "markCompleted": "Отметить выполненным",
     "confirmFinished": "Подтвердить завершение",
+    "confirmCheckoutPrompt": "Вы уверены, что хотите подтвердить checkout?",
+    "checkoutConfirmedAt": "Checkout подтверждён в",
     "jobStatusSearching": "В поиске",
     "jobStatusInProcess": "В процессе",
     "inProcess": "В процессе",

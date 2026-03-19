@@ -313,6 +313,7 @@ export default function DashboardAplicatii() {
   }, [expandReviewApplicationId]);
 
   const [confirmingCompletionId, setConfirmingCompletionId] = useState<string | null>(null);
+  const [confirmCompletionPrompt, setConfirmCompletionPrompt] = useState<{ applicationId: string } | null>(null);
   const [ratingSubmitting, setRatingSubmitting] = useState<string | null>(null);
   const [ratingDraft, setRatingDraft] = useState<Record<string, { score: number; comment: string }>>({});
 
@@ -321,6 +322,19 @@ export default function DashboardAplicatii() {
     jobsApi
       .confirmCompletion(applicationId)
       .then(() => {
+        const confirmedAtIso = new Date().toISOString();
+        // Update local state instantly so the confirmed timestamp appears without waiting for a refetch.
+        setApplicationsState((prev) => {
+          const next: Record<string, Application[]> = {};
+          Object.entries(prev).forEach(([jobId, list]) => {
+            next[jobId] = list.map((item) =>
+              item.id === applicationId
+                ? { ...item, businessConfirmedAt: item.businessConfirmedAt ?? confirmedAtIso, isBusinessConfirmed: true }
+                : item
+            );
+          });
+          return next;
+        });
         refreshCustomerApplications();
         refreshJobs();
       })
@@ -561,9 +575,43 @@ export default function DashboardAplicatii() {
     document.body
   );
 
+  const confirmCompletionModal = confirmCompletionPrompt && createPortal(
+    <div className="fixed inset-0 flex items-center justify-center p-4 bg-black/50" style={{ zIndex: 9999 }} role="dialog" aria-modal="true" aria-labelledby="completion-confirm-title">
+      <div className="bg-white rounded-2xl shadow-xl max-w-sm w-full p-5" onClick={(e) => e.stopPropagation()}>
+        <h3 id="completion-confirm-title" className="text-lg font-semibold text-gray-900 mb-2">
+          {t("dashboard.confirmFinished")}
+        </h3>
+        <p className="text-gray-600 mb-4">
+          {t("dashboard.confirmCheckoutPrompt", "Sunteți sigur că doriți să confirmați checkout-ul?")}
+        </p>
+        <div className="flex gap-3 justify-end">
+          <button
+            type="button"
+            onClick={() => setConfirmCompletionPrompt(null)}
+            className="px-4 py-2 rounded-xl border border-gray-300 text-gray-700 font-medium hover:bg-gray-50"
+          >
+            {t("dashboard.reject")}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              confirmCompletion(confirmCompletionPrompt.applicationId);
+              setConfirmCompletionPrompt(null);
+            }}
+            className="px-5 py-2.5 rounded-xl bg-primary text-white font-semibold hover:bg-primary-dark"
+          >
+            {t("dashboard.confirm")}
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+
   return (
     <>
       {acceptConfirmModal}
+      {confirmCompletionModal}
 
       <header className="mb-6 md:mb-8 p-5 md:p-6 rounded-2xl bg-gradient-to-br from-white via-[#faf8ff] to-[#f3efff] border border-[rgba(122,99,241,0.12)] shadow-[0_4px_20px_rgba(122,99,241,0.08)]">
         <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
@@ -600,7 +648,7 @@ export default function DashboardAplicatii() {
                 value={historyDateFilter}
                 onChange={setHistoryDateFilter}
                 disablePastDates={false}
-                className="block"
+                className="block [&_.date-picker-trigger]:h-12 [&_.date-picker-trigger]:px-4 [&_.date-picker-trigger]:py-3 [&_.date-picker-trigger]:text-base"
               />
               <div className="block" ref={historyJobDropdownRef}>
                 <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">{t("dashboard.job")}</span>
@@ -608,7 +656,7 @@ export default function DashboardAplicatii() {
                   <button
                     type="button"
                     onClick={() => setHistoryJobDropdownOpen((open) => !open)}
-                    className="flex h-11 w-full items-center justify-between gap-2 rounded-xl border border-[rgba(224,216,247,0.9)] bg-white px-4 py-2 text-left text-sm font-medium text-gray-800 shadow-sm transition-[border-color,box-shadow,background-color] duration-200 hover:border-[rgba(177,163,241,0.6)] hover:bg-[rgba(250,248,255,0.8)] focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                    className="flex h-12 w-full items-center justify-between gap-2 rounded-xl border border-[rgba(224,216,247,0.9)] bg-white px-4 py-3 text-left text-base font-medium text-gray-800 shadow-sm transition-[border-color,box-shadow,background-color] duration-200 hover:border-[rgba(177,163,241,0.6)] hover:bg-[rgba(250,248,255,0.8)] focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
                     aria-expanded={historyJobDropdownOpen}
                     aria-haspopup="listbox"
                   >
@@ -869,13 +917,18 @@ export default function DashboardAplicatii() {
                                 <div>
                                   <button
                                     type="button"
-                                    onClick={() => confirmCompletion(a.id)}
+                                    onClick={() => setConfirmCompletionPrompt({ applicationId: a.id })}
                                     disabled={confirmingCompletionId === a.id}
-                                    className="text-sm font-medium text-primary hover:underline disabled:opacity-50"
+                                    className="inline-flex items-center rounded-xl bg-primary px-5 py-3 text-base font-semibold text-white shadow-sm transition-colors hover:bg-primary-dark disabled:opacity-50"
                                   >
                                     {confirmingCompletionId === a.id ? "..." : t("dashboard.confirmFinished")}
                                   </button>
                                 </div>
+                              )}
+                              {a.businessConfirmedAt && (
+                                <p className="text-sm text-gray-600">
+                                  {t("dashboard.checkoutConfirmedAt", "Checkout confirmat la")}: {formatDateTime(a.businessConfirmedAt)}
+                                </p>
                               )}
                               {a.ratingScore != null ? (
                                 <span className="text-sm text-gray-600 flex items-center gap-1">
@@ -899,7 +952,7 @@ export default function DashboardAplicatii() {
                                       rows={2}
                                       value={ratingDraft[a.id]?.comment ?? ""}
                                       onChange={(e) => setRatingDraft((prev) => ({ ...prev, [a.id]: { ...(prev[a.id] ?? { score: 0 }), comment: e.target.value.slice(0, 2000) } }))}
-                                      className="mt-0.5 w-full rounded-lg border border-gray-200 px-2 py-1.5 text-sm"
+                                      className="mt-0.5 w-full rounded-xl border border-gray-200 px-3 py-2.5 text-base"
                                       placeholder={t("dashboard.commentOptional")}
                                     />
                                   </div>

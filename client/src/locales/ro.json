@@ -370,6 +370,8 @@
     "clearAllPending": "Respinge toate",
     "markCompleted": "Marchează ca finalizat",
     "confirmFinished": "Confirmă finalizarea",
+    "confirmCheckoutPrompt": "Sunteți sigur că doriți să confirmați checkout-ul?",
+    "checkoutConfirmedAt": "Checkout confirmat la",
     "jobStatusSearching": "În căutare",
     "jobStatusInProcess": "În proces",
     "inProcess": "În desfășurare",
