@@ -289,8 +289,6 @@ export default function DashboardLayout() {
   const [localitate, setLocalitate] = useState("");
   const [jobDate, setJobDate] = useState("");
   const [jobEndDate, setJobEndDate] = useState("");
-  const [jobImage, setJobImage] = useState<string | null>(null);
-  const [jobImageName, setJobImageName] = useState("");
   const [jobTitleSelected, setJobTitleSelected] = useState("");
   const [showJobTitleModal, setShowJobTitleModal] = useState(false);
   const [showAddressModal, setShowAddressModal] = useState(false);
@@ -1159,7 +1157,6 @@ export default function DashboardLayout() {
                         endTime: formEndTime,
                         peopleNeeded: peopleVal || undefined,
                         estimatedSalary: salaryVal || undefined,
-                        imageUrl: jobImage || undefined,
                         raionId: selectedRaionId,
                         localitate: localitate.trim() || undefined,
                         ...(jobCheckInGeo
@@ -1184,8 +1181,6 @@ export default function DashboardLayout() {
                     setJobCheckInGeo(null);
                     setJobDate("");
                     setJobEndDate("");
-                    setJobImage(null);
-                    setJobImageName("");
                     setJobDocuments([]);
                     setPhoneCountryCode("+373");
                     setJobTitleSelected("");
@@ -1558,40 +1553,6 @@ export default function DashboardLayout() {
                     </div>
                   </section>
 
-                      <label className="block">
-                        <span className="text-sm font-medium text-gray-700">{t("dashboard.jobImage")}</span>
-                        <input
-                          id="post-job-image-input"
-                          type="file"
-                          accept="image/*"
-                          className="sr-only"
-                          onChange={(e) => {
-                            const file = e.target.files?.[0];
-                            if (!file || !file.type.startsWith("image/")) return;
-                            setJobImageName(file.name);
-                            const reader = new FileReader();
-                            reader.onload = () => setJobImage(reader.result as string);
-                            reader.readAsDataURL(file);
-                          }}
-                        />
-                        <div className="mt-1 flex flex-wrap items-center gap-3">
-                          <label
-                            htmlFor="post-job-image-input"
-                            className="inline-flex cursor-pointer items-center rounded-xl bg-primary px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-primary/90"
-                          >
-                            {t("dashboard.chooseFile")}
-                          </label>
-                          <span className="text-sm text-gray-500">
-                            {jobImageName || t("dashboard.noFileChosen")}
-                          </span>
-                        </div>
-                        {jobImage && (
-                          <div className="mt-2 relative inline-block">
-                            <img src={jobImage} alt="" className="h-24 w-auto rounded-xl border border-gray-200 object-cover" />
-                            <button type="button" onClick={() => { setJobImage(null); setJobImageName(""); }} className="absolute -top-1 -right-1 w-6 h-6 rounded-full bg-red-500 text-white text-sm leading-none" aria-label={t("dashboard.removeImage")}>×</button>
-                          </div>
-                        )}
-                      </label>
                       <label className="block min-w-0">
                           <span className="text-sm font-medium text-gray-700">{t("dashboard.staffContactPhone")}</span>
                           <div className="mt-1 flex rounded-xl border border-gray-200 bg-white overflow-visible focus-within:ring-2 focus-within:ring-primary focus-within:border-primary transition-colors">
