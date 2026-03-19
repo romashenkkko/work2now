@@ -327,6 +327,8 @@ export async function initDatabase(): Promise<void> {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
     `);
     await ensureInnoDB(conn, "employee_profiles");
+    // Prisma schema requires IDNP as NOT NULL; add it for older schemas created before this column existed.
+    await ensureColumn(conn, "employee_profiles", "IDNP", "VARCHAR(13) NOT NULL DEFAULT ''");
 
     await conn.query(`
       CREATE TABLE IF NOT EXISTS \`business_profiles\` (
