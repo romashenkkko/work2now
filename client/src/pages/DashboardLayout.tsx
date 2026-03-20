@@ -82,6 +82,10 @@ export type JobTemplate = {
   raionId?: number | null;
   localitate?: string | null;
   checkInGeo?: { lat: number; lng: number; radiusM: number } | null;
+  address?: string | null;
+  staffPhone?: string | null;
+  staffPhoneCountry?: string | null;
+  description?: string | null;
 };
 
 export type Application = {
@@ -323,6 +327,9 @@ export default function DashboardLayout() {
   const [jobDocuments, setJobDocuments] = useState<DocItem[]>([]);
   const [phoneCountryCode, setPhoneCountryCode] = useState("+373");
   const [phoneCountryOpen, setPhoneCountryOpen] = useState(false);
+  const [staffPhoneNumber, setStaffPhoneNumber] = useState("");
+  const [jobDescription, setJobDescription] = useState("");
+  const [templateSavedFeedback, setTemplateSavedFeedback] = useState(false);
 
   const getLocalizedJobCategory = useCallback(
     (category: Pick<JobCategory, "code" | "title">) =>
@@ -343,6 +350,7 @@ export default function DashboardLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [showMyProfileModal, setShowMyProfileModal] = useState(false);
   const [deleteJobConfirmId, setDeleteJobConfirmId] = useState<string | null>(null);
+  const [deleteTemplateConfirmId, setDeleteTemplateConfirmId] = useState<string | null>(null);
   const [userRating, setUserRating] = useState<{ average: number; count: number } | null>(null);
 
   // Job templates (stored locally for the current user)
@@ -695,6 +703,10 @@ export default function DashboardLayout() {
     }
 
     setJobCheckInGeo(tpl.checkInGeo ?? null);
+    setJobAddress(tpl.address ?? "");
+    setStaffPhoneNumber(tpl.staffPhone ?? "");
+    setPhoneCountryCode(tpl.staffPhoneCountry ?? "+373");
+    setJobDescription(tpl.description ?? "");
 
     setPostJobFieldErrors({});
   };
@@ -751,6 +763,38 @@ export default function DashboardLayout() {
     // După ce am creat șablonul, nu îl aplicăm în formularul de job.
     // Dacă utilizatorul apasă ulterior "Următorul", va merge pe fluxul "use".
     setTemplateAction("use");
+    return true;
+  };
+
+  const saveFormAsTemplate = (): boolean => {
+    if (!selectedJobCategory || !selectedJobType) return false;
+    const jobTitle = jobTitleDraft.trim();
+    if (!jobTitle) return false;
+
+    const id = generateTemplateId();
+    const template: JobTemplate = {
+      id,
+      categoryCode: selectedJobCategory,
+      title: (templateSaveTitle.trim() || jobTitle).slice(0, 60),
+      jobType: selectedJobType,
+      jobTitle,
+      eventName: eventNameDraft.trim(),
+      staffCount: staffCountSelect,
+      hourlyRateBase: hourlyRate,
+      startTime: formStartTime,
+      endTime: formEndTime,
+      unpaidBreak,
+      raionId: selectedRaionId ?? null,
+      localitate: localitate.trim() || null,
+      checkInGeo: jobCheckInGeo ?? null,
+      address: jobAddress.trim() || null,
+      staffPhone: staffPhoneNumber.trim() || null,
+      staffPhoneCountry: phoneCountryCode,
+      description: jobDescription.trim() || null,
+    };
+
+    setJobTemplates((prev) => [template, ...prev]);
+    setActiveTemplateId(id);
     return true;
   };
 
@@ -1083,7 +1127,7 @@ export default function DashboardLayout() {
           }}
         >
           <div
-            className="bg-white rounded-2xl shadow-xl max-w-lg w-full overflow-hidden modal-content-enter"
+            className="bg-white rounded-2xl shadow-xl max-w-2xl w-full overflow-hidden modal-content-enter"
             onClick={(e) => e.stopPropagation()}
           >
             {jobSubmitted ? (
@@ -1242,10 +1286,8 @@ export default function DashboardLayout() {
                   <div className="space-y-3 mb-6">
                     <button
                       type="button"
-                      onClick={() => setPostMethod("scratch")}
-                      className={`w-full flex items-center gap-4 p-4 rounded-xl border-2 text-left transition-all ${
-                        postMethod === "scratch" ? "border-primary bg-primary/5 shadow-sm" : "border-gray-200 hover:border-primary/40 hover:bg-gray-50"
-                      }`}
+                      onClick={() => { setPostMethod("scratch"); setPostJobStep("form"); }}
+                      className="w-full flex items-center gap-4 p-4 rounded-xl border-2 text-left transition-all border-gray-200 hover:border-primary/40 hover:bg-gray-50"
                     >
                       <span className="flex-shrink-0 w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
                         <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
@@ -1254,152 +1296,56 @@ export default function DashboardLayout() {
                         <p className="font-semibold text-gray-900">{t("dashboard.startFromScratch")}</p>
                         <p className="text-sm text-gray-500 mt-0.5">{t("dashboard.startFromScratchDesc")}</p>
                       </div>
-                      {postMethod === "scratch" && (
-                        <span className="flex-shrink-0 w-5 h-5 rounded-full bg-primary flex items-center justify-center">
-                          <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" /></svg>
-                        </span>
-                      )}
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => setPostMethod("template")}
-                      className={`w-full flex items-center gap-4 p-4 rounded-xl border-2 text-left transition-all ${
-                        postMethod === "template" ? "border-primary bg-primary/5 shadow-sm" : "border-gray-200 hover:border-primary/40 hover:bg-gray-50"
-                      }`}
-                    >
-                      <span className="flex-shrink-0 w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
-                        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h10a2 2 0 012 2v14a2 2 0 01-2 2zM9 3v2m6-2v2" /></svg>
-                      </span>
-                      <div className="min-w-0 flex-1">
-                        <p className="font-semibold text-gray-900">{t("dashboard.useTemplateTitle")}</p>
-                        <p className="text-sm text-gray-500 mt-0.5">După ce alegi categoria, poți selecta sau crea un șablon.</p>
-                      </div>
-                      {postMethod === "template" && (
-                        <span className="flex-shrink-0 w-5 h-5 rounded-full bg-primary flex items-center justify-center">
-                          <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" /></svg>
-                        </span>
-                      )}
+                      <svg className="w-5 h-5 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
                     </button>
                   </div>
-                  <h4 className="text-sm font-semibold text-gray-900 mb-2">{t("dashboard.useTemplateTitle")}</h4>
 
-                  <div className="space-y-4">
-                    {postMethod !== "template" ? (
-                      <div className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-600">
-                        Selectează opțiunea <span className="text-primary font-semibold">Folosește un șablon</span> ca să creezi sau să alegi un șablon.
-                      </div>
-                    ) : selectedJobType == null ? (
-                      <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-                        Alege tipul jobului în pasul anterior.
+                  <>
+                    <h4 className="text-sm font-semibold text-gray-900 mb-2">Șabloanele tale</h4>
+                    {jobTemplates.length === 0 ? (
+                      <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50 px-4 py-6 text-center">
+                        <p className="text-sm text-gray-400">Nu ai niciun șablon salvat încă.</p>
+                        <p className="text-xs text-gray-400 mt-1">Completează un formular și apasă „Salvează șablon".</p>
                       </div>
                     ) : (
-                      <>
-                        <div className="rounded-xl border border-primary/15 bg-primary/5 p-4">
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="min-w-0">
-                              <p className="text-sm font-semibold text-gray-900">Categoria jobului</p>
-                              <p className="text-xs text-gray-500 mt-0.5">Șabloanele sunt separate pe categorie.</p>
-                            </div>
-                          </div>
-
-                          <div className="mt-3">
-                            <label className="block">
-                              <span className="text-sm font-medium text-gray-700">Selectează categoria</span>
-                              <select
-                                value={selectedJobCategory ?? ""}
-                                onChange={(e) => {
-                                  const next = e.target.value ? Number(e.target.value) : null;
-                                  setSelectedJobCategory(next);
-                                }}
-                                className="mt-1 block w-full px-4 py-2.5 rounded-xl border border-gray-200 bg-white focus:ring-2 focus:ring-primary"
-                              >
-                                <option value="">{t("dashboard.chooseCategory")}</option>
-                                {jobCategories.map((cat) => (
-                                  <option key={cat.code} value={cat.code}>
-                                    {getLocalizedJobCategory(cat)}
-                                  </option>
-                                ))}
-                              </select>
-                            </label>
-                          </div>
-                        </div>
-
-                        <div>
-                          {selectedJobCategory == null ? (
-                            <p className="text-sm text-gray-500">Alege o categorie ca să vezi sau să creezi șabloane.</p>
-                          ) : (
-                            (() => {
-                              const list = jobTemplates.filter((tpl) => tpl.categoryCode === selectedJobCategory);
-                              return (
-                                <div className="space-y-3">
-                                  <div className="flex items-center justify-between">
-                                    <p className="text-sm font-semibold text-gray-900">Șabloane</p>
-                                    {list.length > 0 && (
-                                      <span className="text-xs text-gray-500">{list.length} înregistrări</span>
-                                    )}
-                                  </div>
-
-                                  {list.length === 0 ? (
-                                    <p className="text-sm text-gray-500">{t("dashboard.noTemplatesYet")}</p>
-                                  ) : (
-                                    <div className="space-y-2">
-                                      {list.map((tpl) => (
-                                        <div
-                                          key={tpl.id}
-                                          className={`flex items-center justify-between gap-3 p-3 rounded-xl border ${
-                                            activeTemplateId === tpl.id ? "border-primary/40 bg-primary/5" : "border-gray-200 bg-white"
-                                          }`}
-                                        >
-                                          <div className="min-w-0">
-                                            <p className="text-sm font-semibold text-gray-900 truncate">{tpl.title}</p>
-                                            <p className="text-xs text-gray-500 mt-0.5 truncate">
-                                              {tpl.jobType} · {tpl.hourlyRateBase} MDL/oră · {tpl.staffCount} persoane
-                                            </p>
-                                          </div>
-                                          <button
-                                            type="button"
-                                            onClick={() => applyTemplateToForm(tpl)}
-                                            className="shrink-0 px-3 py-2 rounded-lg bg-primary text-white text-sm font-medium hover:bg-primary-dark transition-colors"
-                                          >
-                                            {activeTemplateId === tpl.id ? "Aplicat" : "Folosește"}
-                                          </button>
-                                        </div>
-                                      ))}
-                                    </div>
-                                  )}
-                                </div>
-                              );
-                            })()
-                          )}
-                        </div>
-
-                        <div className="rounded-xl border border-primary/15 bg-white p-4">
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="min-w-0">
-                              <p className="text-sm font-semibold text-gray-900">Creează șablon</p>
-                              <p className="text-xs text-gray-500 mt-0.5">
-                                Apasă ca să deschizi formularul în fereastră.
-                              </p>
-                            </div>
+                      <div className="space-y-2">
+                        {jobTemplates.map((tpl) => (
+                          <div
+                            key={tpl.id}
+                            className="flex items-center gap-2 rounded-xl border border-gray-200 bg-white hover:border-primary/40 hover:bg-primary/5 transition-all"
+                          >
                             <button
                               type="button"
-                            onClick={() => {
-                              // Selectează fluxul "Creează șablon". Modalul se deschide la "Următorul".
-                              setTemplateAction("create");
-                              setTemplateSaveTitle("");
-                              setTemplateSaveError("");
-                              setShowTemplateCreateModal(false);
-                            }}
-                              className="shrink-0 px-3 py-2 rounded-lg bg-primary text-white text-sm font-medium hover:bg-primary-dark transition-colors"
+                              onClick={() => {
+                                applyTemplateToForm(tpl);
+                                setPostJobStep("form");
+                              }}
+                              className="flex items-center gap-3 p-3 flex-1 min-w-0 text-left"
                             >
-                              Creează
+                              <span className="flex-shrink-0 w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
+                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h10a2 2 0 012 2v14a2 2 0 01-2 2z" /></svg>
+                              </span>
+                              <div className="min-w-0 flex-1">
+                                <p className="text-sm font-semibold text-gray-900 truncate">{tpl.title}</p>
+                                <p className="text-xs text-gray-500 mt-0.5 truncate">
+                                  {tpl.jobType} · {tpl.hourlyRateBase} MDL/oră · {tpl.staffCount} {tpl.staffCount === "1" ? "persoană" : "persoane"}
+                                </p>
+                              </div>
+                              <svg className="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setDeleteTemplateConfirmId(tpl.id)}
+                              className="flex-shrink-0 p-2 mr-2 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors"
+                              aria-label="Șterge șablon"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
                             </button>
                           </div>
-                        </div>
-                      </>
+                        ))}
+                      </div>
                     )}
-                  </div>
+                  </>
                 </div>
                 <div className="flex gap-3 p-4 sm:p-6 pt-0 border-t border-gray-100">
                   <button
@@ -1411,40 +1357,6 @@ export default function DashboardLayout() {
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
                     </span>
                     {t("dashboard.back")}
-                  </button>
-                  <button
-                    type="button"
-                    disabled={!postMethod}
-                    onClick={() => {
-                      if (!postMethod) return;
-                      if (postMethod === "scratch") {
-                        setPostJobStep("form");
-                        return;
-                      }
-                      if (postMethod === "template" && templateAction === "create") {
-                        if (selectedJobCategory == null) {
-                          setTemplateSaveError("Selectează categoria jobului ca să creezi un șablon.");
-                          return;
-                        }
-                        setTemplateSaveError("");
-                        // Resetare câmpuri doar pentru șablon (nu job form)
-                        setTemplateSaveTitle("");
-                        setTplCreateJobTitle("");
-                        setTplCreateEventName("");
-                        setTplCreateHourlyRate("");
-                        setTplCreateStaffCount("1");
-                        setTplCreateStartTime("00:00");
-                        setTplCreateEndTime("00:00");
-                        setTplCreateUnpaidBreak("no");
-                        setShowTemplateCreateModal(true);
-                        return;
-                      }
-                      // postMethod === "template" & templateAction === "use"
-                      setPostJobStep("form");
-                    }}
-                    className="flex-1 py-2.5 rounded-xl bg-primary text-white font-medium hover:bg-primary-dark disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {t("dashboard.next")}
                   </button>
                 </div>
                 </div>
@@ -1563,6 +1475,8 @@ export default function DashboardLayout() {
                     setJobEndDate("");
                     setJobDocuments([]);
                     setPhoneCountryCode("+373");
+                    setStaffPhoneNumber("");
+                    setJobDescription("");
                     setJobTitleSelected("");
                     setUnpaidBreak("no");
                     setUnpaidBreakOpen(false);
@@ -1580,6 +1494,7 @@ export default function DashboardLayout() {
                     setTemplateSaveError("");
                     setJobTitleDraft("");
                     setEventNameDraft("");
+                    setTemplateSavedFeedback(false);
                   }}
                   className="p-4 sm:p-6 overflow-y-auto max-h-[calc(100vh-12rem)]"
                 >
@@ -1599,6 +1514,58 @@ export default function DashboardLayout() {
                     </span>
                     {t("dashboard.back")}
                   </button>
+
+                  {postMethod === "template" && selectedJobCategory != null && (
+                    <div className="p-4 rounded-xl bg-primary/5 border border-primary/20">
+                      <div className="flex items-start justify-between gap-3 mb-3">
+                        <div className="min-w-0">
+                          <h4 className="text-sm font-semibold text-gray-900">{t("dashboard.useTemplateTitle")}</h4>
+                          <p className="text-xs text-gray-500 mt-0.5">
+                            {getLocalizedJobCategory(jobCategories.find((c) => c.code === selectedJobCategory) ?? { code: selectedJobCategory, title: "—" })}
+                          </p>
+                        </div>
+                        {activeTemplateId && (
+                          <span className="inline-flex items-center px-2 py-1 rounded-full bg-primary/10 border border-primary/20 text-xs font-medium text-primary whitespace-nowrap">
+                            Șablon activ
+                          </span>
+                        )}
+                      </div>
+
+                      {(() => {
+                        const list = jobTemplates.filter((tpl) => tpl.categoryCode === selectedJobCategory);
+                        if (list.length === 0) {
+                          return <p className="text-sm text-gray-500">{t("dashboard.noTemplatesYet")}</p>;
+                        }
+                        return (
+                          <div className="space-y-2">
+                            {list.map((tpl) => (
+                              <div
+                                key={tpl.id}
+                                className={`flex items-start justify-between gap-3 p-3 rounded-xl bg-white border transition-all ${
+                                  activeTemplateId === tpl.id ? "border-primary/40 shadow-sm" : "border-gray-200 hover:border-primary/20"
+                                }`}
+                              >
+                                <div className="min-w-0">
+                                  <p className="text-sm font-semibold text-gray-900 truncate">{tpl.title}</p>
+                                  <p className="text-xs text-gray-500 mt-0.5 truncate">
+                                    {tpl.jobType} · {tpl.hourlyRateBase} MDL/oră · {tpl.staffCount} {tpl.staffCount === "1" ? "persoană" : "persoane"}
+                                  </p>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => applyTemplateToForm(tpl)}
+                                  className="shrink-0 px-3 py-2 rounded-lg bg-primary text-white text-sm font-medium hover:bg-primary-dark transition-colors"
+                                >
+                                  {activeTemplateId === tpl.id ? "Aplicat" : "Folosește"}
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        );
+                      })()}
+
+                    </div>
+                  )}
 
                   <section>
                     <h4 className="text-sm font-semibold text-gray-900 mb-3">{t("dashboard.jobDetails")}</h4>
@@ -1728,125 +1695,6 @@ export default function DashboardLayout() {
                             <p className="mt-1 text-sm text-red-600">{postJobFieldErrors.jobCategoryCode}</p>
                           )}
                         </label>
-
-                        {postMethod === "template" && selectedJobCategory != null && (
-                          <div className="sm:col-span-2 col-span-1 p-4 rounded-xl bg-primary/5 border border-primary/20">
-                            <div className="flex items-start justify-between gap-3 mb-3">
-                              <div className="min-w-0">
-                                <h4 className="text-sm font-semibold text-gray-900">{t("dashboard.useTemplateTitle")}</h4>
-                                <p className="text-xs text-gray-500 mt-0.5">
-                                  {getLocalizedJobCategory(jobCategories.find((c) => c.code === selectedJobCategory) ?? { code: selectedJobCategory, title: "—" })}
-                                </p>
-                              </div>
-                              {activeTemplateId && (
-                                <span className="inline-flex items-center px-2 py-1 rounded-full bg-primary/10 border border-primary/20 text-xs font-medium text-primary whitespace-nowrap">
-                                  Șablon activ
-                                </span>
-                              )}
-                            </div>
-
-                            {(() => {
-                              const list = jobTemplates.filter((tpl) => tpl.categoryCode === selectedJobCategory);
-                              if (list.length === 0) {
-                                return (
-                                  <div className="space-y-3">
-                                    <p className="text-sm text-gray-500">{t("dashboard.noTemplatesYet")}</p>
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        setShowTemplateSavePanel(true);
-                                        setTemplateSaveTitle("");
-                                        setTemplateSaveError("");
-                                      }}
-                                      className="w-full px-4 py-2.5 rounded-xl bg-primary text-white font-medium hover:bg-primary-dark transition-colors"
-                                    >
-                                      Creează un șablon
-                                    </button>
-                                  </div>
-                                );
-                              }
-
-                              return (
-                                <div className="space-y-3">
-                                  {list.map((tpl) => (
-                                    <div
-                                      key={tpl.id}
-                                      className={`flex items-start justify-between gap-3 p-3 rounded-xl bg-white border transition-all ${
-                                        activeTemplateId === tpl.id ? "border-primary/40 shadow-sm" : "border-gray-200 hover:border-primary/20"
-                                      }`}
-                                    >
-                                      <div className="min-w-0">
-                                        <p className="text-sm font-semibold text-gray-900 truncate">{tpl.title}</p>
-                                        <p className="text-xs text-gray-500 mt-0.5 truncate">
-                                          {tpl.jobType} · {tpl.hourlyRateBase} MDL/oră · {tpl.staffCount} persoane
-                                        </p>
-                                      </div>
-                                      <button
-                                        type="button"
-                                        onClick={() => applyTemplateToForm(tpl)}
-                                        className="shrink-0 px-3 py-2 rounded-lg bg-primary text-white text-sm font-medium hover:bg-primary-dark transition-colors"
-                                      >
-                                        {activeTemplateId === tpl.id ? "Aplicat" : "Folosește"}
-                                      </button>
-                                    </div>
-                                  ))}
-                                </div>
-                              );
-                            })()}
-
-                            <div className="mt-4">
-                              {!showTemplateSavePanel ? (
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setShowTemplateSavePanel(true);
-                                    setTemplateSaveTitle("");
-                                    setTemplateSaveError("");
-                                  }}
-                                  className="w-full px-4 py-2.5 rounded-xl border border-primary/15 bg-primary/5 font-medium text-primary hover:bg-primary/10 hover:border-primary/25 transition-colors"
-                                >
-                                  Salvează formularul ca șablon
-                                </button>
-                              ) : (
-                                <div className="space-y-3">
-                                  <label className="block">
-                                    <span className="text-sm font-medium text-gray-700">Nume șablon</span>
-                                    <input
-                                      type="text"
-                                      value={templateSaveTitle}
-                                      onChange={(e) => setTemplateSaveTitle(e.target.value)}
-                                      placeholder="Ex: Barista - 8 ore"
-                                      maxLength={60}
-                                      className="mt-1 block w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:ring-2 focus:ring-primary"
-                                    />
-                                  </label>
-
-                                  {templateSaveError && <p className="text-sm text-red-600">{templateSaveError}</p>}
-
-                                  <div className="flex gap-3">
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        setShowTemplateSavePanel(false);
-                                        setTemplateSaveError("");
-                                      }}
-                                      className="flex-1 py-2.5 rounded-xl border border-gray-300 font-medium text-gray-700 hover:bg-gray-50 transition-colors"
-                                    >
-                                      Anulează
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={saveCurrentFormAsTemplate}
-                                      className="flex-1 py-2.5 rounded-xl bg-primary text-white font-medium hover:bg-primary-dark transition-colors"
-                                    >
-                                      Salvează
-                                    </button>
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        )}
 
                         <label className="block min-w-0">
                           <span className="text-sm font-medium text-gray-700">{t("dashboard.hourlyRateLabel")} <span className="text-red-500">*</span></span>
@@ -2109,6 +1957,8 @@ export default function DashboardLayout() {
                               name="staffPhone"
                               type="tel"
                               placeholder="(79) 14-37-02"
+                              value={staffPhoneNumber}
+                              onChange={(e) => setStaffPhoneNumber(e.target.value)}
                               className="flex-1 min-w-[16rem] sm:min-w-[20rem] w-full px-4 py-2.5 border-0 bg-transparent focus:ring-0 rounded-r-xl text-gray-900 placeholder:text-gray-400"
                             />
                           </div>
@@ -2119,6 +1969,8 @@ export default function DashboardLayout() {
                           name="description"
                           rows={3}
                           placeholder={t("dashboard.descriptionPlaceholder")}
+                          value={jobDescription}
+                          onChange={(e) => setJobDescription(e.target.value)}
                           className="mt-1 block w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:ring-2 focus:ring-primary resize-none"
                         />
                       </label>
@@ -2157,29 +2009,94 @@ export default function DashboardLayout() {
                     )}
                   </section>
 
-                  <div className="flex gap-3 pt-2 border-t border-gray-100">
-                    <button
-                      type="button"
-                      onClick={() => { 
-                        setShowPostJob(false); 
-                        setPostJobStep("choose-type"); 
-                        setSelectedJobType(null); 
-                        setPostMethod(null);
-                        setSelectedRaionId(null);
-                        setRaionSearch("");
-                        setLocalitate("");
-                      }}
-                      className="flex-1 py-2.5 rounded-xl border border-gray-300 font-medium text-gray-700 hover:bg-gray-50"
-                    >
-                      {t("dashboard.cancel")}
-                    </button>
-                    <button
-                      type="submit"
-                      disabled={!jobAddress.trim()}
-                      className="flex-1 py-2.5 rounded-xl bg-primary text-white font-medium hover:bg-primary-dark disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      {t("dashboard.postJob")}
-                    </button>
+                  <div className="flex flex-col gap-2 pt-2 border-t border-gray-100">
+                    {showTemplateSavePanel ? (
+                      <div className="space-y-3 p-4 rounded-xl bg-primary/5 border border-primary/20">
+                        <p className="text-sm font-semibold text-gray-900">Salvează șablon</p>
+                        <label className="block">
+                          <span className="text-sm font-medium text-gray-700">Nume șablon</span>
+                          <input
+                            type="text"
+                            value={templateSaveTitle}
+                            onChange={(e) => setTemplateSaveTitle(e.target.value)}
+                            placeholder="Ex: Barista - 8 ore"
+                            maxLength={60}
+                            autoFocus
+                            className="mt-1 block w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:ring-2 focus:ring-primary"
+                          />
+                        </label>
+                        {templateSaveError && <p className="text-sm text-red-600">{templateSaveError}</p>}
+                        <div className="flex gap-3">
+                          <button
+                            type="button"
+                            onClick={() => { setShowTemplateSavePanel(false); setTemplateSaveTitle(""); setTemplateSaveError(""); }}
+                            className="flex-1 py-2.5 rounded-xl border border-gray-300 font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+                          >
+                            Anulează
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (!templateSaveTitle.trim()) {
+                                setTemplateSaveError("Introdu un nume pentru șablon.");
+                                return;
+                              }
+                              const ok = saveFormAsTemplate();
+                              if (ok) {
+                                setShowTemplateSavePanel(false);
+                                setTemplateSaveTitle("");
+                                setTemplateSaveError("");
+                                setTemplateSavedFeedback(true);
+                                setTimeout(() => setTemplateSavedFeedback(false), 2500);
+                              }
+                            }}
+                            className="flex-1 py-2.5 rounded-xl bg-primary text-white font-medium hover:bg-primary-dark transition-colors"
+                          >
+                            Salvează
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => { setShowTemplateSavePanel(true); setTemplateSaveTitle(jobTitleDraft.trim()); setTemplateSaveError(""); }}
+                        disabled={!jobTitleDraft.trim() || !selectedJobCategory || !selectedJobType}
+                        className="w-full py-2.5 rounded-xl border-2 border-primary text-primary font-semibold hover:bg-primary/5 disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" /></svg>
+                        {templateSavedFeedback ? "Șablon salvat!" : "Salvează șablon"}
+                      </button>
+                    )}
+                    <div className="flex gap-3">
+                      <button
+                        type="button"
+                        onClick={() => { 
+                          setShowPostJob(false); 
+                          setPostJobStep("choose-type"); 
+                          setSelectedJobType(null); 
+                          setPostMethod(null);
+                          setSelectedRaionId(null);
+                          setRaionSearch("");
+                          setLocalitate("");
+                          setStaffPhoneNumber("");
+                          setJobDescription("");
+                          setTemplateSavedFeedback(false);
+                          setShowTemplateSavePanel(false);
+                          setTemplateSaveTitle("");
+                          setTemplateSaveError("");
+                        }}
+                        className="flex-1 py-2.5 rounded-xl border border-gray-300 font-medium text-gray-700 hover:bg-gray-50"
+                      >
+                        {t("dashboard.cancel")}
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={!jobAddress.trim()}
+                        className="flex-1 py-2.5 rounded-xl bg-primary text-white font-medium hover:bg-primary-dark disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {t("dashboard.postJob")}
+                      </button>
+                    </div>
                   </div>
                   </div>
                 </form>
@@ -2227,6 +2144,55 @@ export default function DashboardLayout() {
                   className="px-5 py-2.5 rounded-xl bg-red-600 text-white font-medium hover:bg-red-700 transition-colors shadow-sm"
                 >
                   {t("dashboard.delete", "Șterge")}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Modal confirmare ștergere șablon */}
+      {deleteTemplateConfirmId && createPortal(
+        <div
+          className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
+          onClick={() => setDeleteTemplateConfirmId(null)}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="delete-template-title"
+        >
+          <div
+            className="bg-white rounded-2xl shadow-xl max-w-sm w-full overflow-hidden border border-gray-100"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-6 text-center">
+              <div className="mx-auto w-14 h-14 rounded-full bg-red-50 flex items-center justify-center mb-4">
+                <Trash2 className="w-7 h-7 text-red-500" />
+              </div>
+              <h3 id="delete-template-title" className="text-lg font-semibold text-gray-900 mb-2">
+                Șterge șablon
+              </h3>
+              <p className="text-gray-600 text-sm mb-1">
+                Șablonul <span className="font-semibold text-gray-900">"{jobTemplates.find((t) => t.id === deleteTemplateConfirmId)?.title}"</span>
+              </p>
+              <p className="text-gray-500 text-sm mb-6">va fi șters definitiv.</p>
+              <div className="flex gap-3 justify-center">
+                <button
+                  type="button"
+                  onClick={() => setDeleteTemplateConfirmId(null)}
+                  className="flex-1 px-5 py-2.5 rounded-xl border border-gray-200 text-gray-700 font-medium hover:bg-gray-50 transition-colors"
+                >
+                  Anulează
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setJobTemplates((prev) => prev.filter((t) => t.id !== deleteTemplateConfirmId));
+                    setDeleteTemplateConfirmId(null);
+                  }}
+                  className="flex-1 px-5 py-2.5 rounded-xl bg-red-600 text-white font-medium hover:bg-red-700 transition-colors shadow-sm"
+                >
+                  Șterge
                 </button>
               </div>
             </div>
