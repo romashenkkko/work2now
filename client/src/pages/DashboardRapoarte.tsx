@@ -171,8 +171,8 @@ export default function DashboardRapoarte() {
   return (
     <>
       <header className="mb-6 md:mb-8 p-5 md:p-6 rounded-2xl bg-gradient-to-br from-white via-[#faf8ff] to-[#f3efff] border border-[rgba(122,99,241,0.12)] shadow-[0_4px_20px_rgba(122,99,241,0.08)]">
-        <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-[#1e1c2f]">Rapoarte</h1>
-        <p className="text-gray-500 text-sm mt-1.5 max-w-md">Generează rapoarte despre activitate și performanță.</p>
+        <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-[#1e1c2f]">{t("dashboard.rapoarte")}</h1>
+        <p className="text-gray-500 text-sm mt-1.5 max-w-md">{t("dashboard.rapoarteDesc")}</p>
       </header>
 
       {!isAdmin && (
@@ -239,10 +239,10 @@ export default function DashboardRapoarte() {
             <div className="flex items-start justify-between gap-3 mb-4">
               <div>
                 <h3 className="text-sm font-semibold text-gray-900">
-                  {t("dashboard.branchesDistribution") || "Distribuția joburilor pe filiale"}
+                  {t("dashboard.branchesDistribution")}
                 </h3>
                 <p className="text-xs text-gray-500 mt-1">
-                  {branchesTotal > 0 ? "Distribuție pe filiale." : "Încă nu există date pentru filiale."}
+                  {branchesTotal > 0 ? t("dashboard.branchesDistributionHint") : t("dashboard.noBranchesDataYet")}
                 </p>
               </div>
             </div>

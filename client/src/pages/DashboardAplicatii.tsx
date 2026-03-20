@@ -422,7 +422,7 @@ export default function DashboardAplicatii() {
           </div>
         ) : sorted.length === 0 ? (
           <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-8 text-center">
-            <p className="text-gray-500">Aici vor apărea aplicațiile tale la joburi.</p>
+            <p className="text-gray-500">{t("dashboard.staffNoApplicationsYet")}</p>
           </div>
         ) : (
           <div className="space-y-4">
@@ -511,7 +511,7 @@ export default function DashboardAplicatii() {
           <p className="text-gray-500 text-sm mt-1.5 max-w-md">{t("dashboard.myApplications")}</p>
         </header>
         <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-8 text-center">
-          <p className="text-gray-500">Aici vor apărea aplicațiile tale la joburi.</p>
+          <p className="text-gray-500">{t("dashboard.staffNoApplicationsYet")}</p>
         </div>
       </>
     );
@@ -807,7 +807,7 @@ export default function DashboardAplicatii() {
 
       {!showHistory && !historyMounted && (jobsWithApplicants.length === 0 ? (
         <div className="history-return-enter bg-white rounded-2xl border border-gray-200 shadow-sm p-8 text-center">
-          <p className="text-gray-500">Aici vor apărea aplicațiile primite. Momentan nu există aplicații noi.</p>
+          <p className="text-gray-500">{t("dashboard.customerNoIncomingApplications")}</p>
         </div>
       ) : (
         <div className="history-return-enter">

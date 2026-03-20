@@ -1154,7 +1154,7 @@ export default function DashboardJoburi() {
           <p className="text-gray-600">{t("dashboard.staffSubtitle")}</p>
         </header>
         <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-8 text-center">
-          <p className="text-gray-500">Aici vor apărea joburile tale.</p>
+          <p className="text-gray-500">{t("dashboard.jobsWillAppearHere")}</p>
         </div>
       </>
     );
@@ -1165,7 +1165,7 @@ export default function DashboardJoburi() {
       <header className="mb-6 md:mb-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 p-5 md:p-6 rounded-2xl bg-gradient-to-br from-white via-[#faf8ff] to-[#f3efff] border border-[rgba(122,99,241,0.12)] shadow-[0_4px_20px_rgba(122,99,241,0.08)]">
         <div className="min-w-0">
           <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-[#1e1c2f]">{t("dashboard.joburi")}</h1>
-          <p className="text-gray-500 text-sm mt-1.5 max-w-md">Gestionează anunțurile de joburi publicate.</p>
+          <p className="text-gray-500 text-sm mt-1.5 max-w-md">{t("dashboard.customerJoburiDesc")}</p>
         </div>
         {/* Harta (joburi + locația mea) – doar pentru staff; customer nu o vede */}
       </header>
@@ -1183,7 +1183,7 @@ export default function DashboardJoburi() {
           return (
             <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-8 md:p-12 text-center">
               <p className="text-gray-500 mb-6">
-                Aici vor apărea joburile tale. Folosește „Posteaza un job” din meniu pentru a adăuga un anunț nou.
+                {t("dashboard.customerNoJobsHint")}
               </p>
               <button
                 type="button"

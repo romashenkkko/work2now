@@ -252,9 +252,11 @@ export default function DashboardHomeStaff() {
     if (!workDate) return null;
     const d = parseYMD(workDate);
     if (!d) return workDate;
-    const weekdays = ["Dum", "Lun", "Mar", "Mie", "Joi", "Vin", "Sâm"];
-    const months = ["ian", "feb", "mar", "apr", "mai", "iun", "iul", "aug", "sep", "oct", "nov", "dec"];
-    return `${weekdays[d.getDay()]}, ${d.getDate()} ${months[d.getMonth()]}`;
+    const weekdayKeys = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"] as const;
+    const monthKeys = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"] as const;
+    const weekday = t(`dashboard.weekdayShort.${weekdayKeys[d.getDay()]}`);
+    const month = t(`dashboard.monthShort.${monthKeys[d.getMonth()]}`);
+    return `${weekday}, ${d.getDate()} ${month}`;
   };
 
   const parseYMD = (str: string): Date | null => {

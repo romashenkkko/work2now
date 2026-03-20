@@ -523,7 +523,7 @@ export default function DashboardHomeAdmin() {
                   />
                 </label>
                 <label className="text-sm text-gray-700">
-                  Parolă
+                  {t("auth.password")}
                   <input
                     value={supportCreateForm.password}
                     type="password"
@@ -537,7 +537,7 @@ export default function DashboardHomeAdmin() {
                   />
                 </label>
                 <label className="text-sm text-gray-700">
-                  Avatar (opțional)
+                  {t("dashboard.avatarOptional")}
                   <input
                     value={supportCreateForm.avatar}
                     onChange={(e) => {
