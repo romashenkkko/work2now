@@ -1301,11 +1301,11 @@ export default function DashboardLayout() {
                   </div>
 
                   <>
-                    <h4 className="text-sm font-semibold text-gray-900 mb-2">Șabloanele tale</h4>
+                    <h4 className="text-sm font-semibold text-gray-900 mb-2">{t("dashboard.yourTemplates")}</h4>
                     {jobTemplates.length === 0 ? (
                       <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50 px-4 py-6 text-center">
-                        <p className="text-sm text-gray-400">Nu ai niciun șablon salvat încă.</p>
-                        <p className="text-xs text-gray-400 mt-1">Completează un formular și apasă „Salvează șablon".</p>
+                        <p className="text-sm text-gray-400">{t("dashboard.noTemplatesSaved")}</p>
+                        <p className="text-xs text-gray-400 mt-1">{t("dashboard.noTemplatesSavedHint")}</p>
                       </div>
                     ) : (
                       <div className="space-y-2">
@@ -1328,10 +1328,10 @@ export default function DashboardLayout() {
                               <div className="min-w-0 flex-1">
                                 <p className="text-sm font-semibold text-gray-900 truncate">{tpl.title}</p>
                                 <p className="text-xs text-gray-500 mt-0.5 truncate">
-                                  {tpl.jobType} · {tpl.hourlyRateBase} MDL/oră · {tpl.staffCount} {tpl.staffCount === "1" ? "persoană" : "persoane"}
+                                {tpl.jobType} · {tpl.hourlyRateBase} MDL/oră · {tpl.staffCount} {tpl.staffCount === "1" ? t("dashboard.person") : t("dashboard.persons")}
                                 </p>
-                              </div>
-                              <svg className="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+                            </div>
+                            <svg className="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
                             </button>
                             <button
                               type="button"
@@ -1526,7 +1526,7 @@ export default function DashboardLayout() {
                         </div>
                         {activeTemplateId && (
                           <span className="inline-flex items-center px-2 py-1 rounded-full bg-primary/10 border border-primary/20 text-xs font-medium text-primary whitespace-nowrap">
-                            Șablon activ
+                            {t("dashboard.activeTemplate")}
                           </span>
                         )}
                       </div>
@@ -1548,15 +1548,15 @@ export default function DashboardLayout() {
                                 <div className="min-w-0">
                                   <p className="text-sm font-semibold text-gray-900 truncate">{tpl.title}</p>
                                   <p className="text-xs text-gray-500 mt-0.5 truncate">
-                                    {tpl.jobType} · {tpl.hourlyRateBase} MDL/oră · {tpl.staffCount} {tpl.staffCount === "1" ? "persoană" : "persoane"}
-                                  </p>
-                                </div>
-                                <button
-                                  type="button"
-                                  onClick={() => applyTemplateToForm(tpl)}
+                                  {tpl.jobType} · {tpl.hourlyRateBase} MDL/oră · {tpl.staffCount} {tpl.staffCount === "1" ? t("dashboard.person") : t("dashboard.persons")}
+                                </p>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => applyTemplateToForm(tpl)}
                                   className="shrink-0 px-3 py-2 rounded-lg bg-primary text-white text-sm font-medium hover:bg-primary-dark transition-colors"
                                 >
-                                  {activeTemplateId === tpl.id ? "Aplicat" : "Folosește"}
+                                  {activeTemplateId === tpl.id ? t("dashboard.templateApplied") : t("dashboard.templateUse")}
                                 </button>
                               </div>
                             ))}
@@ -2012,14 +2012,14 @@ export default function DashboardLayout() {
                   <div className="flex flex-col gap-2 pt-2 border-t border-gray-100">
                     {showTemplateSavePanel ? (
                       <div className="space-y-3 p-4 rounded-xl bg-primary/5 border border-primary/20">
-                        <p className="text-sm font-semibold text-gray-900">Salvează șablon</p>
+                        <p className="text-sm font-semibold text-gray-900">{t("dashboard.saveTemplateTitle")}</p>
                         <label className="block">
-                          <span className="text-sm font-medium text-gray-700">Nume șablon</span>
+                          <span className="text-sm font-medium text-gray-700">{t("dashboard.templateNameLabel")}</span>
                           <input
                             type="text"
                             value={templateSaveTitle}
                             onChange={(e) => setTemplateSaveTitle(e.target.value)}
-                            placeholder="Ex: Barista - 8 ore"
+                            placeholder={t("dashboard.templateNamePlaceholder")}
                             maxLength={60}
                             autoFocus
                             className="mt-1 block w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:ring-2 focus:ring-primary"
@@ -2032,13 +2032,13 @@ export default function DashboardLayout() {
                             onClick={() => { setShowTemplateSavePanel(false); setTemplateSaveTitle(""); setTemplateSaveError(""); }}
                             className="flex-1 py-2.5 rounded-xl border border-gray-300 font-medium text-gray-700 hover:bg-gray-50 transition-colors"
                           >
-                            Anulează
+                            {t("dashboard.cancel")}
                           </button>
                           <button
                             type="button"
                             onClick={() => {
                               if (!templateSaveTitle.trim()) {
-                                setTemplateSaveError("Introdu un nume pentru șablon.");
+                                setTemplateSaveError(t("dashboard.templateNameRequired"));
                                 return;
                               }
                               const ok = saveFormAsTemplate();
@@ -2050,9 +2050,9 @@ export default function DashboardLayout() {
                                 setTimeout(() => setTemplateSavedFeedback(false), 2500);
                               }
                             }}
-                            className="flex-1 py-2.5 rounded-xl bg-primary text-white font-medium hover:bg-primary-dark transition-colors"
+                              className="flex-1 py-2.5 rounded-xl bg-primary text-white font-medium hover:bg-primary-dark transition-colors"
                           >
-                            Salvează
+                            {t("dashboard.saveTemplate")}
                           </button>
                         </div>
                       </div>
@@ -2064,7 +2064,7 @@ export default function DashboardLayout() {
                         className="w-full py-2.5 rounded-xl border-2 border-primary text-primary font-semibold hover:bg-primary/5 disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
                       >
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" /></svg>
-                        {templateSavedFeedback ? "Șablon salvat!" : "Salvează șablon"}
+                        {templateSavedFeedback ? t("dashboard.templateSaved") : t("dashboard.saveTemplate")}
                       </button>
                     )}
                     <div className="flex gap-3">
