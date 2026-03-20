@@ -49,14 +49,14 @@ export default function Register() {
   const [lastName, setLastName] = useState("");
   const [dateOfBirth, setDateOfBirth] = useState("");
   const [aboutMe, setAboutMe] = useState("");
-  const [phoneNumber, setPhoneNumber] = useState(""); // Staff phone number
+  const [phoneNumber, setPhoneNumber] = useState("+373"); // Staff phone number
   
   // Business/Customer fields
   const [companyName, setCompanyName] = useState("");
   const [contactFirstName, setContactFirstName] = useState("");
   const [contactLastName, setContactLastName] = useState("");
   const [contactDateOfBirth, setContactDateOfBirth] = useState("");
-  const [contactPhoneNumber, setContactPhoneNumber] = useState(""); // Customer contact phone number
+  const [contactPhoneNumber, setContactPhoneNumber] = useState("+373"); // Customer contact phone number
   const [companyCategory, setCompanyCategory] = useState("1");
   const [companyCategoryOpen, setCompanyCategoryOpen] = useState(false);
   const companyCategoryRef = useRef<HTMLDivElement>(null);
@@ -66,7 +66,7 @@ export default function Register() {
   const [branchAddress, setBranchAddress] = useState("");
   const [branchCity, setBranchCity] = useState("");
   const [branchCountry, setBranchCountry] = useState("Moldova");
-  const [branchPhone, setBranchPhone] = useState("");
+  const [branchPhone, setBranchPhone] = useState("+373");
   // Raion dropdown for customer registration
   const [raioane, setRaioane] = useState<Array<{ id: number; name: string; type: string }>>([]);
   const [selectedRaionId, setSelectedRaionId] = useState<number | null>(null);
