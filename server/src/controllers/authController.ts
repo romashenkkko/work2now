@@ -13,7 +13,12 @@ import {
   updateCurrentUser,
   validateRegistration,
   verifyOtpCode,
+  supportCreateUser,
+  supportDeactivateUser,
+  supportListUsers,
+  supportUpdateUser,
 } from "../services/authService";
+import { listActivityLogsForSupport } from "../services/activityLogService";
 
 type ReqWithUser = Request & { user?: JwtPayload };
 
@@ -111,5 +116,50 @@ export async function postVerifyOtp(req: Request, res: Response): Promise<void> 
     res.json(await verifyOtpCode(req.body ?? {}));
   } catch (error) {
     handleError(res, error, "POST /api/auth/verify-otp error:", "Eroare la verificarea codului OTP.");
+  }
+}
+
+export async function getSupportLogs(req: ReqWithUser, res: Response): Promise<void> {
+  try {
+    const limit = req.query.limit ? Number(req.query.limit) : undefined;
+    const offset = req.query.offset ? Number(req.query.offset) : undefined;
+    res.json(await listActivityLogsForSupport(req.user?.userId, limit, offset));
+  } catch (error) {
+    handleError(res, error, "GET /api/auth/support/logs error:", "Eroare la încărcarea logurilor.");
+  }
+}
+
+export async function getSupportUsers(req: ReqWithUser, res: Response): Promise<void> {
+  try {
+    const role = String(req.query.role ?? "");
+    res.json(await supportListUsers(req.user?.userId, role as any));
+  } catch (error) {
+    handleError(res, error, "GET /api/auth/support/users error:", "Eroare la încărcarea utilizatorilor support.");
+  }
+}
+
+export async function postSupportUsers(req: ReqWithUser, res: Response): Promise<void> {
+  try {
+    res.json(await supportCreateUser(req.user?.userId, req.body ?? ({} as any)));
+  } catch (error) {
+    handleError(res, error, "POST /api/auth/support/users error:", "Eroare la crearea utilizatorului.");
+  }
+}
+
+export async function patchSupportUsers(req: ReqWithUser, res: Response): Promise<void> {
+  try {
+    const id = req.params.id;
+    res.json(await supportUpdateUser(req.user?.userId, id, req.body ?? ({} as any)));
+  } catch (error) {
+    handleError(res, error, "PATCH /api/auth/support/users/:id error:", "Eroare la actualizarea utilizatorului.");
+  }
+}
+
+export async function deleteSupportUsers(req: ReqWithUser, res: Response): Promise<void> {
+  try {
+    const id = req.params.id;
+    res.json(await supportDeactivateUser(req.user?.userId, id));
+  } catch (error) {
+    handleError(res, error, "DELETE /api/auth/support/users/:id error:", "Eroare la dezactivarea utilizatorului.");
   }
 }

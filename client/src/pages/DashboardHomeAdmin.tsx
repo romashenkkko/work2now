@@ -50,6 +50,15 @@ export default function DashboardHomeAdmin() {
   const [companyRankingOpen, setCompanyRankingOpen] = useState(true);
   const [salaryByDomainAndRegionOpen, setSalaryByDomainAndRegionOpen] = useState(true);
 
+  const [supportCreateForm, setSupportCreateForm] = useState({
+    name: "",
+    password: "",
+    avatar: "",
+  });
+  const [supportCreateLoading, setSupportCreateLoading] = useState(false);
+  const [supportCreateError, setSupportCreateError] = useState<string | null>(null);
+  const [supportCreateSuccess, setSupportCreateSuccess] = useState<string | null>(null);
+
   const copyToClipboard = (text: string, id: string, field: "email" | "phone") => {
     if (!text || text === "—") return;
     const done = () => {
@@ -87,6 +96,46 @@ export default function DashboardHomeAdmin() {
       .then((data) => { setUsers(data.users); setUsersError(null); })
       .catch((e) => setUsersError(e instanceof Error ? e.message : "Eroare la încărcare"))
       .finally(() => setUsersLoading(false));
+  };
+
+  const handleCreateSupportTechnician = async () => {
+    if (user?.role !== "admin") return;
+    setSupportCreateError(null);
+    setSupportCreateSuccess(null);
+
+    const name = supportCreateForm.name.trim();
+    const password = supportCreateForm.password;
+    const avatar = supportCreateForm.avatar.trim();
+
+    if (!name || name.length < 2) {
+      setSupportCreateError(t("dashboard.supportCreateNameRequired", "Numele este obligatoriu."));
+      return;
+    }
+    if (!password || password.length < 6) {
+      setSupportCreateError(t("dashboard.supportCreatePasswordMin", "Parola trebuie să aibă minim 6 caractere."));
+      return;
+    }
+
+    setSupportCreateLoading(true);
+    try {
+      const slug = name.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "").slice(0, 40) || "support";
+      const generatedEmail = `${slug}.${Date.now()}@work2now.local`;
+
+      await authApi.supportCreateUser({
+        role: "support",
+        name,
+        email: generatedEmail,
+        password,
+        avatar: avatar ? avatar : null,
+      });
+      setSupportCreateSuccess(t("dashboard.supportCreated", `Support technician creat. Email: ${generatedEmail}`));
+      setSupportCreateForm({ name: "", password: "", avatar: "" });
+      fetchUsers();
+    } catch (e) {
+      setSupportCreateError(e instanceof Error ? e.message : "Eroare la creare.");
+    } finally {
+      setSupportCreateLoading(false);
+    }
   };
 
   const fetchAdminStats = () => {
@@ -437,6 +486,85 @@ export default function DashboardHomeAdmin() {
           <div className={`admin-panel-expand ${accountsSectionOpen ? "open" : "closed"}`}>
           <div className="admin-panel-open px-4 sm:px-6 pb-4 sm:pb-6 border-t border-gray-100">
           <div className="flex flex-col gap-3 mb-4 pt-4">
+            <div className="rounded-2xl border border-[rgba(224,216,247,0.9)] bg-[rgba(250,248,255,0.8)] p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h3 className="font-bold text-gray-900 text-sm sm:text-base">{t("dashboard.createSupportTechnician", "Creează support technician")}</h3>
+                  <p className="text-xs text-gray-500 mt-1">{t("dashboard.supportTechnicianSubtitle", "Doar admin poate crea contul.")}</p>
+                </div>
+                <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-primary/10 text-primary text-xs font-medium">
+                  {t("dashboard.adminOnly", "Admin")}
+                </span>
+              </div>
+
+              {supportCreateError ? (
+                <div className="mt-3 rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-700">
+                  {supportCreateError}
+                </div>
+              ) : null}
+              {supportCreateSuccess ? (
+                <div className="mt-3 rounded-lg bg-green-50 border border-green-200 px-3 py-2 text-sm text-green-700">
+                  {supportCreateSuccess}
+                </div>
+              ) : null}
+
+              <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <label className="text-sm text-gray-700">
+                  {t("dashboard.name", "Nume")}
+                  <input
+                    value={supportCreateForm.name}
+                    onChange={(e) => {
+                      setSupportCreateForm((p) => ({ ...p, name: e.target.value }));
+                      setSupportCreateError(null);
+                      setSupportCreateSuccess(null);
+                    }}
+                    className="mt-1 w-full rounded-xl border border-[rgba(224,216,247,0.9)] bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-primary/20"
+                    placeholder={t("dashboard.fullNamePlaceholder", "Nume complet")}
+                  />
+                </label>
+                <label className="text-sm text-gray-700">
+                  Parolă
+                  <input
+                    value={supportCreateForm.password}
+                    type="password"
+                    onChange={(e) => {
+                      setSupportCreateForm((p) => ({ ...p, password: e.target.value }));
+                      setSupportCreateError(null);
+                      setSupportCreateSuccess(null);
+                    }}
+                    className="mt-1 w-full rounded-xl border border-[rgba(224,216,247,0.9)] bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-primary/20"
+                    placeholder={t("dashboard.passwordPlaceholder", "min. 6 caractere")}
+                  />
+                </label>
+                <label className="text-sm text-gray-700">
+                  Avatar (opțional)
+                  <input
+                    value={supportCreateForm.avatar}
+                    onChange={(e) => {
+                      setSupportCreateForm((p) => ({ ...p, avatar: e.target.value }));
+                      setSupportCreateError(null);
+                      setSupportCreateSuccess(null);
+                    }}
+                    className="mt-1 w-full rounded-xl border border-[rgba(224,216,247,0.9)] bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-primary/20"
+                    placeholder={t("dashboard.avatarPlaceholder", "URL sau id")}
+                  />
+                </label>
+              </div>
+
+              <div className="mt-3 flex items-center justify-end">
+                <button
+                  type="button"
+                  className="rounded-xl bg-primary px-4 py-2 text-sm font-medium text-white shadow-sm hover:shadow-md transition disabled:opacity-50 disabled:cursor-not-allowed"
+                  onClick={() => void handleCreateSupportTechnician()}
+                  disabled={supportCreateLoading}
+                >
+                  {supportCreateLoading
+                    ? t("dashboard.creating", "Se creează...")
+                    : t("dashboard.create", "Creează")}
+                </button>
+              </div>
+            </div>
+
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-end gap-3">
               <div className="flex items-center gap-2 text-sm">
                 <span className="text-gray-500 font-medium">{t("dashboard.filterByRole", "Filtrează după rol")}:</span>

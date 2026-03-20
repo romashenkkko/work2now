@@ -110,6 +110,7 @@ export default function DashboardRapoarte() {
   const { t } = useTranslation();
   const { user } = useAuth();
   const { jobsAdded, userRating } = useContext(DashboardContext);
+  const isAdmin = user?.role === "admin";
   const [generalStats, setGeneralStats] = useState<{ 
     totalEmployees: number; 
     categoriesByJobCount: Array<{ code: number; title: string; count: number }>;
@@ -147,11 +148,21 @@ export default function DashboardRapoarte() {
   }, [allJobs]);
 
   const statsWithValues = useMemo(
-    () => [
-      { labelKey: "statsApplications", value: String(totalApplications), icon: STATS_ICONS.applications },
-      { labelKey: "statsRating", value: ratingReviews === 0 ? "—" : String(ratingValue), icon: STATS_ICONS.rating, isRating: true, ratingAverage: ratingValue, ratingCount: ratingReviews },
-    ],
-    [totalApplications, ratingValue, ratingReviews]
+    () => {
+      if (isAdmin) return [];
+      return [
+        { labelKey: "statsApplications", value: String(totalApplications), icon: STATS_ICONS.applications },
+        {
+          labelKey: "statsRating",
+          value: ratingReviews === 0 ? "—" : String(ratingValue),
+          icon: STATS_ICONS.rating,
+          isRating: true,
+          ratingAverage: ratingValue,
+          ratingCount: ratingReviews,
+        },
+      ];
+    },
+    [isAdmin, totalApplications, ratingValue, ratingReviews]
   );
 
   const branchesTotal = generalStats?.branchesByJobCount.reduce((sum, c) => sum + c.count, 0) ?? 0;
@@ -164,38 +175,45 @@ export default function DashboardRapoarte() {
         <p className="text-gray-500 text-sm mt-1.5 max-w-md">Generează rapoarte despre activitate și performanță.</p>
       </header>
 
-      {/* Statistics Section */}
-      <section className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-6 mb-6 md:mb-8">
-        {statsWithValues.map((s) => {
-          const isRating = "isRating" in s && s.isRating;
-          const ratingAverage = isRating && "ratingAverage" in s ? (s as { ratingAverage: number }).ratingAverage : 0;
-          const ratingCount = isRating && "ratingCount" in s ? (s as { ratingCount: number }).ratingCount : 0;
-          return (
-            <article key={s.labelKey} className="p-4 sm:p-6 rounded-xl sm:rounded-2xl bg-white border border-gray-200 shadow-sm flex items-start gap-3 sm:gap-4">
-              <div className="flex-shrink-0 w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-primary/10 flex items-center justify-center">
-                {s.icon}
-              </div>
-              <div className="min-w-0 flex-1">
-                <h3 className="text-xs sm:text-sm font-medium text-gray-500 mb-0.5 truncate">{t(`dashboard.${s.labelKey}`)}</h3>
-                {!isRating && <p className="text-xl sm:text-2xl font-bold text-gray-900">{s.value}</p>}
-                {isRating && (
-                  <div className="flex items-center gap-1.5 mt-2">
-                    <StarRating value={ratingAverage} size={18} />
-                    {ratingCount > 0 && (
-                      <span className="text-xs text-gray-500">({ratingCount})</span>
+      {!isAdmin && (
+        <>
+          {/* Statistics Section */}
+          <section className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-6 mb-6 md:mb-8">
+            {statsWithValues.map((s) => {
+              const isRating = "isRating" in s && s.isRating;
+              const ratingAverage = isRating && "ratingAverage" in s ? (s as { ratingAverage: number }).ratingAverage : 0;
+              const ratingCount = isRating && "ratingCount" in s ? (s as { ratingCount: number }).ratingCount : 0;
+              return (
+                <article
+                  key={s.labelKey}
+                  className="p-4 sm:p-6 rounded-xl sm:rounded-2xl bg-white border border-gray-200 shadow-sm flex items-start gap-3 sm:gap-4"
+                >
+                  <div className="flex-shrink-0 w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-primary/10 flex items-center justify-center">
+                    {s.icon}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <h3 className="text-xs sm:text-sm font-medium text-gray-500 mb-0.5 truncate">{t(`dashboard.${s.labelKey}`)}</h3>
+                    {!isRating && <p className="text-xl sm:text-2xl font-bold text-gray-900">{s.value}</p>}
+                    {isRating && (
+                      <div className="flex items-center gap-1.5 mt-2">
+                        <StarRating value={ratingAverage} size={18} />
+                        {ratingCount > 0 && (
+                          <span className="text-xs text-gray-500">({ratingCount})</span>
+                        )}
+                      </div>
                     )}
                   </div>
-                )}
-              </div>
-            </article>
-          );
-        })}
-      </section>
+                </article>
+              );
+            })}
+          </section>
+        </>
+      )}
 
       {/* Job fill rate, People Hired, Job Categories Distribution */}
-      <section className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6 mb-6 md:mb-8">
+      <section className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4 sm:gap-6 mb-6 md:mb-8">
         {/* Job fill rate */}
-        <JobOccupancyRateCard title={t("dashboard.jobFillRate")} value={jobFillRate} />
+        {!isAdmin && <JobOccupancyRateCard title={t("dashboard.jobFillRate")} value={jobFillRate} />}
         {/* People Hired */}
         {generalStats && (
           <PeopleEmployedStatCard

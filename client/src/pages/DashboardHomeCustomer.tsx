@@ -230,7 +230,7 @@ export default function DashboardHomeCustomer() {
           {toast}
         </div>
       )}
-      <div className="page-enter-stagger">
+      <div className="page-enter-stagger flex flex-col">
         <header className="mb-6 md:mb-8 w-full flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 p-5 md:p-6 rounded-2xl bg-gradient-to-br from-white via-[#faf8ff] to-[#f3efff] border border-[rgba(122,99,241,0.12)] shadow-[0_4px_20px_rgba(122,99,241,0.08)]">
           <div className="min-w-0 flex-1">
             <h1 className="text-xl sm:text-2xl md:text-3xl font-bold tracking-tight text-[#1e1c2f] truncate">
@@ -251,7 +251,7 @@ export default function DashboardHomeCustomer() {
         </header>
 
         {/* Active Jobs Section */}
-        <section className="mb-6 md:mb-8">
+        <section className="order-[30] mb-6 md:mb-8">
           <div className="bg-white rounded-xl sm:rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
             <button
               type="button"
@@ -285,9 +285,15 @@ export default function DashboardHomeCustomer() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
               </svg>
             </button>
-            {activeAppsExpanded && (
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[640px]">
+            <div
+              className={[
+                "overflow-hidden transition-[max-height,opacity,transform] duration-300 ease-out",
+                activeAppsExpanded ? "max-h-[1200px] opacity-100 translate-y-0" : "max-h-0 opacity-0 -translate-y-1",
+              ].join(" ")}
+              aria-hidden={!activeAppsExpanded}
+            >
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[640px]">
                 <thead>
                   <tr className="text-left text-xs sm:text-sm text-gray-500 border-b border-gray-200 bg-gray-50/80">
                     <th className="p-3 sm:p-4 font-medium">{t("dashboard.jobName")}</th>
@@ -377,14 +383,14 @@ export default function DashboardHomeCustomer() {
                     })
                   )}
                 </tbody>
-              </table>
+                </table>
+              </div>
             </div>
-            )}
           </div>
         </section>
 
         {/* Posted Jobs (No Acceptances) Section */}
-        <section className="mb-6 md:mb-8">
+        <section className="order-[30] mb-6 md:mb-8">
           <div className="bg-white rounded-xl sm:rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
             <button
               type="button"
@@ -416,9 +422,15 @@ export default function DashboardHomeCustomer() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
               </svg>
             </button>
-            {openAppsExpanded && (
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[640px]">
+            <div
+              className={[
+                "overflow-hidden transition-[max-height,opacity,transform] duration-300 ease-out",
+                openAppsExpanded ? "max-h-[1200px] opacity-100 translate-y-0" : "max-h-0 opacity-0 -translate-y-1",
+              ].join(" ")}
+              aria-hidden={!openAppsExpanded}
+            >
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[640px]">
                 <thead>
                   <tr className="text-left text-xs sm:text-sm text-gray-500 border-b border-gray-200 bg-gray-50/80">
                     <th className="p-3 sm:p-4 font-medium">{t("dashboard.jobName")}</th>
@@ -514,14 +526,14 @@ export default function DashboardHomeCustomer() {
                     })
                   )}
                 </tbody>
-              </table>
+                </table>
+              </div>
             </div>
-            )}
           </div>
         </section>
 
         {/* Archived Jobs Section */}
-        <section className="mb-6 md:mb-8">
+        <section className="order-[30] mb-6 md:mb-8">
           <div className="bg-white rounded-xl sm:rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
             <button
               type="button"

@@ -56,6 +56,7 @@ export enum UserRole {
   Employee = 1,
   Business = 2,
   Admin = 3,
+  Support = 4,
 }
 
 export enum VacancyStatus {
@@ -104,6 +105,7 @@ export function stringToUserRole(role: string): UserRole {
   const r = role.toLowerCase().trim();
   if (r === "admin") return UserRole.Admin;
   if (r === "customer") return UserRole.Business;
+  if (r === "support") return UserRole.Support;
   return UserRole.Employee; // 'staff', 'user', or default
 }
 
@@ -118,6 +120,8 @@ export function userRoleToString(role: UserRole): string {
       return "customer";
     case UserRole.Employee:
       return "staff";
+    case UserRole.Support:
+      return "support";
     default:
       return "staff";
   }

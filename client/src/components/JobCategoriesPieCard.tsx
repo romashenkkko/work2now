@@ -211,7 +211,7 @@ export default function JobCategoriesPieCard({ title, data, t, className = "" }:
           )}
         </div>
 
-        <ul className="flex w-full min-w-0 max-w-[280px] flex-col gap-2 md:flex-1" role="list">
+        <ul className="flex w-full min-w-0 max-w-[360px] flex-col gap-2 md:flex-1 md:max-w-none" role="list">
           {segments.map((seg, idx) => (
             <li
               key={String(seg.code)}
