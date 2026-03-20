@@ -172,6 +172,9 @@ export default function DashboardHomeCustomer() {
               const isConfirmed = app.isBusinessConfirmed || !!app.businessConfirmedAt;
               if (isConfirmed) return false;
 
+              // If checkout is stored at application-level, the job should no longer be shown as "in process".
+              if (app.checkedOutAt) return false;
+
               if (app.workSessions && app.workSessions.length > 0) {
                 return app.workSessions.some((s) => s.checkedInAt && !s.checkedOutAt);
               }
@@ -204,7 +207,10 @@ export default function DashboardHomeCustomer() {
         if (isConfirmed) return true;
 
         if (app.workSessions && app.workSessions.length > 0) {
-          return app.workSessions.every((s) => s.checkedOutAt);
+          const allSessionsOut = app.workSessions.every((s) => !!s.checkedOutAt);
+          // Some APIs store checkout at application-level without checkedOutAt in each work session.
+          // Treat job as archived in that case as well.
+          return allSessionsOut || !!app.checkedOutAt;
         }
 
         return !!app.checkedOutAt;
@@ -224,7 +230,7 @@ export default function DashboardHomeCustomer() {
           {toast}
         </div>
       )}
-      <div className="page-enter-stagger">
+      <div className="page-enter-stagger flex flex-col">
         <header className="mb-6 md:mb-8 w-full flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 p-5 md:p-6 rounded-2xl bg-gradient-to-br from-white via-[#faf8ff] to-[#f3efff] border border-[rgba(122,99,241,0.12)] shadow-[0_4px_20px_rgba(122,99,241,0.08)]">
           <div className="min-w-0 flex-1">
             <h1 className="text-xl sm:text-2xl md:text-3xl font-bold tracking-tight text-[#1e1c2f] truncate">
@@ -245,7 +251,7 @@ export default function DashboardHomeCustomer() {
         </header>
 
         {/* Active Jobs Section */}
-        <section className="mb-6 md:mb-8">
+        <section className="order-[30] mb-6 md:mb-8">
           <div className="bg-white rounded-xl sm:rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
             <button
               type="button"
@@ -279,9 +285,15 @@ export default function DashboardHomeCustomer() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
               </svg>
             </button>
-            {activeAppsExpanded && (
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[640px]">
+            <div
+              className={[
+                "overflow-hidden transition-[max-height,opacity,transform] duration-300 ease-out",
+                activeAppsExpanded ? "max-h-[1200px] opacity-100 translate-y-0" : "max-h-0 opacity-0 -translate-y-1",
+              ].join(" ")}
+              aria-hidden={!activeAppsExpanded}
+            >
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[640px]">
                 <thead>
                   <tr className="text-left text-xs sm:text-sm text-gray-500 border-b border-gray-200 bg-gray-50/80">
                     <th className="p-3 sm:p-4 font-medium">{t("dashboard.jobName")}</th>
@@ -371,14 +383,14 @@ export default function DashboardHomeCustomer() {
                     })
                   )}
                 </tbody>
-              </table>
+                </table>
+              </div>
             </div>
-            )}
           </div>
         </section>
 
         {/* Posted Jobs (No Acceptances) Section */}
-        <section className="mb-6 md:mb-8">
+        <section className="order-[30] mb-6 md:mb-8">
           <div className="bg-white rounded-xl sm:rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
             <button
               type="button"
@@ -410,9 +422,15 @@ export default function DashboardHomeCustomer() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
               </svg>
             </button>
-            {openAppsExpanded && (
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[640px]">
+            <div
+              className={[
+                "overflow-hidden transition-[max-height,opacity,transform] duration-300 ease-out",
+                openAppsExpanded ? "max-h-[1200px] opacity-100 translate-y-0" : "max-h-0 opacity-0 -translate-y-1",
+              ].join(" ")}
+              aria-hidden={!openAppsExpanded}
+            >
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[640px]">
                 <thead>
                   <tr className="text-left text-xs sm:text-sm text-gray-500 border-b border-gray-200 bg-gray-50/80">
                     <th className="p-3 sm:p-4 font-medium">{t("dashboard.jobName")}</th>
@@ -508,14 +526,14 @@ export default function DashboardHomeCustomer() {
                     })
                   )}
                 </tbody>
-              </table>
+                </table>
+              </div>
             </div>
-            )}
           </div>
         </section>
 
         {/* Archived Jobs Section */}
-        <section className="mb-6 md:mb-8">
+        <section className="order-[30] mb-6 md:mb-8">
           <div className="bg-white rounded-xl sm:rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
             <button
               type="button"
@@ -824,17 +842,37 @@ function ApplicationDetailsModal({
   const workSessionsDetails: Array<{ date: string; checkIn?: string; checkOut?: string; hours: number }> = [];
   
   if (application.workSessions && application.workSessions.length > 0) {
-    application.workSessions.forEach((session) => {
-      if (session.checkedInAt && session.checkedOutAt) {
-        const hours = hoursBetween(session.checkedInAt, session.checkedOutAt);
+    const appCheckOut = application.checkedOutAt;
+
+    // Some APIs store checkout at application-level even when each work session misses `checkedOutAt`.
+    // Use `application.checkedOutAt` for the latest open session (checkedInAt exists, checkedOutAt missing).
+    const openSessions = appCheckOut
+      ? application.workSessions
+          .map((s, idx) => ({ s, idx }))
+          .filter(({ s }) => s.checkedInAt && !s.checkedOutAt)
+      : [];
+
+    const latestOpenIdx =
+      openSessions.length > 0
+        ? openSessions
+            .sort((a, b) => new Date(b.s.checkedInAt!).getTime() - new Date(a.s.checkedInAt!).getTime())[0]!.idx
+        : null;
+
+    application.workSessions.forEach((session, idx) => {
+      if (!session.checkedInAt) return;
+
+      const effectiveCheckOut = session.checkedOutAt || (appCheckOut && latestOpenIdx === idx ? appCheckOut : undefined);
+
+      if (effectiveCheckOut) {
+        const hours = hoursBetween(session.checkedInAt, effectiveCheckOut);
         totalHours += hours;
         workSessionsDetails.push({
           date: session.workDate || "—",
           checkIn: session.checkedInAt,
-          checkOut: session.checkedOutAt,
+          checkOut: effectiveCheckOut,
           hours,
         });
-      } else if (session.checkedInAt) {
+      } else {
         workSessionsDetails.push({
           date: session.workDate || "—",
           checkIn: session.checkedInAt,
@@ -842,6 +880,25 @@ function ApplicationDetailsModal({
         });
       }
     });
+
+    // If sessions exist but none had check-in recorded, fallback to application-level check-in/out.
+    if (workSessionsDetails.length === 0 && application.checkedInAt) {
+      if (application.checkedOutAt) {
+        totalHours = hoursBetween(application.checkedInAt, application.checkedOutAt);
+        workSessionsDetails.push({
+          date: job.date || "—",
+          checkIn: application.checkedInAt,
+          checkOut: application.checkedOutAt,
+          hours: totalHours,
+        });
+      } else {
+        workSessionsDetails.push({
+          date: job.date || "—",
+          checkIn: application.checkedInAt,
+          hours: 0,
+        });
+      }
+    }
   } else if (application.checkedInAt && application.checkedOutAt) {
     // Fallback to application-level check-in/out
     totalHours = hoursBetween(application.checkedInAt, application.checkedOutAt);
@@ -1047,6 +1104,15 @@ function ApplicationDetailsModal({
             </h3>
             {workSessionsDetails.length > 0 ? (
               <div className="space-y-3">
+                {hasAnyCheckOut && (
+                  <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 font-medium">
+                    {t("dashboard.finished")}
+                    {": "}
+                    <span className="font-normal">
+                      {t("dashboard.closedArchivedApplicationsTitle") || "Aplicații închise și arhivate"}
+                    </span>
+                  </div>
+                )}
                 {workSessionsDetails.map((session, idx) => (
                   <div key={idx} className="rounded-2xl p-4 border border-primary/10 bg-gradient-to-br from-[#faf8ff] to-white">
                     <div className="flex items-center justify-between gap-3 mb-3">

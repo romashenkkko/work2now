@@ -847,12 +847,24 @@ export default function DashboardJoburi() {
             </button>
           </div>
         ) : publicJobs.length === 0 ? (
-          <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-8 text-center">
-            <p className="text-gray-500">{t("dashboard.noJobsAvailable")}</p>
+          <div className="bg-gray-50 rounded-2xl border border-gray-200 shadow-sm p-10 text-center min-h-[260px] w-full flex items-center justify-center">
+            <div className="max-w-md">
+              <p className="text-gray-900 font-semibold text-base">
+                {t("dashboard.noJobsAvailable", "Momentan nu există joburi disponibile.")}
+              </p>
+              <p className="mt-2 text-gray-600 text-sm">
+                {t("dashboard.noJobsAvailableHint", "Poți încerca să schimbi filtrele sau să aștepți încărcarea joburilor.")}
+              </p>
+            </div>
           </div>
         ) : filteredJobs.length === 0 ? (
-          <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-8 text-center">
-            <p className="text-gray-500">{t("dashboard.noJobsMatchFilter", "Niciun job nu corespunde filtrelor.")}</p>
+          <div className="bg-gray-50 rounded-2xl border border-gray-200 shadow-sm p-10 text-center min-h-[260px] w-full flex items-center justify-center">
+            <div className="max-w-md">
+              <p className="text-gray-900 font-semibold text-base">{t("dashboard.noJobsMatchFilter", "Niciun job nu corespunde filtrelor.")}</p>
+              <p className="mt-2 text-gray-600 text-sm">
+                {t("dashboard.noJobsMatchFilterHint", "Verifică filtrele (categorie/profesie) sau caută altceva.")}
+              </p>
+            </div>
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5 md:gap-6">
@@ -1158,37 +1170,44 @@ export default function DashboardJoburi() {
         {/* Harta (joburi + locația mea) – doar pentru staff; customer nu o vede */}
       </header>
 
-      {jobs.length === 0 ? (
-        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-8 md:p-12 text-center">
-          <p className="text-gray-500 mb-6">Aici vor apărea joburile tale. Folosește „Posteaza un job” din meniu pentru a adăuga un anunț nou.</p>
-          <button
-            type="button"
-            onClick={openPostJobModal}
-            className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-primary text-white font-medium hover:bg-primary-dark transition-colors"
-          >
-            <span className="text-lg leading-none">+</span>
-            {t("dashboard.postJob")}
-          </button>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5 md:gap-6">
-          {jobs
-            .filter((row) => {
-              // Only customers use the jobs list; staff sees an empty list here.
-              if (!isCustomer || !row.id) return true;
-              const { status } = getCustomerJobStatus(String(row.id));
-              // Hide jobs that are already finished (have check-out recorded).
-              return status !== "finished";
-            })
-            .map((row, i) => (
-            <article
-              key={row.id ?? `job-${i}-${row.job}-${row.location}`}
-              role="button"
-              tabIndex={0}
-              onClick={() => setScheduleJob(row)}
-              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setScheduleJob(row); } }}
-              className="job-card-enter bg-white rounded-2xl border border-gray-100 shadow-md overflow-hidden hover:shadow-xl transition-shadow duration-200 flex flex-col cursor-pointer opacity-0"
-            >
+      {(() => {
+        const visibleCustomerJobs = jobs.filter((row) => {
+          // Only customers use the jobs list; staff sees an empty list here.
+          if (!isCustomer || !row.id) return true;
+          const { status } = getCustomerJobStatus(String(row.id));
+          // Hide jobs that are already finished (have check-out recorded).
+          return status !== "finished";
+        });
+
+        if (visibleCustomerJobs.length === 0) {
+          return (
+            <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-8 md:p-12 text-center">
+              <p className="text-gray-500 mb-6">
+                Aici vor apărea joburile tale. Folosește „Posteaza un job” din meniu pentru a adăuga un anunț nou.
+              </p>
+              <button
+                type="button"
+                onClick={openPostJobModal}
+                className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-primary text-white font-medium hover:bg-primary-dark transition-colors"
+              >
+                <span className="text-lg leading-none">+</span>
+                {t("dashboard.postJob")}
+              </button>
+            </div>
+          );
+        }
+
+        return (
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5 md:gap-6">
+            {visibleCustomerJobs.map((row, i) => (
+              <article
+                key={row.id ?? `job-${i}-${row.job}-${row.location}`}
+                role="button"
+                tabIndex={0}
+                onClick={() => setScheduleJob(row)}
+                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setScheduleJob(row); } }}
+                className="job-card-enter bg-white rounded-2xl border border-gray-100 shadow-md overflow-hidden hover:shadow-xl transition-shadow duration-200 flex flex-col cursor-pointer opacity-0"
+              >
               {/* Fără imagine: logo Work2Now + violet. Cu imagine: doar imaginea customerului. */}
               <div className="relative h-24 sm:h-28 bg-primary flex items-center justify-center overflow-hidden">
                 {row.imageUrl ? (
@@ -1352,10 +1371,11 @@ export default function DashboardJoburi() {
                   </div>
                 </div>
               </div>
-            </article>
-          ))}
-        </div>
-      )}
+              </article>
+            ))}
+          </div>
+        );
+      })()}
 
       {/* Harta cu joburi + geolocația staff – nu se afișează pentru customer */}
       <JobScheduleModal

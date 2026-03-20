@@ -776,6 +776,37 @@ export async function initDatabase(): Promise<void> {
       // ignore if already DECIMAL or column missing
     }
 
+    // -------------------------
+    // 3.X) Activity logs (Support Technician audit)
+    // -------------------------
+    await conn.query(`
+      CREATE TABLE IF NOT EXISTS \`activity_logs\` (
+        \`id\` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        \`actor_user_id\` ${GUID_COL} NULL,
+        \`actor_role\` INT NULL,
+        \`actor_email\` VARCHAR(191) NULL,
+        \`action_type\` VARCHAR(80) NOT NULL,
+        \`target_type\` VARCHAR(40) NULL,
+        \`target_job_id\` INT UNSIGNED NULL,
+        \`target_application_id\` INT UNSIGNED NULL,
+        \`target_user_id\` ${GUID_COL} NULL,
+        \`staff_name\` VARCHAR(120) NULL,
+        \`job_title\` VARCHAR(255) NULL,
+        \`business_name\` VARCHAR(200) NULL,
+        \`work_date\` DATE NULL,
+        \`work_session_checked_in_at\` TIMESTAMP NULL,
+        \`work_session_checked_out_at\` TIMESTAMP NULL,
+        \`summary\` VARCHAR(500) NULL,
+        \`metadata\` TEXT NULL,
+        \`created_at\` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX \`idx_activity_logs_created_at\` (\`created_at\`),
+        INDEX \`idx_activity_logs_actor_user_id\` (\`actor_user_id\`),
+        INDEX \`idx_activity_logs_action_type\` (\`action_type\`),
+        INDEX \`idx_activity_logs_target_job_id\` (\`target_job_id\`),
+        INDEX \`idx_activity_logs_target_application_id\` (\`target_application_id\`)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
+    `);
+
     // Allow one rating per (application, rater): both customer and staff can rate the same application
     const [idxRows] = await conn.query<RowDataPacket[]>(
       `SELECT 1 AS ok FROM INFORMATION_SCHEMA.STATISTICS

@@ -150,6 +150,26 @@ export const authApi = {
       method: "POST",
       body: JSON.stringify({ userId: String(userId).trim(), active }),
     }),
+
+  /** Support/Admin: list staff or businesses */
+  supportListUsers: (role: "staff" | "customer") =>
+    api<{ users: Array<any> }>(`/auth/support/users?role=${encodeURIComponent(role)}`),
+
+  /** Support/Admin: create staff or business */
+  supportCreateUser: (payload: any) =>
+    api<{ ok: true; userId: string }>("/auth/support/users", { method: "POST", body: JSON.stringify(payload) }),
+
+  /** Support/Admin: update staff or business */
+  supportUpdateUser: (id: string, payload: any) =>
+    api<{ ok: true }>("/auth/support/users/" + encodeURIComponent(id), { method: "PATCH", body: JSON.stringify(payload) }),
+
+  /** Support/Admin: deactivate staff or business (soft delete) */
+  supportDeactivateUser: (id: string) =>
+    api<{ ok: true; isActive: false }>("/auth/support/users/" + encodeURIComponent(id), { method: "DELETE" }),
+
+  /** Support/Admin: activity logs */
+  supportGetLogs: (limit = 200, offset = 0) =>
+    api<{ logs: Array<any> }>(`/auth/support/logs?limit=${limit}&offset=${offset}`),
   /** Admin: setează subscription booster pentru customer – joburile lui apar primele. boosterUntil: ISO string sau null pentru anulare. */
   setUserBooster: (userId: string, boosterUntil: string | null) =>
     api<{ ok: boolean; boosterUntil?: string }>("/auth/users/set-booster", {

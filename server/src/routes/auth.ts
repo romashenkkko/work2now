@@ -12,6 +12,11 @@ import {
   postSetUserStatus,
   postValidateRegistration,
   postVerifyOtp,
+  getSupportLogs,
+  getSupportUsers,
+  postSupportUsers,
+  patchSupportUsers,
+  deleteSupportUsers,
 } from "../controllers/authController";
 import { ensureDefaultAdmin } from "../services/authService";
 
@@ -28,6 +33,11 @@ router.post("/users/set-status", authMiddleware, postSetUserStatus);
 router.post("/users/set-booster", authMiddleware, postSetUserBooster);
 router.post("/send-otp", postSendOtp);
 router.post("/verify-otp", postVerifyOtp);
+router.get("/support/logs", authMiddleware, getSupportLogs);
+router.get("/support/users", authMiddleware, getSupportUsers);
+router.post("/support/users", authMiddleware, postSupportUsers);
+router.patch("/support/users/:id", authMiddleware, patchSupportUsers);
+router.delete("/support/users/:id", authMiddleware, deleteSupportUsers);
 
 export { ensureDefaultAdmin };
 export default router;

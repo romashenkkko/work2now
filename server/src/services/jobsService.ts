@@ -1,5 +1,6 @@
 import { prisma } from "../prismaClient";
 import { ServiceError } from "./ServiceError";
+import { addActivityLog } from "./activityLogService";
 
 // --- Helpers (used by list/create and other endpoints) ---
 export type ResolvedRole = "staff" | "customer" | "admin" | "";
@@ -439,6 +440,16 @@ export async function createJob(userId: string, body: CreateJobBody): Promise<Jo
     u?.business_profiles?.CompanyName?.trim() ||
     [u?.employee_profiles?.Name, u?.employee_profiles?.Surname].filter(Boolean).join(" ").trim() ||
     undefined;
+
+  await addActivityLog({
+    actorUserId: userId,
+    actionType: "JOB_CREATED",
+    targetType: "job",
+    targetJobId: job.id,
+    jobTitle: job.Title,
+    businessName: postedByName ?? null,
+    summary: `${postedByName ?? "User"} a creat jobul: ${job.Title}`,
+  });
   return buildJobListItem({
     id: job.id,
     Title: job.Title,
@@ -663,6 +674,16 @@ export async function applyToJob(userId: string, jobId: string): Promise<ApplyTo
     }),
   ]);
   const customerEmail = (job.users?.Email ?? "").trim();
+
+  await addActivityLog({
+    actorUserId: userId,
+    actionType: "APPLICATION_APPLIED",
+    targetType: "application",
+    targetJobId: job.id,
+    staffName: staffName || "Angajat",
+    jobTitle: (job.Title ?? "").trim() || null,
+    summary: `${staffName || "Angajat"} a aplicat la jobul ${(job.Title ?? "").trim() || "Job"}`,
+  });
   return {
     ok: true,
     customerEmail,
@@ -770,13 +791,24 @@ export async function getApplications(userId: string): Promise<{ applications: A
 export async function confirmCompletion(userId: string, appId: string): Promise<void> {
   const app = await prisma.applications.findFirst({
     where: { id: parseInt(appId, 10) },
-    include: { jobs: { select: { user_id: true } } },
+    include: { jobs: { select: { user_id: true, id: true, Title: true } } },
   });
   if (!app || app.jobs.user_id !== userId) throw new ServiceError("Aplicație negăsită.", 404);
   if (app.status !== "accepted") throw new ServiceError("Doar aplicațiile acceptate pot fi confirmate ca finalizate.", 400);
   await prisma.applications.update({
     where: { id: app.id },
     data: { business_confirmed_at: new Date() },
+  });
+
+  await addActivityLog({
+    actorUserId: userId,
+    actionType: "JOB_FINALIZED",
+    targetType: "application",
+    targetApplicationId: app.id,
+    targetJobId: app.jobs.id ?? null,
+    staffName: app.staff_name ?? null,
+    jobTitle: (app.jobs as any).Title ?? null,
+    summary: `Job finalizat: ${(app.jobs as any).Title ?? "Job"}`,
   });
 }
 
@@ -787,7 +819,7 @@ export async function checkIn(
 ): Promise<{ alreadyDone?: boolean }> {
   const app = await prisma.applications.findFirst({
     where: { id: appId, staff_id: userId },
-    select: { id: true, job_id: true, status: true, checked_in_at: true },
+    select: { id: true, job_id: true, status: true, checked_in_at: true, staff_name: true },
   });
   if (!app) throw new ServiceError("Aplicație negăsită.", 404);
   if (app.status !== "accepted") throw new ServiceError("Doar aplicațiile acceptate pot fi check-in.", 400);
@@ -797,9 +829,10 @@ export async function checkIn(
     if (!geo.valid) throw new ServiceError(geo.error, geo.statusCode);
   }
   const workDateStr = body.workDate ? String(body.workDate).trim().slice(0, 10) : null;
+  const now = new Date();
   await prisma.applications.update({
     where: { id: appId },
-    data: { checked_in_at: new Date() },
+    data: { checked_in_at: now },
   });
   if (workDateStr && /^\d{4}-\d{2}-\d{2}$/.test(workDateStr)) {
     const workDate = new Date(workDateStr + "T12:00:00Z");
@@ -809,14 +842,26 @@ export async function checkIn(
     if (existing) {
       await prisma.application_work_sessions.update({
         where: { id: existing.id },
-        data: { checked_in_at: new Date() },
+        data: { checked_in_at: now },
       });
     } else {
       await prisma.application_work_sessions.create({
-        data: { application_id: appId, work_date: workDate, checked_in_at: new Date() },
+        data: { application_id: appId, work_date: workDate, checked_in_at: now },
       });
     }
   }
+
+  await addActivityLog({
+    actorUserId: userId,
+    actionType: "CHECK_IN",
+    targetType: "application",
+    targetApplicationId: app.id,
+    targetJobId: app.job_id ?? null,
+    staffName: app.staff_name ?? null,
+    workDate: workDateStr,
+    workSessionCheckedInAt: now,
+    summary: `Check-in: ${app.staff_name ?? "Staff"} (job #${app.job_id ?? "?"})`,
+  });
   return {};
 }
 
@@ -827,7 +872,7 @@ export async function checkOut(
 ): Promise<{ alreadyDone?: boolean }> {
   const app = await prisma.applications.findFirst({
     where: { id: appId, staff_id: userId },
-    select: { id: true, job_id: true, status: true, checked_in_at: true, checked_out_at: true },
+    select: { id: true, job_id: true, status: true, checked_in_at: true, checked_out_at: true, staff_name: true },
   });
   if (!app) throw new ServiceError("Aplicație negăsită.", 404);
   if (app.status !== "accepted") throw new ServiceError("Doar aplicațiile acceptate pot fi check-out.", 400);
@@ -860,6 +905,18 @@ export async function checkOut(
       where: { id: openSession.id },
       data: { checked_out_at: now },
     });
+
+    await addActivityLog({
+      actorUserId: userId,
+      actionType: "CHECK_OUT",
+      targetType: "application",
+      targetApplicationId: app.id,
+      targetJobId: app.job_id ?? null,
+      staffName: app.staff_name ?? null,
+      workDate: workDateStr,
+      workSessionCheckedOutAt: now,
+      summary: `Check-out: ${app.staff_name ?? "Staff"} (job #${app.job_id ?? "?"})`,
+    });
     return {};
   }
 
@@ -885,6 +942,18 @@ export async function checkOut(
       });
     }
   }
+
+  await addActivityLog({
+    actorUserId: userId,
+    actionType: "CHECK_OUT",
+    targetType: "application",
+    targetApplicationId: app.id,
+    targetJobId: app.job_id ?? null,
+    staffName: app.staff_name ?? null,
+    workDate: workDateStr,
+    workSessionCheckedOutAt: now,
+    summary: `Check-out: ${app.staff_name ?? "Staff"} (job #${app.job_id ?? "?"})`,
+  });
   return {};
 }
 
@@ -914,6 +983,7 @@ export async function setApplicationStatus(
     include: {
       jobs: {
         select: {
+          id: true,
           user_id: true,
           Title: true,
           location: true,
@@ -952,6 +1022,17 @@ export async function setApplicationStatus(
     endTime: (app.jobs.end_time ?? "").trim() ?? "",
     hourlyRate: app.jobs.hourly_rate_base != null ? Number(app.jobs.hourly_rate_base) : null,
   };
+
+  await addActivityLog({
+    actorUserId: userId,
+    actionType: status === "accepted" ? "APPLICATION_ACCEPTED" : "APPLICATION_REFUSED",
+    targetType: "application",
+    targetApplicationId: app.id,
+    targetJobId: app.jobs.id ?? null,
+    staffName,
+    jobTitle,
+    summary: `${jobTitle} - ${staffName} (${status}).`,
+  });
   return { staffEmail, staffName, jobTitle, jobDetails };
 }
 
