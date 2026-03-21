@@ -886,7 +886,18 @@
     "avatarOptional": "Avatar (optional)",
     "jobsWithApplications": "Jobs with applications",
     "jobsWithoutApplications": "Jobs without applications",
-    "viewCv": "View CV"
+    "viewCv": "View CV",
+    "workCalendar": "Work Calendar",
+    "daysWorkedThisMonth": "days worked this month",
+    "daysWorked": "Days worked",
+    "jobInfoDetails": "Job information",
+    "applicationId": "Application ID",
+    "appliedAt": "Applied on",
+    "rating": "Rating",
+    "client": "Client",
+    "checkInStart": "Start",
+    "checkOutEnd": "End",
+    "noWorkSessionsYet": "No work sessions recorded yet."
   },
   "accountBlocked": {
     "title": "Account blocked",

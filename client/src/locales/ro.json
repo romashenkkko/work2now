@@ -886,7 +886,18 @@
     "avatarOptional": "Avatar (opțional)",
     "jobsWithApplications": "Joburi cu aplicații",
     "jobsWithoutApplications": "Joburi fără aplicații",
-    "viewCv": "Vezi CV"
+    "viewCv": "Vezi CV",
+    "workCalendar": "Calendarul muncii",
+    "daysWorkedThisMonth": "zile lucrate luna aceasta",
+    "daysWorked": "Zile lucrate",
+    "jobInfoDetails": "Informații job",
+    "applicationId": "ID aplicație",
+    "appliedAt": "Aplicat la",
+    "rating": "Rating",
+    "client": "Client",
+    "checkInStart": "Început",
+    "checkOutEnd": "Sfârșit",
+    "noWorkSessionsYet": "Nicio sesiune de lucru înregistrată."
   },
   "accountBlocked": {
     "title": "Cont blocat",

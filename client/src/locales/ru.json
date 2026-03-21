@@ -886,7 +886,18 @@
     "avatarOptional": "Аватар (необязательно)",
     "jobsWithApplications": "Вакансии с заявками",
     "jobsWithoutApplications": "Вакансии без заявок",
-    "viewCv": "Посмотреть резюме"
+    "viewCv": "Посмотреть резюме",
+    "workCalendar": "Рабочий календарь",
+    "daysWorkedThisMonth": "рабочих дней в этом месяце",
+    "daysWorked": "Отработанные дни",
+    "jobInfoDetails": "Информация о вакансии",
+    "applicationId": "ID заявки",
+    "appliedAt": "Подано",
+    "rating": "Рейтинг",
+    "client": "Клиент",
+    "checkInStart": "Начало",
+    "checkOutEnd": "Конец",
+    "noWorkSessionsYet": "Рабочие сессии ещё не зарегистрированы."
   },
   "accountBlocked": {
     "title": "Аккаунт заблокирован",
