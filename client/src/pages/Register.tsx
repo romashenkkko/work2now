@@ -50,14 +50,14 @@ export default function Register() {
   const [dateOfBirth, setDateOfBirth] = useState("");
   const [aboutMe, setAboutMe] = useState("");
   const [cvFile, setCvFile] = useState<File | null>(null);
-  const [phoneNumber, setPhoneNumber] = useState("+373"); // Staff phone number
+  const [phoneNumber, setPhoneNumber] = useState(""); // Staff phone number (without prefix)
   
   // Business/Customer fields
   const [companyName, setCompanyName] = useState("");
   const [contactFirstName, setContactFirstName] = useState("");
   const [contactLastName, setContactLastName] = useState("");
   const [contactDateOfBirth, setContactDateOfBirth] = useState("");
-  const [contactPhoneNumber, setContactPhoneNumber] = useState("+373"); // Customer contact phone number
+  const [contactPhoneNumber, setContactPhoneNumber] = useState(""); // Customer contact phone number (without prefix)
   const [companyCategory, setCompanyCategory] = useState("1");
   const [companyCategoryOpen, setCompanyCategoryOpen] = useState(false);
   const companyCategoryRef = useRef<HTMLDivElement>(null);
@@ -67,7 +67,7 @@ export default function Register() {
   const [branchAddress, setBranchAddress] = useState("");
   const [branchCity, setBranchCity] = useState("");
   const [branchCountry, setBranchCountry] = useState("Moldova");
-  const [branchPhone, setBranchPhone] = useState("+373");
+  const [branchPhone, setBranchPhone] = useState(""); // without prefix
   // Raion dropdown for customer registration
   const [raioane, setRaioane] = useState<Array<{ id: number; name: string; type: string }>>([]);
   const [selectedRaionId, setSelectedRaionId] = useState<number | null>(null);
@@ -247,7 +247,7 @@ export default function Register() {
           address: branchAddress.trim(),
           city: branchCity.trim(),
           country: branchCountry.trim() || "Moldova",
-          phoneNumber: branchPhone.trim(),
+          phoneNumber: `+373${branchPhone.trim()}`,
           raionId: selectedRaionId,
         };
       }
@@ -325,7 +325,7 @@ export default function Register() {
           address: branchAddress.trim(),
           city: branchCity.trim(),
           country: branchCountry.trim() || "Moldova",
-          phoneNumber: branchPhone.trim(),
+          phoneNumber: `+373${branchPhone.trim()}`,
           raionId: selectedRaionId,
         };
       }
@@ -353,7 +353,7 @@ export default function Register() {
   }
 
   async function handleAcceptTerms() {
-    const phoneToVerify = role === "staff" ? phoneNumber.trim() : contactPhoneNumber.trim();
+    const phoneToVerify = role === "staff" ? `+373${phoneNumber.trim()}` : `+373${contactPhoneNumber.trim()}`;
     
     // Validate phone number before sending OTP
     if (!phoneToVerify) {
@@ -549,14 +549,18 @@ export default function Register() {
               />
               <label>
                 {t("auth.phoneNumber")} <span className="text-red-500">*</span>
-                <input
-                  type="tel"
-                  value={phoneNumber}
-                  onChange={(e) => setPhoneNumber(e.target.value)}
-                  required
-                  placeholder={t("auth.phoneNumberPlaceholder") || "+37312345678"}
-                />
-                <small className="text-gray-500 text-xs mt-1 block">{t("auth.phoneNumberHint") || "Folosește formatul internațional (ex: +37312345678)"}</small>
+                <div className="flex items-center rounded-xl border border-gray-200 bg-white overflow-hidden focus-within:ring-2 focus-within:ring-primary/30 focus-within:border-primary transition-all mt-1">
+                  <span className="px-3 py-2.5 text-sm font-medium text-gray-500 bg-gray-50 border-r border-gray-200 select-none shrink-0">+373</span>
+                  <input
+                    type="tel"
+                    value={phoneNumber}
+                    onChange={(e) => setPhoneNumber(e.target.value.replace(/[^0-9]/g, ""))}
+                    required
+                    placeholder="69123456"
+                    className="!border-0 !ring-0 !shadow-none !rounded-none flex-1 !mt-0"
+                  />
+                </div>
+                <small className="text-gray-500 text-xs mt-1 block">{t("auth.phoneNumberHint") || "Introduceți numărul fără prefix"}</small>
               </label>
               <label>
                 {t("auth.aboutMe")}
@@ -630,14 +634,18 @@ export default function Register() {
               />
               <label>
                 {t("auth.contactPhoneNumber")} <span className="text-red-500">*</span>
-                <input
-                  type="tel"
-                  value={contactPhoneNumber}
-                  onChange={(e) => setContactPhoneNumber(e.target.value)}
-                  required
-                  placeholder={t("auth.phoneNumberPlaceholder") || "+37312345678"}
-                />
-                <small className="text-gray-500 text-xs mt-1 block">{t("auth.phoneNumberHint") || "Folosește formatul internațional (ex: +37312345678)"}</small>
+                <div className="flex items-center rounded-xl border border-gray-200 bg-white overflow-hidden focus-within:ring-2 focus-within:ring-primary/30 focus-within:border-primary transition-all mt-1">
+                  <span className="px-3 py-2.5 text-sm font-medium text-gray-500 bg-gray-50 border-r border-gray-200 select-none shrink-0">+373</span>
+                  <input
+                    type="tel"
+                    value={contactPhoneNumber}
+                    onChange={(e) => setContactPhoneNumber(e.target.value.replace(/[^0-9]/g, ""))}
+                    required
+                    placeholder="69123456"
+                    className="!border-0 !ring-0 !shadow-none !rounded-none flex-1 !mt-0"
+                  />
+                </div>
+                <small className="text-gray-500 text-xs mt-1 block">{t("auth.phoneNumberHint") || "Introduceți numărul fără prefix"}</small>
               </label>
               <label>
                 {t("auth.companyCategory")}
@@ -777,13 +785,17 @@ export default function Register() {
               </div>
               <label>
                 {t("auth.phone")}
-                <input
-                  type="tel"
-                  value={branchPhone}
-                  onChange={(e) => setBranchPhone(e.target.value)}
-                  required
-                  placeholder={t("auth.branchPhonePlaceholder")}
-                />
+                <div className="flex items-center rounded-xl border border-gray-200 bg-white overflow-hidden focus-within:ring-2 focus-within:ring-primary/30 focus-within:border-primary transition-all mt-1">
+                  <span className="px-3 py-2.5 text-sm font-medium text-gray-500 bg-gray-50 border-r border-gray-200 select-none shrink-0">+373</span>
+                  <input
+                    type="tel"
+                    value={branchPhone}
+                    onChange={(e) => setBranchPhone(e.target.value.replace(/[^0-9]/g, ""))}
+                    required
+                    placeholder="69123456"
+                    className="!border-0 !ring-0 !shadow-none !rounded-none flex-1 !mt-0"
+                  />
+                </div>
               </label>
             </>
           )}

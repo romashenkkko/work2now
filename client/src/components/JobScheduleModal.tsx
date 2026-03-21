@@ -2,7 +2,7 @@ import { useMemo, useState, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import type { JobRow } from "../pages/DashboardLayout";
-import { Briefcase, Clock, MapPin, List, Calendar, Banknote, Users, AlertTriangle, Share2 } from "lucide-react";
+import { Briefcase, Clock, MapPin, Calendar, Banknote, Users, AlertTriangle, Share2 } from "lucide-react";
 import { getBusinessTotal, getStaffNet, roundMoney } from "../utils/salary";
 
 const WEEKDAY_KEYS = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"] as const;
@@ -391,18 +391,6 @@ export default function JobScheduleModal({ open, onClose, job, viewerIsStaff = f
                   </div>
                 );
               })()}
-              </div>
-
-              {/* Tabs - part of scrollable body */}
-              <div className="px-4 pb-2 flex gap-2">
-                <span className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-primary text-white text-sm font-medium">
-                  <List className="w-4 h-4" />
-                  {t("dashboard.listView")}
-                </span>
-                <span className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-gray-100 text-gray-500 text-sm font-medium">
-                  <Calendar className="w-4 h-4" />
-                  {t("dashboard.calendarView")}
-                </span>
               </div>
 
               {/* Dates list - part of scrollable body */}
