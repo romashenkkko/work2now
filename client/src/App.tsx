@@ -47,6 +47,7 @@ export default function App() {
             <Route path="/find-staff" element={<FindStaff />} />
             <Route path="/contact" element={<Contact />} />
             <Route path="/blog" element={<Blog />} />
+            <Route path="/help" element={<Navigate to="/blog" replace />} />
             <Route path="/about" element={<About />} />
             <Route path="/how-it-works" element={<HowItWorks />} />
             <Route path="/employers" element={<Employers />} />

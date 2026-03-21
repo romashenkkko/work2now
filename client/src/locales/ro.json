@@ -4,7 +4,7 @@
     "findJobs": "Găsește joburi",
     "findStaff": "Găsește personal",
     "contact": "Contact",
-    "blog": "Blog",
+    "blog": "Ajutor",
     "signIn": "Conectare",
     "signUp": "Înregistrare",
     "login": "Conectare",
@@ -83,7 +83,7 @@
     "app": "Aplicatie",
     "findJobs": "Find Jobs",
     "findStaff": "Find Staff",
-    "blog": "Blog",
+    "blog": "Ajutor",
     "contact": "Contact",
     "login": "Login",
     "register": "Inregistrare",
@@ -264,44 +264,63 @@
     "success": "Mesajul tau a fost trimis cu succes! Te vom contacta in curand.",
     "error": "Te rugam sa completezi toate campurile."
   },
-  "blogPage": {
-    "label": "Blog",
-    "title": "Blog Work2Now",
-    "lead": "Articole, sfaturi si noutati despre recrutare flexibila si piata muncii.",
-    "readMore": "Citeste mai mult →",
-    "ctaTitle": "Continua explorarea",
+  "helpPage": {
+    "label": "Centru de ajutor",
+    "title": "Intrebari frecvente",
+    "lead": "Raspunsuri rapide la cele mai comune intrebari despre inregistrare, joburi, aplicatii si cont.",
+    "faqSectionAria": "Lista intrebari frecvente",
+    "ctaTitle": "Nu ai gasit raspunsul? Exploreaza platforma sau scrie-ne.",
     "ctaJobs": "Vezi joburile",
+    "ctaEmployers": "Pentru angajatori",
     "ctaContact": "Contact",
-    "posts": {
-      "post1": {
-        "date": "15 Ianuarie 2026",
-        "title": "Cum sa iti creezi un profil atractiv pe Work2Now",
-        "desc": "Sfaturi practice pentru a-ti optimiza profilul si a atrage mai multe oferte de joburi."
+    "faq": {
+      "register": {
+        "q": "Cum ma inregistrez pe Work2Now?",
+        "a": "Apasa Inregistrare si alege tipul de cont: angajat (personal) sau angajator (business). Completeaza datele cerute, confirma numarul de telefon prin codul SMS si accepta termenii. Dupa verificare poti folosi dashboard-ul."
       },
-      "post2": {
-        "date": "10 Ianuarie 2026",
-        "title": "Recrutare flexibila: viitorul angajarii",
-        "desc": "De ce joburile flexibile devin din ce in ce mai populare si cum beneficiaza angajatorii si angajatii."
+      "roles": {
+        "q": "Care este diferenta intre cont angajat si cont angajator?",
+        "a": "Contul de angajat iti permite sa aplici la joburi, sa folosesti check-in/check-out pentru zilele lucrate si sa iti gestionezi profilul si CV-ul. Contul de angajator este pentru firme: poti publica joburi, vezi candidatii si aplicatiile si gestionezi filialele."
       },
-      "post3": {
-        "date": "5 Ianuarie 2026",
-        "title": "Work2Now se extinde in Romania",
-        "desc": "Lansarea platformei in Romania si cum poti beneficia de serviciile noastre."
+      "verifyPhone": {
+        "q": "De ce trebuie sa verific numarul de telefon?",
+        "a": "Verificarea prin SMS reduce conturile false si ne ajuta sa te contactam daca e nevoie (ex. despre o aplicatie sau un job). Numarul foloseste prefixul +373 pentru Moldova."
       },
-      "post4": {
-        "date": "28 Decembrie 2025",
-        "title": "Plata rapida: cum functioneaza",
-        "desc": "Salariul in maxim 48 de ore dupa finalizarea jobului."
+      "applyJob": {
+        "q": "Cum aplic la un job?",
+        "a": "Dupa autentificare, mergi la sectiunea cu joburi disponibile, deschide detaliile jobului si apasa sa aplici. Poti vedea statusul aplicatiei in dashboard, la Aplicatii."
       },
-      "post5": {
-        "date": "20 Decembrie 2025",
-        "title": "Aplicatia mobila Work2Now",
-        "desc": "Gestionare joburi, notificari, plata si multe altele."
+      "applicationStatus": {
+        "q": "Ce inseamna pending, acceptat sau refuzat la o aplicatie?",
+        "a": "In asteptare: angajatorul inca nu a decis. Acceptat: te asteapta la job conform detaliilor din anunt. Refuzat: aplicatia nu a fost aleasa; poti continua sa aplici la alte joburi."
       },
-      "post6": {
-        "date": "15 Decembrie 2025",
-        "title": "Sfaturi pentru angajatori",
-        "desc": "Cum sa scrii anunturi eficiente si sa gasesti personalul potrivit rapid."
+      "checkin": {
+        "q": "Ce sunt check-in si check-out?",
+        "a": "Pentru aplicatiile acceptate, in ziua lucrata poti marca ora la care ai inceput (check-in) si ora la care ai terminat (check-out) din aplicatie. Ajuta la evidenta orelor lucrate intre tine si angajator."
+      },
+      "cv": {
+        "q": "Cine vede CV-ul meu?",
+        "a": "Poti incarca sau actualiza CV-ul din setarile profilului (format PDF sau Word). Angajatorii il pot vedea cand aplici la joburile lor, ca sa evalueze candidatura ta."
+      },
+      "postJob": {
+        "q": "Cum public un job ca angajator?",
+        "a": "Din dashboard, la Joburi, foloseste optiunea de a publica un job nou. Completeaza titlul, categoria, programul, locatia, salariul si numarul de persoane. Poti salva sabloane pentru anunturi repetate."
+      },
+      "applicants": {
+        "q": "Cum vad candidatii la joburile mele?",
+        "a": "In dashboard, la Aplicatii sau la detaliile jobului, vezi lista celor care au aplicat, statusul (in asteptare / acceptat / refuzat) si, daca exista, poti deschide CV-ul candidatului."
+      },
+      "payment": {
+        "q": "Cand si cum primesc plata?",
+        "a": "Conform promovarii platformei, tinta este plata rapida dupa finalizarea muncii (ex. in pana la 48 de ore), in functie de cum este configurat fluxul cu angajatorul. Detaliile concrete despre plata apar in comunicarea cu angajatorul si in conditiile platformei."
+      },
+      "account": {
+        "q": "Am uitat parola sau vreau sa imi schimb datele. Ce fac?",
+        "a": "La autentificare foloseste optiunea de recuperare parola daca este disponibila. Numele, telefonul si alte date le poti actualiza din Setari in dashboard, in functie de tipul de cont."
+      },
+      "contact": {
+        "q": "Cum va contactez pentru o problema tehnica sau o intrebare?",
+        "a": "Foloseste pagina Contact din site: trimite un mesaj cu subiectul si descrierea problemei. Vom reveni cat mai curand."
       }
     }
   },

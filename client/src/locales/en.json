@@ -4,7 +4,7 @@
     "findJobs": "Find Jobs",
     "findStaff": "Find Staff",
     "contact": "Contact Us",
-    "blog": "The Blog",
+    "blog": "Help",
     "signIn": "Sign In",
     "signUp": "Sign Up",
     "login": "Log in",
@@ -83,7 +83,7 @@
     "app": "App",
     "findJobs": "Find Jobs",
     "findStaff": "Find Staff",
-    "blog": "Blog",
+    "blog": "Help",
     "contact": "Contact",
     "login": "Login",
     "register": "Register",
@@ -264,44 +264,63 @@
     "success": "Your message was sent successfully! We'll contact you soon.",
     "error": "Please fill in all fields."
   },
-  "blogPage": {
-    "label": "Blog",
-    "title": "Work2Now Blog",
-    "lead": "Articles, tips and news about flexible recruitment and the job market.",
-    "readMore": "Read more →",
-    "ctaTitle": "Keep exploring",
-    "ctaJobs": "View jobs",
+  "helpPage": {
+    "label": "Help center",
+    "title": "Frequently asked questions",
+    "lead": "Quick answers about signing up, jobs, applications and your account.",
+    "faqSectionAria": "Frequently asked questions list",
+    "ctaTitle": "Still need help? Explore the site or get in touch.",
+    "ctaJobs": "Browse jobs",
+    "ctaEmployers": "For employers",
     "ctaContact": "Contact",
-    "posts": {
-      "post1": {
-        "date": "15 January 2026",
-        "title": "How to create an attractive profile on Work2Now",
-        "desc": "Practical tips to optimize your profile and attract more job offers."
+    "faq": {
+      "register": {
+        "q": "How do I sign up on Work2Now?",
+        "a": "Click Sign up and choose worker or business. Fill in the required details, confirm your phone number with the SMS code and accept the terms. After verification you can use the dashboard."
       },
-      "post2": {
-        "date": "10 January 2026",
-        "title": "Flexible recruitment: the future of hiring",
-        "desc": "Why flexible jobs are becoming more popular and how both employers and workers benefit."
+      "roles": {
+        "q": "What is the difference between a worker and an employer account?",
+        "a": "A worker account lets you apply to jobs, use check-in/check-out for worked days and manage your profile and CV. An employer account is for companies: post jobs, review applicants and manage branches."
       },
-      "post3": {
-        "date": "5 January 2026",
-        "title": "Work2Now expands to Romania",
-        "desc": "The platform launch in Romania and how you can benefit from our services."
+      "verifyPhone": {
+        "q": "Why do I need to verify my phone number?",
+        "a": "SMS verification reduces fake accounts and lets us reach you if needed (e.g. about an application or job). Moldova numbers use the +373 prefix."
       },
-      "post4": {
-        "date": "28 December 2025",
-        "title": "Fast payment: how it works",
-        "desc": "Get paid within up to 48 hours after completing a job."
+      "applyJob": {
+        "q": "How do I apply for a job?",
+        "a": "After logging in, open available jobs, view the details and submit your application. You can track status under Applications in the dashboard."
       },
-      "post5": {
-        "date": "20 December 2025",
-        "title": "The Work2Now mobile app",
-        "desc": "Manage jobs, notifications, payments and much more."
+      "applicationStatus": {
+        "q": "What do pending, accepted and refused mean?",
+        "a": "Pending: the employer has not decided yet. Accepted: you are confirmed for the job as described. Refused: this application was not selected; you can apply to other jobs."
       },
-      "post6": {
-        "date": "15 December 2025",
-        "title": "Tips for employers",
-        "desc": "How to write effective job posts and quickly find the right staff."
+      "checkin": {
+        "q": "What are check-in and check-out?",
+        "a": "For accepted applications, on the work day you can record when you started (check-in) and when you finished (check-out) in the app. This helps track hours between you and the employer."
+      },
+      "cv": {
+        "q": "Who can see my CV?",
+        "a": "You can upload or update your CV in profile settings (PDF or Word). Employers can view it when you apply to their jobs."
+      },
+      "postJob": {
+        "q": "How do I post a job as an employer?",
+        "a": "In the dashboard under Jobs, use post new job. Enter title, category, schedule, location, pay and headcount. You can save templates for repeat postings."
+      },
+      "applicants": {
+        "q": "How do I see applicants for my jobs?",
+        "a": "In the dashboard under Applications or job details you see who applied, their status (pending / accepted / refused) and open their CV when available."
+      },
+      "payment": {
+        "q": "When and how do I get paid?",
+        "a": "The platform promotes fast payout after work is completed (e.g. within about 48 hours), depending on how payment is set up with the employer. Exact details appear in your communication with the employer and the platform terms."
+      },
+      "account": {
+        "q": "I forgot my password or want to change my details.",
+        "a": "Use password recovery on login if available. Update name, phone and other fields in Settings in the dashboard, depending on your account type."
+      },
+      "contact": {
+        "q": "How do I contact you for a technical issue or question?",
+        "a": "Use the Contact page: send a message with a subject and description. We will get back to you as soon as we can."
       }
     }
   },
