@@ -26,7 +26,7 @@ const LANGUAGES = [
   { code: "ru", label: "Русский" },
 ] as const;
 
-type Section = "change-password" | "change-language" | "account-privacy" | "faq" | "contact" | "job-preferences" | "profile-info" | "branches" | "experiences";
+type Section = "change-password" | "change-language" | "account-privacy" | "faq" | "contact" | "job-preferences" | "profile-info" | "branches" | "experiences" | "cv";
 
 const MENU_ICONS: Record<Section, React.ReactNode> = {
   "change-password": (
@@ -70,6 +70,11 @@ const MENU_ICONS: Record<Section, React.ReactNode> = {
   experiences: (
     <Briefcase className="w-5 h-5 text-gray-500 flex-shrink-0" />
   ),
+  cv: (
+    <svg className="w-5 h-5 text-gray-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+    </svg>
+  ),
 };
 
 /** 0 = none, 1 = weak, 2 = fair, 3 = good, 4 = strong */
@@ -97,6 +102,7 @@ const MENU_BUTTONS: { id: Section; labelKey: string }[] = [
   { id: "profile-info", labelKey: "profile.profileInfo" },
   { id: "branches", labelKey: "profile.branches.title" },
   { id: "experiences", labelKey: "profile.experiences.title" },
+  { id: "cv", labelKey: "profile.cv.title" },
 ];
 
 export default function DashboardSettings() {
@@ -198,7 +204,7 @@ export default function DashboardSettings() {
                   return user?.role === "customer";
                 }
                 // Show experiences only for staff users
-                if (id === "experiences") {
+                if (id === "experiences" || id === "cv") {
                   return user?.role === "staff";
                 }
                 return true;
@@ -580,6 +586,9 @@ export default function DashboardSettings() {
             t={t}
           />
         )}
+        {activeSection === "cv" && (
+          <CvSection onBack={() => setActiveSection(null)} t={t} />
+        )}
           </div>
         )}
       </div>
@@ -761,5 +770,132 @@ function PlaceholderSection({
       <h2 className="text-lg font-semibold text-gray-900 mb-2">{title}</h2>
       <div className="text-gray-600">{children}</div>
     </section>
+  );
+}
+
+function CvSection({ onBack, t }: { onBack: () => void; t: (key: string) => string }) {
+  const { user, refreshUser } = useAuth();
+  const [uploading, setUploading] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+
+  const hasCv = !!user?.cvFileUrl;
+
+  async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const allowed = [
+      "application/pdf",
+      "application/msword",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ];
+    if (!allowed.includes(file.type)) {
+      setMessage({ type: "error", text: t("profile.cv.invalidFormat") });
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      setMessage({ type: "error", text: t("profile.cv.tooLarge") });
+      return;
+    }
+
+    setUploading(true);
+    setMessage(null);
+    try {
+      await authApi.uploadCv(file);
+      await refreshUser();
+      setMessage({ type: "success", text: t("profile.cv.uploadSuccess") });
+    } catch (err) {
+      setMessage({ type: "error", text: err instanceof Error ? err.message : t("profile.cv.uploadError") });
+    } finally {
+      setUploading(false);
+      e.target.value = "";
+    }
+  }
+
+  async function handleDelete() {
+    setDeleting(true);
+    setMessage(null);
+    try {
+      await authApi.deleteCv();
+      await refreshUser();
+      setMessage({ type: "success", text: t("profile.cv.deleteSuccess") });
+    } catch (err) {
+      setMessage({ type: "error", text: err instanceof Error ? err.message : t("profile.cv.deleteError") });
+    } finally {
+      setDeleting(false);
+    }
+  }
+
+  function handleView() {
+    if (user?.id) {
+      window.open(authApi.getCvUrl(String(user.id)), "_blank");
+    }
+  }
+
+  return (
+    <PlaceholderSection title={t("profile.cv.title")} backLabel={t("profile.back")} onBack={onBack}>
+      <div className="space-y-4">
+        {hasCv ? (
+          <div className="flex items-center gap-3 p-4 bg-green-50 border border-green-200 rounded-xl">
+            <svg className="w-8 h-8 text-green-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-green-900 truncate">{user?.cvOriginalName || "CV"}</p>
+              <p className="text-xs text-green-700">{t("profile.cv.uploaded")}</p>
+            </div>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={handleView}
+                className="px-3 py-1.5 text-xs font-medium rounded-lg bg-white border border-green-300 text-green-700 hover:bg-green-50 transition-colors"
+              >
+                {t("profile.cv.view")}
+              </button>
+              <button
+                type="button"
+                onClick={handleDelete}
+                disabled={deleting}
+                className="px-3 py-1.5 text-xs font-medium rounded-lg bg-white border border-red-300 text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50"
+              >
+                {deleting ? "..." : t("profile.cv.delete")}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="p-4 bg-gray-50 border border-gray-200 rounded-xl text-center">
+            <svg className="w-10 h-10 text-gray-400 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+            <p className="text-sm text-gray-500">{t("profile.cv.noCv")}</p>
+          </div>
+        )}
+
+        <label className="block">
+          <span className="text-sm font-medium text-gray-700">
+            {hasCv ? t("profile.cv.replace") : t("profile.cv.upload")}
+          </span>
+          <input
+            type="file"
+            accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            onChange={handleUpload}
+            disabled={uploading}
+            className="mt-1 block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20 disabled:opacity-50"
+          />
+          <small className="text-gray-400 text-xs mt-1 block">{t("profile.cv.hint")}</small>
+        </label>
+
+        {uploading && (
+          <p className="text-sm text-primary font-medium">{t("profile.cv.uploading")}</p>
+        )}
+
+        {message && (
+          <p className={`text-sm font-medium ${message.type === "success" ? "text-green-600" : "text-red-600"}`}>
+            {message.text}
+          </p>
+        )}
+      </div>
+    </PlaceholderSection>
   );
 }

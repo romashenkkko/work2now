@@ -329,6 +329,8 @@ export async function initDatabase(): Promise<void> {
     await ensureInnoDB(conn, "employee_profiles");
     // Prisma schema requires IDNP as NOT NULL; add it for older schemas created before this column existed.
     await ensureColumn(conn, "employee_profiles", "IDNP", "VARCHAR(13) NOT NULL DEFAULT ''");
+    await ensureColumn(conn, "employee_profiles", "CvFileUrl", "VARCHAR(500) NULL");
+    await ensureColumn(conn, "employee_profiles", "CvOriginalName", "VARCHAR(255) NULL");
 
     await conn.query(`
       CREATE TABLE IF NOT EXISTS \`business_profiles\` (

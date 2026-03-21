@@ -1,4 +1,6 @@
 import { Request, Response } from "express";
+import path from "path";
+import fs from "fs";
 import { JwtPayload } from "../middleware/auth";
 import { ServiceError } from "../services/ServiceError";
 import {
@@ -17,8 +19,12 @@ import {
   supportDeactivateUser,
   supportListUsers,
   supportUpdateUser,
+  uploadCvForUser,
+  deleteCvForUser,
+  getCvForUser,
 } from "../services/authService";
 import { listActivityLogsForSupport } from "../services/activityLogService";
+import { uploadCv } from "../middleware/upload";
 
 type ReqWithUser = Request & { user?: JwtPayload };
 
@@ -161,5 +167,58 @@ export async function deleteSupportUsers(req: ReqWithUser, res: Response): Promi
     res.json(await supportDeactivateUser(req.user?.userId, id));
   } catch (error) {
     handleError(res, error, "DELETE /api/auth/support/users/:id error:", "Eroare la dezactivarea utilizatorului.");
+  }
+}
+
+export async function postUploadCv(req: ReqWithUser, res: Response): Promise<void> {
+  uploadCv(req, res, async (err) => {
+    if (err) {
+      res.status(400).json({ error: err.message || "Upload failed." });
+      return;
+    }
+    try {
+      if (!req.file) {
+        res.status(400).json({ error: "No file uploaded." });
+        return;
+      }
+      const result = await uploadCvForUser(req.user?.userId, req.file.filename, req.file.originalname);
+      res.json(result);
+    } catch (error) {
+      handleError(res, error, "POST /api/auth/cv/upload error:", "Eroare la încărcarea CV-ului.");
+    }
+  });
+}
+
+export async function deleteCv(req: ReqWithUser, res: Response): Promise<void> {
+  try {
+    res.json(await deleteCvForUser(req.user?.userId));
+  } catch (error) {
+    handleError(res, error, "DELETE /api/auth/cv error:", "Eroare la ștergerea CV-ului.");
+  }
+}
+
+export async function getCv(req: Request, res: Response): Promise<void> {
+  try {
+    const { userId } = req.params;
+    const cv = await getCvForUser(userId);
+    if (!cv.cvFileUrl) {
+      res.status(404).json({ error: "CV not found." });
+      return;
+    }
+    const filePath = path.join(__dirname, "../../uploads/cv", cv.cvFileUrl);
+    if (!fs.existsSync(filePath)) {
+      res.status(404).json({ error: "CV file not found on disk." });
+      return;
+    }
+    const ext = path.extname(cv.cvFileUrl).toLowerCase();
+    const contentType =
+      ext === ".pdf" ? "application/pdf" :
+      ext === ".docx" ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document" :
+      ext === ".doc" ? "application/msword" : "application/octet-stream";
+    res.setHeader("Content-Type", contentType);
+    res.setHeader("Content-Disposition", `inline; filename="${encodeURIComponent(cv.cvOriginalName || "cv" + ext)}"`);
+    fs.createReadStream(filePath).pipe(res);
+  } catch (error) {
+    handleError(res, error, "GET /api/auth/cv/:userId error:", "Eroare la descărcarea CV-ului.");
   }
 }

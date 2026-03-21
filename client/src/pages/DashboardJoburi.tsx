@@ -91,6 +91,8 @@ export default function DashboardJoburi() {
             staffName: String(a.staffName ?? ""),
             staffEmail: a.staffEmail != null ? String(a.staffEmail) : undefined,
             staffAvatar: a.staffAvatar != null ? String(a.staffAvatar) : undefined,
+            staffCvFileUrl: a.staffCvFileUrl != null ? String(a.staffCvFileUrl) : undefined,
+            staffCvOriginalName: a.staffCvOriginalName != null ? String(a.staffCvOriginalName) : undefined,
             status: (a.status ?? "pending") as "pending" | "accepted" | "refused",
             checkedInAt: a.checkedInAt != null ? String(a.checkedInAt) : undefined,
             checkedOutAt: a.checkedOutAt != null ? String(a.checkedOutAt) : undefined,

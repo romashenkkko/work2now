@@ -17,6 +17,9 @@ import {
   postSupportUsers,
   patchSupportUsers,
   deleteSupportUsers,
+  postUploadCv,
+  deleteCv,
+  getCv,
 } from "../controllers/authController";
 import { ensureDefaultAdmin } from "../services/authService";
 
@@ -38,6 +41,10 @@ router.get("/support/users", authMiddleware, getSupportUsers);
 router.post("/support/users", authMiddleware, postSupportUsers);
 router.patch("/support/users/:id", authMiddleware, patchSupportUsers);
 router.delete("/support/users/:id", authMiddleware, deleteSupportUsers);
+
+router.post("/cv/upload", authMiddleware, postUploadCv);
+router.delete("/cv", authMiddleware, deleteCv);
+router.get("/cv/:userId", getCv);
 
 export { ensureDefaultAdmin };
 export default router;

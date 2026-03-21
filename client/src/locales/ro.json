@@ -127,6 +127,8 @@
     "dateOfBirth": "Data nașterii",
     "aboutMe": "Despre mine",
     "aboutMePlaceholder": "Descrie-te pe scurt (opțional)",
+    "cvUpload": "CV (opțional)",
+    "cvUploadHint": "Formate acceptate: PDF, DOC, DOCX. Dimensiune maximă: 10 MB.",
     "companyInfo": "Informații despre companie",
     "companyName": "Denumirea companiei",
     "contactFirstName": "Prenume persoană contact",
@@ -883,7 +885,8 @@
     "percentOfRate": "% din rată",
     "avatarOptional": "Avatar (opțional)",
     "jobsWithApplications": "Joburi cu aplicații",
-    "jobsWithoutApplications": "Joburi fără aplicații"
+    "jobsWithoutApplications": "Joburi fără aplicații",
+    "viewCv": "Vezi CV"
   },
   "accountBlocked": {
     "title": "Cont blocat",
@@ -970,6 +973,23 @@
     },
     "experiences": {
       "title": "Experiențe profesionale"
+    },
+    "cv": {
+      "title": "CV / Rezumat",
+      "upload": "Încarcă CV",
+      "replace": "Înlocuiește CV-ul",
+      "view": "Vizualizează",
+      "delete": "Șterge",
+      "uploaded": "CV încărcat",
+      "noCv": "Nu ai încărcat un CV. Încarcă unul pentru a fi vizibil angajatorilor.",
+      "hint": "Formate acceptate: PDF, DOC, DOCX. Dimensiune maximă: 10 MB.",
+      "uploading": "Se încarcă...",
+      "uploadSuccess": "CV încărcat cu succes.",
+      "uploadError": "Eroare la încărcarea CV-ului.",
+      "deleteSuccess": "CV-ul a fost șters.",
+      "deleteError": "Eroare la ștergerea CV-ului.",
+      "invalidFormat": "Format neacceptat. Încarcă un fișier PDF sau Word.",
+      "tooLarge": "Fișierul este prea mare (max. 10 MB)."
     }
   }
 }

@@ -95,6 +95,8 @@ export type Application = {
   staffName: string;
   staffEmail?: string;
   staffAvatar?: string;
+  staffCvFileUrl?: string;
+  staffCvOriginalName?: string;
   status: "pending" | "accepted" | "refused";
   checkedInAt?: string;
   checkedOutAt?: string;

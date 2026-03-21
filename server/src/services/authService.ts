@@ -237,7 +237,7 @@ async function loadUserProfile(userId: string) {
     where: { Id: userId },
     include: {
       employee_profiles: {
-        select: { Name: true, Surname: true, ProfilePictureFileId: true },
+        select: { Name: true, Surname: true, ProfilePictureFileId: true, CvFileUrl: true, CvOriginalName: true },
       },
       business_profiles: {
         select: {
@@ -521,6 +521,8 @@ export async function getCurrentUser(userId?: string) {
       avatar: publicUser.avatar,
       isActive: user.IsActive,
       boosterUntil: user.BoosterUntil?.toISOString?.() ?? undefined,
+      cvFileUrl: user.employee_profiles?.CvFileUrl ?? undefined,
+      cvOriginalName: user.employee_profiles?.CvOriginalName ?? undefined,
     };
   } catch (error) {
     if (useMemoryFallback() && isDbConnectionError(error)) {
@@ -1219,4 +1221,53 @@ export async function supportDeactivateUser(actorUserId: string | undefined, tar
 
   await prisma.users.update({ where: { Id: targetId }, data: { IsActive: false } });
   return { ok: true, isActive: false };
+}
+
+// ─── CV Management ──────────────────────────────────────────────────────────
+
+export async function uploadCvForUser(userId?: string, filename?: string, originalName?: string) {
+  const resolvedUserId = requireUserId(userId);
+  const profile = await prisma.employee_profiles.findUnique({ where: { UserId: resolvedUserId } });
+  if (!profile) throw new ServiceError("Profilul de angajat nu a fost găsit.", 404);
+
+  // Delete old CV file from disk if exists
+  if (profile.CvFileUrl) {
+    const oldPath = require("path").join(__dirname, "../../uploads/cv", profile.CvFileUrl);
+    if (require("fs").existsSync(oldPath)) {
+      require("fs").unlinkSync(oldPath);
+    }
+  }
+
+  await prisma.employee_profiles.update({
+    where: { UserId: resolvedUserId },
+    data: { CvFileUrl: filename || null, CvOriginalName: originalName || null },
+  });
+
+  return { ok: true, cvFileUrl: filename, cvOriginalName: originalName };
+}
+
+export async function deleteCvForUser(userId?: string) {
+  const resolvedUserId = requireUserId(userId);
+  const profile = await prisma.employee_profiles.findUnique({ where: { UserId: resolvedUserId } });
+  if (!profile) throw new ServiceError("Profilul de angajat nu a fost găsit.", 404);
+
+  if (profile.CvFileUrl) {
+    const filePath = require("path").join(__dirname, "../../uploads/cv", profile.CvFileUrl);
+    if (require("fs").existsSync(filePath)) {
+      require("fs").unlinkSync(filePath);
+    }
+  }
+
+  await prisma.employee_profiles.update({
+    where: { UserId: resolvedUserId },
+    data: { CvFileUrl: null, CvOriginalName: null },
+  });
+
+  return { ok: true };
+}
+
+export async function getCvForUser(userId: string) {
+  const profile = await prisma.employee_profiles.findUnique({ where: { UserId: userId } });
+  if (!profile) throw new ServiceError("Profilul de angajat nu a fost găsit.", 404);
+  return { cvFileUrl: profile.CvFileUrl || null, cvOriginalName: profile.CvOriginalName || null };
 }

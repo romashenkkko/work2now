@@ -49,6 +49,7 @@ export default function Register() {
   const [lastName, setLastName] = useState("");
   const [dateOfBirth, setDateOfBirth] = useState("");
   const [aboutMe, setAboutMe] = useState("");
+  const [cvFile, setCvFile] = useState<File | null>(null);
   const [phoneNumber, setPhoneNumber] = useState("+373"); // Staff phone number
   
   // Business/Customer fields
@@ -330,8 +331,19 @@ export default function Register() {
       }
       
       await authApi.register(registerData);
+
+      if (cvFile && role === "staff") {
+        try {
+          const loginResult = await authApi.login(email, password);
+          localStorage.setItem("token", loginResult.token);
+          await authApi.uploadCv(cvFile);
+          localStorage.removeItem("token");
+        } catch {
+          // CV upload is best-effort; user can re-upload from profile later
+        }
+      }
+
       setSuccess(t("auth.registerSuccess"));
-      // Always redirect to login - onboarding will be checked after login
       setTimeout(() => navigate("/login"), 2000);
     } catch (err) {
       setError(err instanceof Error ? err.message : t("auth.registerError"));
@@ -554,6 +566,18 @@ export default function Register() {
                   rows={4}
                   placeholder={t("auth.aboutMePlaceholder")}
                 />
+              </label>
+              <label>
+                {t("auth.cvUpload")}
+                <div className="mt-1 flex items-center gap-3">
+                  <input
+                    type="file"
+                    accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                    onChange={(e) => setCvFile(e.target.files?.[0] || null)}
+                    className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"
+                  />
+                </div>
+                <small className="text-gray-500 text-xs mt-1 block">{t("auth.cvUploadHint")}</small>
               </label>
             </>
           )}

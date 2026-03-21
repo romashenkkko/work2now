@@ -127,6 +127,8 @@
     "dateOfBirth": "Date of birth",
     "aboutMe": "About me",
     "aboutMePlaceholder": "Describe yourself briefly (optional)",
+    "cvUpload": "CV (optional)",
+    "cvUploadHint": "Accepted formats: PDF, DOC, DOCX. Maximum size: 10 MB.",
     "companyInfo": "Practice information",
     "companyName": "Name of practice",
     "contactFirstName": "Contact person first name",
@@ -883,7 +885,8 @@
     "percentOfRate": "% of rate",
     "avatarOptional": "Avatar (optional)",
     "jobsWithApplications": "Jobs with applications",
-    "jobsWithoutApplications": "Jobs without applications"
+    "jobsWithoutApplications": "Jobs without applications",
+    "viewCv": "View CV"
   },
   "accountBlocked": {
     "title": "Account blocked",
@@ -970,6 +973,23 @@
     },
     "experiences": {
       "title": "Professional Experiences"
+    },
+    "cv": {
+      "title": "CV / Resume",
+      "upload": "Upload CV",
+      "replace": "Replace CV",
+      "view": "View",
+      "delete": "Delete",
+      "uploaded": "CV uploaded",
+      "noCv": "You haven't uploaded a CV yet. Upload one so employers can see it.",
+      "hint": "Accepted formats: PDF, DOC, DOCX. Maximum size: 10 MB.",
+      "uploading": "Uploading...",
+      "uploadSuccess": "CV uploaded successfully.",
+      "uploadError": "Error uploading CV.",
+      "deleteSuccess": "CV has been deleted.",
+      "deleteError": "Error deleting CV.",
+      "invalidFormat": "Invalid format. Please upload a PDF or Word file.",
+      "tooLarge": "File is too large (max. 10 MB)."
     }
   }
 }

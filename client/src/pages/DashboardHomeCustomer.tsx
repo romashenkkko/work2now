@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "../hooks/useAuth";
 import { DashboardContext, type JobRow } from "./DashboardLayout";
-import { jobsApi } from "../api/client";
+import { jobsApi, authApi } from "../api/client";
 import { getBusinessTotal, roundMoney, BUSINESS_TAX_RATE, BUSINESS_MAINTENANCE_RATE } from "../utils/salary";
 
 function hoursBetween(start: string, end: string): number {
@@ -57,6 +57,8 @@ type AppWithSessions = {
   staffName?: string; 
   staffEmail?: string;
   staffAvatar?: string;
+  staffCvFileUrl?: string;
+  staffCvOriginalName?: string;
   workSessions?: { workDate: string; checkedInAt?: string; checkedOutAt?: string }[]; 
   checkedInAt?: string; 
   checkedOutAt?: string;
@@ -89,6 +91,8 @@ export default function DashboardHomeCustomer() {
             staffName: a.staffName ?? "",
             staffEmail: a.staffEmail,
             staffAvatar: a.staffAvatar,
+            staffCvFileUrl: (a as any).staffCvFileUrl,
+            staffCvOriginalName: (a as any).staffCvOriginalName,
             workSessions: a.workSessions ?? [],
             checkedInAt: a.checkedInAt,
             checkedOutAt: a.checkedOutAt,
@@ -1087,6 +1091,25 @@ function ApplicationDetailsModal({
                 <div className="rounded-2xl border border-gray-100 bg-[#faf8ff] p-4">
                   <p className="text-xs text-gray-500 mb-1">{t("dashboard.email") || "Email"}</p>
                   <p className="text-sm font-medium text-gray-900">{application.staffEmail}</p>
+                </div>
+              )}
+              {application.staffCvFileUrl && application.staffId && (
+                <div className="rounded-2xl border border-primary/20 bg-primary/5 p-4 sm:col-span-2">
+                  <div className="flex items-center gap-3">
+                    <svg className="w-6 h-6 text-primary flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-900">{application.staffCvOriginalName || "CV"}</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => window.open(authApi.getCvUrl(application.staffId!), "_blank")}
+                      className="px-4 py-1.5 text-xs font-semibold rounded-lg bg-primary text-white hover:opacity-90 transition-colors"
+                    >
+                      {t("dashboard.viewCv")}
+                    </button>
+                  </div>
                 </div>
               )}
               <div className="rounded-2xl border border-gray-100 bg-[#faf8ff] p-4 sm:col-span-2">

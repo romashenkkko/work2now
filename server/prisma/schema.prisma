@@ -158,6 +158,8 @@ model employee_profiles {
   DateOfBirth          DateTime      @db.DateTime(0)
   AboutMe              String        @default("") @db.VarChar(1000)
   ProfilePictureFileId String?       @db.Char(36)
+  CvFileUrl            String?       @db.VarChar(500)
+  CvOriginalName       String?       @db.VarChar(255)
   users                users         @relation(fields: [UserId], references: [Id], onDelete: Cascade, onUpdate: Restrict, map: "fk_employee_profiles_userid_users_id")
   experiences          experiences[]
 

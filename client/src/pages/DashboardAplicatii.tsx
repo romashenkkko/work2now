@@ -4,7 +4,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "../hooks/useAuth";
 import { DashboardContext, getApplications, setApplications, JobTitleIcon, type Application, type JobRow } from "./DashboardLayout";
-import { jobsApi, ratingsApi } from "../api/client";
+import { jobsApi, ratingsApi, authApi } from "../api/client";
 import { MapPin, Calendar, User, Mail, Clock, CheckCircle2, XCircle, Hourglass } from "lucide-react";
 import StarRating from "../components/StarRating";
 import StaffProfileModal from "../components/StaffProfileModal";
@@ -186,6 +186,8 @@ export default function DashboardAplicatii() {
               staffName: a.staffName as string,
               staffEmail: a.staffEmail as string | undefined,
               staffAvatar,
+              staffCvFileUrl: (a.staffCvFileUrl as string | undefined) ?? undefined,
+              staffCvOriginalName: (a.staffCvOriginalName as string | undefined) ?? undefined,
               status: a.status as "pending" | "accepted" | "refused",
               checkedInAt: a.checkedInAt as string | undefined,
               checkedOutAt: a.checkedOutAt as string | undefined,
@@ -773,6 +775,21 @@ export default function DashboardAplicatii() {
                                       <span className="truncate">{a.staffEmail}</span>
                                     </p>
                                   )}
+                                  {a.staffCvFileUrl && a.staffId && (
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        window.open(authApi.getCvUrl(a.staffId), "_blank");
+                                      }}
+                                      className="mt-1 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium text-primary bg-primary/10 border border-primary/20 hover:bg-primary/20 transition-colors"
+                                    >
+                                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                      </svg>
+                                      {t("dashboard.viewCv")}
+                                    </button>
+                                  )}
                                   <div className="mt-1 flex flex-wrap items-center gap-2">
                                     <span className="inline-flex items-center gap-1 rounded bg-green-100 px-2 py-0.5 text-xs font-medium text-green-800">
                                       <CheckCircle2 className="h-3.5 w-3.5" />
@@ -895,21 +912,38 @@ export default function DashboardAplicatii() {
                               <span className="truncate">{a.staffEmail}</span>
                             </p>
                           )}
-                          <span
-                            className={`inline-block mt-1 px-2 py-0.5 rounded text-xs font-medium ${
-                              a.status === "accepted"
-                                ? "bg-green-100 text-green-800"
+                          <div className="flex flex-wrap items-center gap-2 mt-1">
+                            {a.staffCvFileUrl && a.staffId && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  window.open(authApi.getCvUrl(a.staffId), "_blank");
+                                }}
+                                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium text-primary bg-primary/10 border border-primary/20 hover:bg-primary/20 transition-colors"
+                              >
+                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                </svg>
+                                {t("dashboard.viewCv")}
+                              </button>
+                            )}
+                            <span
+                              className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
+                                a.status === "accepted"
+                                  ? "bg-green-100 text-green-800"
+                                  : a.status === "refused"
+                                    ? "bg-red-100 text-red-800"
+                                    : "bg-amber-100 text-amber-800"
+                              }`}
+                            >
+                              {a.status === "accepted"
+                                ? t("dashboard.accepted")
                                 : a.status === "refused"
-                                  ? "bg-red-100 text-red-800"
-                                  : "bg-amber-100 text-amber-800"
-                            }`}
-                          >
-                            {a.status === "accepted"
-                              ? t("dashboard.accepted")
-                              : a.status === "refused"
-                                ? t("dashboard.refused")
-                                : t("dashboard.pending")}
-                          </span>
+                                  ? t("dashboard.refused")
+                                  : t("dashboard.pending")}
+                            </span>
+                          </div>
 
                           {a.status === "accepted" && a.checkedOutAt && (
                             <div className="mt-2 space-y-2">

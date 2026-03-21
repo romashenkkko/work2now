@@ -723,6 +723,7 @@ export async function getApplications(userId: string): Promise<{ applications: A
   });
   const staffIds = [...new Set(list.map((a) => a.staff_id).filter(Boolean))] as string[];
   let avatarByStaffId: Record<string, string> = {};
+  let cvByStaffId: Record<string, { cvFileUrl: string; cvOriginalName: string | null }> = {};
   if (staffIds.length > 0) {
     const users = await prisma.users.findMany({
       where: { Id: { in: staffIds } },
@@ -730,12 +731,15 @@ export async function getApplications(userId: string): Promise<{ applications: A
     });
     const withEp = await prisma.employee_profiles.findMany({
       where: { UserId: { in: staffIds } },
-      select: { UserId: true, ProfilePictureFileId: true },
+      select: { UserId: true, ProfilePictureFileId: true, CvFileUrl: true, CvOriginalName: true },
     });
     const epMap = withEp.reduce((acc, e) => {
       acc[e.UserId] = e.ProfilePictureFileId;
       return acc;
     }, {} as Record<string, string | null>);
+    for (const e of withEp) {
+      if (e.CvFileUrl) cvByStaffId[e.UserId] = { cvFileUrl: e.CvFileUrl, cvOriginalName: e.CvOriginalName };
+    }
     for (const u of users) {
       const av = u.Avatar ?? epMap[u.Id];
       if (typeof av === "string" && av.trim()) avatarByStaffId[u.Id] = av.trim();
@@ -776,6 +780,8 @@ export async function getApplications(userId: string): Promise<{ applications: A
       staffName: a.staff_name,
       staffEmail: a.staff_email ?? undefined,
       staffAvatar: sidStr ? avatarByStaffId[sidStr] : undefined,
+      staffCvFileUrl: sidStr && cvByStaffId[sidStr] ? cvByStaffId[sidStr].cvFileUrl : undefined,
+      staffCvOriginalName: sidStr && cvByStaffId[sidStr] ? cvByStaffId[sidStr].cvOriginalName : undefined,
       status: a.status,
       checkedInAt: toIso(a.checked_in_at),
       checkedOutAt: toIso(a.checked_out_at),

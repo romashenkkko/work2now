@@ -130,12 +130,27 @@ export const authApi = {
     };
   }) =>
     api<{ message: string }>("/auth/register", { method: "POST", body: JSON.stringify(body) }),
-  me: () => api<{ id: number; name: string; email: string; role: string; avatar?: string; isActive?: boolean; boosterUntil?: string }>("/auth/me"),
+  me: () => api<{ id: number; name: string; email: string; role: string; avatar?: string; isActive?: boolean; boosterUntil?: string; cvFileUrl?: string; cvOriginalName?: string }>("/auth/me"),
   updateProfile: (data: { name?: string; avatar?: string | null }) =>
     api<{ id: number; name: string; email: string; role: string; avatar?: string }>("/auth/me", {
       method: "PATCH",
       body: JSON.stringify(data),
     }),
+  uploadCv: async (file: File) => {
+    const token = localStorage.getItem("token");
+    const formData = new FormData();
+    formData.append("cv", file);
+    const res = await fetch(`${getApiBase()}/auth/cv/upload`, {
+      method: "POST",
+      headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      body: formData,
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error((data as { error?: string }).error || "CV upload failed.");
+    return data as { ok: boolean; cvFileUrl: string; cvOriginalName: string };
+  },
+  deleteCv: () => api<{ ok: boolean }>("/auth/cv", { method: "DELETE" }),
+  getCvUrl: (userId: string) => `${getApiBase()}/auth/cv/${encodeURIComponent(userId)}`,
   changePassword: (currentPassword: string, newPassword: string) =>
     api<{ message: string }>("/auth/change-password", {
       method: "POST",
@@ -302,7 +317,7 @@ export const jobsApi = {
       ratingScore?: number;
     }> }>("/jobs/my-applications/list"),
   applications: () =>
-    api<{ applications: Record<string, { id: string; jobId: string; staffId: string; staffName: string; staffEmail?: string; staffAvatar?: string; status: string; checkedInAt?: string; checkedOutAt?: string; businessConfirmedAt?: string; isBusinessConfirmed?: boolean; workSessions?: { workDate: string; checkedInAt?: string; checkedOutAt?: string }[]; ratingScore?: number }[]> }>("/jobs/applications"),
+    api<{ applications: Record<string, { id: string; jobId: string; staffId: string; staffName: string; staffEmail?: string; staffAvatar?: string; staffCvFileUrl?: string; staffCvOriginalName?: string; status: string; checkedInAt?: string; checkedOutAt?: string; businessConfirmedAt?: string; isBusinessConfirmed?: boolean; workSessions?: { workDate: string; checkedInAt?: string; checkedOutAt?: string }[]; ratingScore?: number }[]> }>("/jobs/applications"),
   setApplicationStatus: (applicationId: string, status: "accepted" | "refused") =>
     api<{ ok: boolean }>(`/jobs/applications/${applicationId}`, {
       method: "PATCH",
