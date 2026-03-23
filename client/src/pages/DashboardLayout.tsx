@@ -26,7 +26,7 @@ import {
 import { coffeemaker } from "@lucide/lab";
 import { useAuth } from "../hooks/useAuth";
 import { getBusinessTotal, roundMoney } from "../utils/salary";
-import { jobsApi, ratingsApi, experiencesApi, type JobCategory } from "../api/client";
+import { jobsApi, ratingsApi, experiencesApi, branchesApi, type JobCategory, type Branch } from "../api/client";
 import TimePicker from "../components/TimePicker";
 import StarRating from "../components/StarRating";
 import DatePicker from "../components/DatePicker";
@@ -86,6 +86,8 @@ export type JobTemplate = {
   staffPhone?: string | null;
   staffPhoneCountry?: string | null;
   description?: string | null;
+  /** Filială salvată în șablon (pentru dropdown la publicare) */
+  branchId?: string | null;
 };
 
 export type Application = {
@@ -305,6 +307,8 @@ export default function DashboardLayout() {
   const [postJobStep, setPostJobStep] = useState<"choose-type" | "how-to-post" | "form">("choose-type");
   const [selectedJobType, setSelectedJobType] = useState<"one-day" | "multi-day" | "full-time" | null>(null);
   const [postMethod, setPostMethod] = useState<"scratch" | "template" | null>(null);
+  const [postJobBranches, setPostJobBranches] = useState<Branch[]>([]);
+  const [selectedPostBranchId, setSelectedPostBranchId] = useState<string | null>(null);
   const [formStartTime, setFormStartTime] = useState("00:00");
   const [formEndTime, setFormEndTime] = useState("00:00");
   const [jobAddress, setJobAddress] = useState("");
@@ -338,6 +342,26 @@ export default function DashboardLayout() {
       t(JOB_CATEGORY_LABEL_KEYS[category.code] ?? "", category.title),
     [t]
   );
+
+  const applyBranchToPostForm = useCallback((branch: Branch) => {
+    setJobAddress((branch.address || "").trim());
+    setLocalitate((branch.city || "").trim());
+    const raw = (branch.phoneNumber || "").replace(/\s/g, "");
+    if (!raw) {
+      setPhoneCountryCode("+373");
+      setStaffPhoneNumber("");
+      return;
+    }
+    const sortedCodes = [...COUNTRY_CODES].sort((a, b) => b.code.length - a.code.length);
+    const found = sortedCodes.find((c) => raw.startsWith(c.code));
+    if (found) {
+      setPhoneCountryCode(found.code);
+      setStaffPhoneNumber(raw.slice(found.code.length));
+    } else {
+      setPhoneCountryCode("+373");
+      setStaffPhoneNumber(raw.replace(/^\+/, ""));
+    }
+  }, []);
   const phoneCountryRef = useRef<HTMLDivElement>(null);
   const [staffCountSelect, setStaffCountSelect] = useState("1");
   const [staffDropdownOpen, setStaffDropdownOpen] = useState(false);
@@ -364,6 +388,9 @@ export default function DashboardLayout() {
   const [templateAction, setTemplateAction] = useState<"use" | "create">("use");
   const [templateSaveTitle, setTemplateSaveTitle] = useState("");
   const [templateSaveError, setTemplateSaveError] = useState<string>("");
+
+  const postJobFlowRef = useRef({ postMethod, activeTemplateId, jobTemplates });
+  postJobFlowRef.current = { postMethod, activeTemplateId, jobTemplates };
 
   // (Controlled inputs) - kept without refs so templates can be applied before form mounts.
 
@@ -554,6 +581,49 @@ export default function DashboardLayout() {
     }
   }, [showPostJob, postJobStep]);
 
+  useEffect(() => {
+    if (!showPostJob) {
+      setPostJobBranches([]);
+      setSelectedPostBranchId(null);
+    }
+  }, [showPostJob]);
+
+  useEffect(() => {
+    if (!showPostJob || postJobStep !== "form") return;
+    let cancelled = false;
+    branchesApi
+      .list()
+      .then(({ branches }) => {
+        if (cancelled) return;
+        const active = (branches || []).filter((b) => b.isActive !== false);
+        setPostJobBranches(active);
+        if (active.length === 0) {
+          setSelectedPostBranchId(null);
+          return;
+        }
+        const { postMethod: pm, activeTemplateId: tid, jobTemplates: tpls } = postJobFlowRef.current;
+        if (pm === "template" && tid) {
+          const tpl = tpls.find((t) => t.id === tid);
+          const bid =
+            tpl?.branchId && active.some((b) => b.id === tpl.branchId) ? tpl.branchId : active[0].id;
+          setSelectedPostBranchId(bid);
+        } else {
+          const first = active[0];
+          setSelectedPostBranchId(first.id);
+          applyBranchToPostForm(first);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setPostJobBranches([]);
+          setSelectedPostBranchId(null);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [showPostJob, postJobStep, applyBranchToPostForm]);
+
   // Filter raioane based on search
   const filteredRaioane = raioane.filter((r) => {
     if (!raionSearch.trim()) return true;
@@ -605,7 +675,9 @@ export default function DashboardLayout() {
     } catch {}
   };
 
-  const addJob = async (job: Omit<JobRow, "id"> & { raionId?: number; localitate?: string }): Promise<boolean> => {
+  const addJob = async (
+    job: Omit<JobRow, "id"> & { raionId?: number; localitate?: string; branchId?: string }
+  ): Promise<boolean> => {
     if (job.jobCategoryCode == null || job.hourlyRateBase == null) return false;
     const payload = {
       job: job.job, // Custom title (max 30 chars)
@@ -627,6 +699,9 @@ export default function DashboardLayout() {
       ...(job.localitate != null && job.localitate.trim() ? { localitate: job.localitate.trim() } : {}),
       ...(job.checkInLat != null && job.checkInLng != null && job.checkInRadiusM != null
         ? { checkInLat: job.checkInLat, checkInLng: job.checkInLng, checkInRadiusM: job.checkInRadiusM }
+        : {}),
+      ...(job.branchId != null && String(job.branchId).trim() !== ""
+        ? { branchId: String(job.branchId).trim() }
         : {}),
     };
     try {
@@ -711,6 +786,11 @@ export default function DashboardLayout() {
     setJobDescription(tpl.description ?? "");
 
     setPostJobFieldErrors({});
+    setSelectedPostBranchId(
+      tpl.branchId && postJobBranches.some((b) => b.id === tpl.branchId)
+        ? tpl.branchId
+        : postJobBranches[0]?.id ?? tpl.branchId ?? null
+    );
   };
 
   const saveCurrentFormAsTemplate = (): boolean => {
@@ -752,6 +832,7 @@ export default function DashboardLayout() {
       raionId: selectedRaionId ?? null,
       localitate: localitate.trim() || null,
       checkInGeo: jobCheckInGeo ?? null,
+      branchId: selectedPostBranchId ?? null,
     };
 
     setJobTemplates((prev) => {
@@ -793,6 +874,7 @@ export default function DashboardLayout() {
       staffPhone: staffPhoneNumber.trim() || null,
       staffPhoneCountry: phoneCountryCode,
       description: jobDescription.trim() || null,
+      branchId: selectedPostBranchId ?? null,
     };
 
     setJobTemplates((prev) => [template, ...prev]);
@@ -1464,6 +1546,9 @@ export default function DashboardLayout() {
                         ...(jobCheckInGeo
                           ? { checkInLat: jobCheckInGeo.lat, checkInLng: jobCheckInGeo.lng, checkInRadiusM: jobCheckInGeo.radiusM }
                           : {}),
+                        ...(selectedPostBranchId != null && selectedPostBranchId.trim() !== ""
+                          ? { branchId: selectedPostBranchId.trim() }
+                          : {}),
                       });
                       if (!ok) {
                         setPostJobError(t("dashboard.postJobFailed", "Nu am putut salva jobul. Verifică backend-ul și încearcă din nou."));
@@ -1821,6 +1906,31 @@ export default function DashboardLayout() {
                         </div>
                       </label>
                       
+                      {postJobBranches.length > 0 && (
+                        <label className="block">
+                          <span className="text-sm font-medium text-gray-700 mb-1 block">
+                            {t("dashboard.postJobBranchLabel")}
+                          </span>
+                          <select
+                            value={selectedPostBranchId ?? postJobBranches[0]?.id ?? ""}
+                            onChange={(e) => {
+                              const id = e.target.value;
+                              setSelectedPostBranchId(id || null);
+                              const br = postJobBranches.find((x) => x.id === id);
+                              if (br) applyBranchToPostForm(br);
+                            }}
+                            className="mt-1 block w-full px-4 py-2.5 rounded-xl border border-gray-200 bg-white text-gray-900 focus:ring-2 focus:ring-primary focus:border-primary transition-colors"
+                          >
+                            {postJobBranches.map((b) => (
+                              <option key={b.id} value={b.id}>
+                                {b.name}
+                              </option>
+                            ))}
+                          </select>
+                          <p className="mt-1 text-xs text-gray-500">{t("dashboard.postJobBranchHint")}</p>
+                        </label>
+                      )}
+
                       {/* Raion Selection */}
                       <label className="block">
                         <span className="text-sm font-medium text-gray-700 mb-1 block">

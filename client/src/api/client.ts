@@ -219,6 +219,9 @@ export type JobPayload = {
   raionId?: number;          // ID from raioane table
   localitate?: string;       // City/village name (max 200 chars)
 
+  /** Filială business (opțional; trebuie să aparțină angajatorului) */
+  branchId?: string;
+
 };
 
 
@@ -253,6 +256,8 @@ export type JobResponse = {
   checkInLat?: number;
   checkInLng?: number;
   checkInRadiusM?: number;
+  /** Filială asociată jobului (dacă a fost trimisă la creare) */
+  branchId?: string;
 };
 
 export type StaffApplicationItem = {

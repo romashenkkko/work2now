@@ -11,6 +11,11 @@ type Props = {
   initialAddress?: string;
   /** Raza implicită (m) pentru check-in la locație (ex. 50) */
   defaultRadiusM?: number;
+  /**
+   * `job` — mesaj despre check-in staff (formular publicare job).
+   * `branch` — aceeași căutare/hartă, fără text despre check-in (filiale în profil).
+   */
+  purpose?: "job" | "branch";
 };
 
 type Suggestion = { display_name: string; lat: string; lon: string };
@@ -45,7 +50,7 @@ function mapboxReverseGeocode(lat: number, lng: number, token: string): Promise<
     .catch(() => null);
 }
 
-export default function AddressPickerModal({ open, onClose, onConfirm, initialAddress = "", defaultRadiusM = 200 }: Props) {
+export default function AddressPickerModal({ open, onClose, onConfirm, initialAddress = "", defaultRadiusM = 200, purpose = "job" }: Props) {
   const { t } = useTranslation();
   const [search, setSearch] = useState(initialAddress);
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
@@ -278,9 +283,11 @@ export default function AddressPickerModal({ open, onClose, onConfirm, initialAd
             <p className="text-xs text-gray-500 px-2 py-1 bg-gray-50">
               {t("dashboard.mapClickHint", "Apasă pe hartă pentru a selecta locația.")}
             </p>
-            <p className="text-xs text-gray-500 px-2 py-1 bg-gray-50 border-t border-gray-100">
-              {t("dashboard.checkInGeoHint", "Locația selectată va fi folosită pentru check-in/check-out (angajații trebuie să fie în raza de 200 m).")}
-            </p>
+            {purpose === "job" && (
+              <p className="text-xs text-gray-500 px-2 py-1 bg-gray-50 border-t border-gray-100">
+                {t("dashboard.checkInGeoHint", "Locația selectată va fi folosită pentru check-in/check-out (angajații trebuie să fie în raza de 200 m).")}
+              </p>
+            )}
           </div>
         </div>
         <div className="flex gap-3 p-4 border-t border-gray-100">

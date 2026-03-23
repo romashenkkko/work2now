@@ -635,6 +635,9 @@ export async function initDatabase(): Promise<void> {
     if (!(await columnExists(conn, "jobs", "localitate"))) {
       await conn.query("ALTER TABLE `jobs` ADD COLUMN `localitate` VARCHAR(200) NULL");
     }
+    if (!(await columnExists(conn, "jobs", "branch_id"))) {
+      await conn.query(`ALTER TABLE \`jobs\` ADD COLUMN \`branch_id\` ${GUID_COL} NULL`);
+    }
     
     // Add foreign key constraint for raion_id
     if (!(await fkExists(conn, "jobs", "fk_jobs_raion_id_raioane_id"))) {
@@ -655,6 +658,24 @@ export async function initDatabase(): Promise<void> {
       await conn.query("CREATE INDEX IF NOT EXISTS `idx_jobs_raion_id` ON `jobs` (`raion_id`)");
     } catch (e) {
       // Index might already exist, ignore
+    }
+
+    if (!(await fkExists(conn, "jobs", "fk_jobs_branch_id_branches_id"))) {
+      try {
+        await conn.query(`
+          ALTER TABLE \`jobs\`
+          ADD CONSTRAINT \`fk_jobs_branch_id_branches_id\`
+          FOREIGN KEY (\`branch_id\`) REFERENCES \`branches\`(\`Id\`)
+          ON DELETE SET NULL
+        `);
+      } catch (e) {
+        console.warn("[DB] Could not add FK fk_jobs_branch_id_branches_id:", e);
+      }
+    }
+    try {
+      await conn.query("CREATE INDEX IF NOT EXISTS `idx_jobs_branch_id` ON `jobs` (`branch_id`)");
+    } catch {
+      /* ignore */
     }
 
     await conn.query(`

@@ -87,6 +87,7 @@ model branches {
   ContactPersonName    String            @default("") @db.VarChar(100)
   ContactPersonSurname String            @default("") @db.VarChar(100)
   business_profiles    business_profiles @relation(fields: [BusinessProfileId], references: [Id], onDelete: Cascade, onUpdate: Restrict, map: "fk_branches_businessprofileid_business_profiles_id")
+  jobs                 jobs[]
 
   @@index([BusinessProfileId], map: "idx_branches_business_profile_id")
 }
@@ -257,14 +258,17 @@ model jobs {
   is_promoted        Boolean         @default(false)
   raion_id           Int?            @db.UnsignedInt
   localitate         String?         @db.VarChar(200)
+  branch_id          String?         @db.Char(36)
   applications       applications[]
   job_categories     job_categories? @relation(fields: [job_category_code], references: [Code], onUpdate: Restrict, map: "fk_jobs_job_category_code_job_categories_code")
   raioane            raioane?        @relation(fields: [raion_id], references: [id], onUpdate: Restrict, map: "fk_jobs_raion_id_raioane_id")
   users              users?          @relation(fields: [user_id], references: [Id], onUpdate: Restrict, map: "fk_jobs_user_id_users_id")
+  branches           branches?       @relation(fields: [branch_id], references: [Id], onDelete: SetNull, onUpdate: Restrict, map: "fk_jobs_branch_id_branches_id")
 
   @@index([job_category_code], map: "fk_jobs_job_category_code_job_categories_code")
   @@index([raion_id], map: "idx_jobs_raion_id")
   @@index([user_id], map: "idx_jobs_user_id")
+  @@index([branch_id], map: "idx_jobs_branch_id")
 }
 
 model media {

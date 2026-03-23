@@ -69,7 +69,7 @@ export async function listBranches(userId?: string): Promise<{ branches: BranchD
 
   const branches = await prisma.branches.findMany({
     where: { BusinessProfileId: businessProfileId },
-    orderBy: { CreatedAt: "desc" },
+    orderBy: { CreatedAt: "asc" },
     select: {
       Id: true,
       Name: true,

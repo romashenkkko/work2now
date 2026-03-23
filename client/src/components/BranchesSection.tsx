@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { MapPin, Plus, Edit, Trash2 } from "lucide-react";
 import { branchesApi, type Branch } from "../api/client";
+import AddressPickerModal from "./AddressPickerModal";
 
 interface BranchesSectionProps {
   onBack: () => void;
@@ -30,6 +32,7 @@ export default function BranchesSection({ onBack, t }: BranchesSectionProps) {
   });
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [showAddressModal, setShowAddressModal] = useState(false);
 
   useEffect(() => {
     loadBranches();
@@ -120,6 +123,7 @@ export default function BranchesSection({ onBack, t }: BranchesSectionProps) {
         setMessage({ type: "success", text: t("profile.branches.created") || "Branch created successfully" });
       }
       setShowForm(false);
+      setShowAddressModal(false);
       loadBranches();
     } catch (e) {
       setMessage({ type: "error", text: (e as Error).message });
@@ -228,17 +232,27 @@ export default function BranchesSection({ onBack, t }: BranchesSectionProps) {
               />
             </label>
 
-            {/* Address */}
-            <label className="block md:col-span-2">
-              <span className="text-sm font-medium text-gray-700">{t("profile.branches.address")} *</span>
-              <input
-                type="text"
-                value={formData.address}
-                onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                className="mt-1 block w-full px-4 py-2 rounded-xl border border-gray-200 focus:ring-2 focus:ring-primary focus:border-primary"
-                required
-              />
-            </label>
+            {/* Address — același flux ca la publicarea jobului (căutare Mapbox + hartă) */}
+            <div className="block md:col-span-2">
+              <span className="text-sm font-medium text-gray-700 mb-1 block">
+                {t("dashboard.address")} <span className="text-red-500">*</span>
+              </span>
+              <button
+                type="button"
+                onClick={() => setShowAddressModal(true)}
+                className="w-full px-4 py-2.5 rounded-xl border-2 border-dashed border-gray-300 bg-white text-left text-sm font-medium text-gray-700 hover:border-primary/40 hover:bg-primary/5 transition-colors inline-flex items-center justify-center gap-2"
+              >
+                <svg className="w-5 h-5 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+                {formData.address.trim() ? (
+                  <span className="truncate flex-1 text-left">{formData.address}</span>
+                ) : (
+                  <span>{t("dashboard.addAddress")}</span>
+                )}
+              </button>
+              <p className="mt-1 text-xs text-gray-500">{t("profile.branches.addressPickerHint")}</p>
+            </div>
 
             {/* City */}
             <label className="block">
@@ -276,6 +290,7 @@ export default function BranchesSection({ onBack, t }: BranchesSectionProps) {
               type="button"
               onClick={() => {
                 setShowForm(false);
+                setShowAddressModal(false);
                 setMessage(null);
               }}
               className="px-4 py-2 rounded-xl border border-gray-300 text-gray-700 font-medium hover:bg-gray-50"
@@ -345,6 +360,21 @@ export default function BranchesSection({ onBack, t }: BranchesSectionProps) {
           ))}
         </div>
       )}
+
+      {showForm &&
+        createPortal(
+          <AddressPickerModal
+            open={showAddressModal}
+            onClose={() => setShowAddressModal(false)}
+            onConfirm={(address) => {
+              setFormData((prev) => ({ ...prev, address: address.trim() }));
+            }}
+            initialAddress={formData.address}
+            defaultRadiusM={200}
+            purpose="branch"
+          />,
+          document.body
+        )}
     </section>
   );
 }

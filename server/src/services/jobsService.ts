@@ -145,6 +145,7 @@ function buildJobListItem(row: {
   posted_by_role?: unknown;
   posted_by_avatar?: string | null;
   accepted_count?: number;
+  branch_id?: string | null;
 }): JobListItem {
   const startTime = row.start_time ?? undefined;
   const endTime = row.end_time ?? undefined;
@@ -180,6 +181,7 @@ function buildJobListItem(row: {
     ...(Number.isFinite(row.check_in_lat) && Number.isFinite(row.check_in_lng) && row.check_in_radius_m != null && row.check_in_radius_m > 0
       ? { checkInLat: row.check_in_lat, checkInLng: row.check_in_lng, checkInRadiusM: row.check_in_radius_m }
       : {}),
+    ...(row.branch_id && String(row.branch_id).trim() ? { branchId: String(row.branch_id).trim() } : {}),
   };
 }
 
@@ -312,6 +314,7 @@ export async function listJobs(userId: string): Promise<{ jobs: JobListItem[] }>
       check_in_lat: j.check_in_lat,
       check_in_lng: j.check_in_lng,
       check_in_radius_m: j.check_in_radius_m,
+      branch_id: j.branch_id ?? null,
       job_category_title: j.job_categories?.Title ?? undefined,
       posted_by_name: postedByName(j) ?? (u?.Id ? undefined : undefined),
       posted_by_user_id: u?.Id ?? undefined,
@@ -362,6 +365,7 @@ export type CreateJobBody = {
   checkInRadiusM?: unknown;
   startTime?: unknown;
   endTime?: unknown;
+  branchId?: unknown;
 };
 
 export async function createJob(userId: string, body: CreateJobBody): Promise<JobListItem> {
@@ -383,6 +387,20 @@ export async function createJob(userId: string, body: CreateJobBody): Promise<Jo
   if (raionId == null || raionId <= 0) throw new ServiceError("raionId is required and must be a positive number.", 400);
   const raion = await prisma.raioane.findUnique({ where: { id: raionId }, select: { id: true } });
   if (!raion) throw new ServiceError("Invalid raionId (not found in raioane table).", 400);
+
+  let branchIdResolved: string | null = null;
+  const rawBranchId = b.branchId != null ? String(b.branchId).trim() : "";
+  if (rawBranchId) {
+    const bp = await prisma.business_profiles.findUnique({ where: { UserId: userId }, select: { Id: true } });
+    if (!bp) throw new ServiceError("Profil business negăsit.", 403);
+    const ownedBranch = await prisma.branches.findFirst({
+      where: { Id: rawBranchId, BusinessProfileId: bp.Id },
+      select: { Id: true },
+    });
+    if (!ownedBranch) throw new ServiceError("Filiala selectată nu există sau nu vă aparține.", 400);
+    branchIdResolved = ownedBranch.Id;
+  }
+
   if (!jobTitle) throw new ServiceError("Titlul jobului este obligatoriu (maxim 30 caractere).", 400);
   if (!location) throw new ServiceError("location este obligatorie.", 400);
   const category = await prisma.job_categories.findUnique({ where: { Code: jobCategoryCode }, select: { Title: true } });
@@ -421,6 +439,7 @@ export async function createJob(userId: string, body: CreateJobBody): Promise<Jo
       check_in_lat: checkInLat,
       check_in_lng: checkInLng,
       check_in_radius_m: checkInRadiusM,
+      branch_id: branchIdResolved,
     },
     include: {
       job_categories: { select: { Title: true } },
@@ -472,6 +491,7 @@ export async function createJob(userId: string, body: CreateJobBody): Promise<Jo
     check_in_lat: job.check_in_lat,
     check_in_lng: job.check_in_lng,
     check_in_radius_m: job.check_in_radius_m,
+    branch_id: job.branch_id ?? null,
     job_category_title: job.job_categories?.Title,
     posted_by_name: postedByName,
     posted_by_user_id: u?.Id,
@@ -1234,19 +1254,13 @@ export async function getStatistics(userId: string): Promise<CustomerStatistics>
   if (bp) {
     const branches = await prisma.branches.findMany({
       where: { BusinessProfileId: bp.Id, IsActive: true },
-      select: { Id: true, Name: true, Address: true, City: true },
+      select: { Id: true, Name: true },
     });
-    const jobs = await prisma.jobs.findMany({
-      where: { user_id: userId },
-      select: { id: true, location: true },
-    });
-    for (const b of branches) {
-      const count = jobs.filter(
-        (j) =>
-          (j.location && (j.location.includes(b.Address) || j.location.includes(b.City) || b.Address.includes(j.location) || b.City.includes(j.location))) ||
-          false
-      ).length;
-      branchesByJobCount.push({ branchId: b.Id, branchName: b.Name, count });
+    for (const br of branches) {
+      const count = await prisma.jobs.count({
+        where: { user_id: userId, branch_id: br.Id },
+      });
+      branchesByJobCount.push({ branchId: br.Id, branchName: br.Name, count });
     }
     branchesByJobCount.sort((a, b) => b.count - a.count);
   }
