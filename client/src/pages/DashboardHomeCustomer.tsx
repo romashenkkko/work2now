@@ -230,7 +230,7 @@ export default function DashboardHomeCustomer() {
   return (
     <>
       {toast && (
-        <div className="fixed bottom-6 left-4 right-4 sm:left-auto sm:right-6 sm:max-w-sm z-50 px-4 py-3 rounded-xl bg-gray-900 text-white text-sm font-medium shadow-lg">
+        <div className="fixed dashboard-toast-top left-4 right-4 sm:left-auto sm:right-6 sm:max-w-sm z-[60] px-4 py-3 rounded-xl bg-gray-900 text-white text-sm font-medium shadow-lg break-words">
           {toast}
         </div>
       )}

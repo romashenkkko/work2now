@@ -3178,3 +3178,13 @@
 .scrollbar-hide::-webkit-scrollbar {
   display: none;
 }
+
+/* Toast / erori: sub bara mobilă (safe-area + h-14) + mic spațiu — aliniat cu DashboardLayout header */
+.dashboard-toast-top {
+  top: calc(env(safe-area-inset-top, 0px) + 3.5rem + 0.75rem);
+}
+@media (min-width: 768px) {
+  .dashboard-toast-top {
+    top: calc(1.5rem + env(safe-area-inset-top, 0px));
+  }
+}

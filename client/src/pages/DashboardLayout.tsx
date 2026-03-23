@@ -896,31 +896,36 @@ export default function DashboardLayout() {
   return (
     <div className="flex min-h-screen bg-gray-100">
       {/* Mobile header – vizibil doar pe ecrane mici */}
-      <header className="md:hidden fixed top-0 left-0 right-0 z-40 h-14 bg-white border-b border-gray-200 flex items-center justify-between px-4 gap-2 shadow-sm">
-        <button
-          type="button"
-          onClick={() => setSidebarOpen(true)}
-          className="p-2 rounded-lg text-gray-600 hover:bg-gray-100"
-          aria-label="Meniu"
-        >
-          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-          </svg>
-        </button>
-        <Link to="/dashboard" className="flex items-center gap-2 min-w-0" onClick={closeSidebar} aria-label="Work2Now – acasă dashboard">
-          <img src="/LogoWork2Now.png" alt="Work2Now" className="h-7 w-auto" />
-          <span className="font-bold text-gray-900 truncate">Work2Now</span>
-        </Link>
-        {isCustomer && (
+      <header
+        className="md:hidden fixed top-0 left-0 right-0 z-40 bg-white border-b border-gray-200 shadow-sm"
+        style={{ paddingTop: "env(safe-area-inset-top, 0px)" }}
+      >
+        <div className="h-14 flex items-center justify-between px-4 gap-2 min-h-[3.5rem]">
           <button
             type="button"
-            onClick={() => { setShowPostJob(true); setPostJobError(""); closeSidebar(); }}
-            className="p-2 rounded-xl bg-primary text-white font-semibold"
-            aria-label={t("dashboard.postJob")}
+            onClick={() => setSidebarOpen(true)}
+            className="p-2 rounded-lg text-gray-600 hover:bg-gray-100"
+            aria-label="Meniu"
           >
-            <span className="text-lg leading-none">+</span>
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+            </svg>
           </button>
-        )}
+          <Link to="/dashboard" className="flex items-center gap-2 min-w-0" onClick={closeSidebar} aria-label="Work2Now – acasă dashboard">
+            <img src="/LogoWork2Now.png" alt="Work2Now" className="h-7 w-auto" />
+            <span className="font-bold text-gray-900 truncate">Work2Now</span>
+          </Link>
+          {isCustomer && (
+            <button
+              type="button"
+              onClick={() => { setShowPostJob(true); setPostJobError(""); closeSidebar(); }}
+              className="p-2 rounded-xl bg-primary text-white font-semibold"
+              aria-label={t("dashboard.postJob")}
+            >
+              <span className="text-lg leading-none">+</span>
+            </button>
+          )}
+        </div>
       </header>
 
       {/* Overlay pentru meniu mobil */}
@@ -1100,7 +1105,10 @@ export default function DashboardLayout() {
         />
       )}
 
-      <main key={location.pathname} className="flex-1 pt-14 md:pt-0 p-4 md:p-8 page-enter min-w-0 overflow-x-hidden">
+      <main
+        key={location.pathname}
+        className="flex-1 pt-[calc(3.5rem+env(safe-area-inset-top,0px))] md:pt-0 p-4 md:p-8 page-enter min-w-0 overflow-x-hidden"
+      >
         <DashboardContext.Provider value={{ openPostJobModal: () => setShowPostJob(true), jobsAdded, addJob, removeJob, refreshJobs: fetchJobsForCustomer, availableToWork, setAvailableToWork, jobsLoadError, userRating: userRating ?? null }}>
           <Outlet />
         </DashboardContext.Provider>

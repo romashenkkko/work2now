@@ -652,8 +652,8 @@ export default function DashboardJoburi() {
     return (
       <>
         {checkInOutConfirm && (
-          <div className="fixed top-4 left-4 right-4 sm:left-auto sm:right-6 sm:max-w-sm z-[70]">
-            <div className={`rounded-2xl shadow-lg border-2 p-4 flex items-center gap-3 ${
+          <div className="fixed dashboard-toast-top left-4 right-4 sm:left-auto sm:right-6 sm:max-w-sm z-[60]">
+            <div className={`rounded-2xl shadow-lg border-2 p-4 flex items-start gap-3 break-words ${
               checkInOutConfirm.type === "checkin"
                 ? "bg-green-50 border-green-200 text-green-900"
                 : "bg-amber-50 border-amber-200 text-amber-900"
@@ -665,11 +665,11 @@ export default function DashboardJoburi() {
                   {checkInOutConfirm.type === "checkin" ? "✓" : "✓"}
                 </span>
               </div>
-              <div>
-                <p className="font-semibold">
+              <div className="min-w-0 flex-1 overflow-hidden">
+                <p className="font-semibold break-words">
                   {checkInOutConfirm.type === "checkin" ? t("dashboard.checkInConfirm") : t("dashboard.checkOutConfirm")}
                 </p>
-                <p className="text-sm opacity-90">
+                <p className="text-sm opacity-90 break-words">
                   {checkInOutConfirm.type === "checkin"
                     ? t("dashboard.checkInAtTime", { time: checkInOutConfirm.time })
                     : t("dashboard.checkOutAtTime", { time: checkInOutConfirm.time })}
@@ -679,7 +679,7 @@ export default function DashboardJoburi() {
           </div>
         )}
         {checkInOutError && (
-          <div className="fixed bottom-4 left-4 right-4 sm:left-auto sm:right-6 sm:max-w-sm z-[70] px-4 py-3 rounded-xl bg-red-600 text-white text-sm font-medium shadow-lg">
+          <div className="fixed dashboard-toast-top left-4 right-4 sm:left-auto sm:right-6 sm:max-w-sm z-[60] px-4 py-3 rounded-xl bg-red-50 border border-red-200 text-red-800 text-sm font-medium shadow-lg break-words">
             {checkInOutError}
           </div>
         )}
