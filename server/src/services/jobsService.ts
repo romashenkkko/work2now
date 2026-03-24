@@ -1,6 +1,7 @@
 import { prisma } from "../prismaClient";
 import { ServiceError } from "./ServiceError";
 import { addActivityLog } from "./activityLogService";
+import { foldForSearch } from "../utils/foldForSearch";
 
 // --- Helpers (used by list/create and other endpoints) ---
 export type ResolvedRole = "staff" | "customer" | "admin" | "";
@@ -117,6 +118,48 @@ export function toNumber(v: unknown): number | null {
 
 export type JobListItem = Record<string, unknown>;
 
+const JOB_MEDIA_PREFIX = "/api/jobs/media/";
+
+function parseGalleryImageUrlsJson(raw: string | null | undefined): string[] | undefined {
+  if (raw == null || !String(raw).trim()) return undefined;
+  try {
+    const a = JSON.parse(String(raw)) as unknown;
+    if (!Array.isArray(a)) return undefined;
+    const out = a.filter((x): x is string => typeof x === "string" && x.trim() !== "").map((x) => x.trim());
+    return out.length ? out : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function sanitizeJobImageUrl(raw: unknown): string | null {
+  if (raw == null || typeof raw !== "string") return null;
+  const u = raw.trim();
+  if (!u || u.includes("..")) return null;
+  if (u.startsWith(JOB_MEDIA_PREFIX)) {
+    const rest = u.slice(JOB_MEDIA_PREFIX.length);
+    if (/^[a-zA-Z0-9._-]+\.(jpe?g|png|webp)$/i.test(rest)) return u;
+    return null;
+  }
+  if (/^https?:\/\//i.test(u)) return u.slice(0, 2048);
+  return null;
+}
+
+function sanitizeGalleryImageUrlsJson(input: unknown): string | null {
+  if (!Array.isArray(input)) return null;
+  const allowed: string[] = [];
+  for (const x of input) {
+    const u = typeof x === "string" ? x.trim() : "";
+    if (!u || u.includes("..")) continue;
+    if (!u.startsWith(JOB_MEDIA_PREFIX)) continue;
+    const rest = u.slice(JOB_MEDIA_PREFIX.length);
+    if (!/^[a-zA-Z0-9._-]+\.(jpe?g|png|webp)$/i.test(rest)) continue;
+    if (allowed.length >= 24) break;
+    allowed.push(u);
+  }
+  return allowed.length ? JSON.stringify(allowed) : null;
+}
+
 function buildJobListItem(row: {
   id: number;
   Title: string;
@@ -133,6 +176,7 @@ function buildJobListItem(row: {
   duration: string | null;
   estimated_salary: string | null;
   image_url: string | null;
+  gallery_image_urls?: string | null;
   job_category_code: number | null;
   hourly_rate_base: unknown;
   is_promoted: boolean;
@@ -153,6 +197,7 @@ function buildJobListItem(row: {
   const storedDuration = row.duration?.trim() || undefined;
   const duration = storedDuration ?? (computedDuration != null ? String(computedDuration) : undefined);
   const acceptedCount = row.accepted_count ?? 0;
+  const galleryUrls = parseGalleryImageUrlsJson(row.gallery_image_urls ?? null);
   return {
     id: String(row.id),
     job: row.Title,
@@ -171,6 +216,7 @@ function buildJobListItem(row: {
     duration,
     estimatedSalary: row.estimated_salary ?? undefined,
     imageUrl: row.image_url ?? undefined,
+    ...(galleryUrls?.length ? { galleryImageUrls: galleryUrls } : {}),
     postedBy: typeof row.posted_by_name === "string" && row.posted_by_name.trim() ? row.posted_by_name.trim() : undefined,
     isPromoted: row.is_promoted,
     jobCategoryCode: row.job_category_code ?? undefined,
@@ -215,23 +261,22 @@ export async function getJobCategories() {
 }
 
 export async function getRaioane(search?: string) {
-  const where = search && search.trim()
-    ? {
-        name: {
-          contains: search.trim(),
-        },
-      }
-    : undefined;
-
-  const raioane = await prisma.raioane.findMany({
-    where,
-    orderBy: where ? { name: "asc" } : [{ type: "asc" }, { name: "asc" }],
+  const q = search?.trim() ?? "";
+  const all = await prisma.raioane.findMany({
+    orderBy: [{ type: "asc" }, { name: "asc" }],
     select: {
       id: true,
       name: true,
       type: true,
     },
   });
+
+  let raioane = all;
+  if (q) {
+    const fq = foldForSearch(q);
+    raioane = all.filter((r) => foldForSearch(r.name).includes(fq));
+    raioane = [...raioane].sort((a, b) => a.name.localeCompare(b.name, "ro"));
+  }
 
   return {
     raioane: raioane.map((r) => ({
@@ -308,6 +353,7 @@ export async function listJobs(userId: string): Promise<{ jobs: JobListItem[] }>
       duration: j.duration,
       estimated_salary: j.estimated_salary,
       image_url: j.image_url,
+      gallery_image_urls: j.gallery_image_urls ?? null,
       job_category_code: j.job_category_code,
       hourly_rate_base: j.hourly_rate_base,
       is_promoted: j.is_promoted ?? false,
@@ -366,6 +412,7 @@ export type CreateJobBody = {
   startTime?: unknown;
   endTime?: unknown;
   branchId?: unknown;
+  galleryImageUrls?: unknown;
 };
 
 export async function createJob(userId: string, body: CreateJobBody): Promise<JobListItem> {
@@ -377,7 +424,8 @@ export async function createJob(userId: string, body: CreateJobBody): Promise<Jo
   const status = String(b.status ?? "Draft");
   const statusClass = String(b.statusClass ?? "bg-gray-100 text-gray-700");
   const date = String(b.date ?? "");
-  const imageUrl = typeof b.imageUrl === "string" && b.imageUrl.trim() ? b.imageUrl.trim() : null;
+  const imageUrl = sanitizeJobImageUrl(b.imageUrl);
+  const galleryImageUrlsJson = sanitizeGalleryImageUrlsJson(b.galleryImageUrls);
   const jobCategoryCode = toNumber(b.jobCategoryCode);
   const hourlyRateBase = toNumber(b.hourlyRateBase);
   const raionId = toNumber(b.raionId);
@@ -432,6 +480,7 @@ export async function createJob(userId: string, body: CreateJobBody): Promise<Jo
       duration: durationValue,
       estimated_salary: b.estimatedSalary != null ? String(b.estimatedSalary) : null,
       image_url: imageUrl,
+      gallery_image_urls: galleryImageUrlsJson,
       job_category_code: jobCategoryCode,
       hourly_rate_base: hourlyRateBase,
       raion_id: raionId,
@@ -485,6 +534,7 @@ export async function createJob(userId: string, body: CreateJobBody): Promise<Jo
     duration: job.duration,
     estimated_salary: job.estimated_salary,
     image_url: job.image_url,
+    gallery_image_urls: job.gallery_image_urls ?? null,
     job_category_code: job.job_category_code,
     hourly_rate_base: job.hourly_rate_base,
     is_promoted: job.is_promoted ?? false,

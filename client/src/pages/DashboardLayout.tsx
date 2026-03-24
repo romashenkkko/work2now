@@ -26,6 +26,7 @@ import {
 import { coffeemaker } from "@lucide/lab";
 import { useAuth } from "../hooks/useAuth";
 import { getBusinessTotal, roundMoney } from "../utils/salary";
+import { foldForSearch } from "../utils/foldForSearch";
 import { jobsApi, ratingsApi, experiencesApi, branchesApi, type JobCategory, type Branch } from "../api/client";
 import TimePicker from "../components/TimePicker";
 import StarRating from "../components/StarRating";
@@ -53,6 +54,8 @@ export type JobRow = {
   duration?: string;
   estimatedSalary?: string;
   imageUrl?: string;
+  /** Imagini suplimentare (detalii job) */
+  galleryImageUrls?: string[];
   postedBy?: string;
   jobCategoryCode?: number;
   hourlyRateBase?: number;
@@ -321,8 +324,10 @@ export default function DashboardLayout() {
   const [localitate, setLocalitate] = useState("");
   const [jobDate, setJobDate] = useState("");
   const [jobEndDate, setJobEndDate] = useState("");
-  const [jobImage, setJobImage] = useState<string | null>(null);
-  const [, setJobImageName] = useState("");
+  const [jobCoverImageUrl, setJobCoverImageUrl] = useState<string | null>(null);
+  const [jobGalleryUrls, setJobGalleryUrls] = useState<string[]>([]);
+  const [jobImageUploading, setJobImageUploading] = useState(false);
+  const [jobImageUploadError, setJobImageUploadError] = useState("");
   const [jobTitleSelected, setJobTitleSelected] = useState("");
   // Controlled inputs for job title/event name so templates can be applied before the form renders
   const [jobTitleDraft, setJobTitleDraft] = useState("");
@@ -457,6 +462,9 @@ export default function DashboardLayout() {
           duration: j.duration,
           estimatedSalary: j.estimatedSalary,
           imageUrl: j.imageUrl,
+          galleryImageUrls: Array.isArray((j as { galleryImageUrls?: string[] }).galleryImageUrls)
+            ? (j as { galleryImageUrls: string[] }).galleryImageUrls
+            : undefined,
           postedBy: j.postedBy,
           postedById: j.postedById,
           postedByRole: j.postedByRole,
@@ -624,11 +632,11 @@ export default function DashboardLayout() {
     };
   }, [showPostJob, postJobStep, applyBranchToPostForm]);
 
-  // Filter raioane based on search
+  // Filter raioane: căutare fără diacritice obligatorii
   const filteredRaioane = raioane.filter((r) => {
     if (!raionSearch.trim()) return true;
-    const searchLower = raionSearch.toLowerCase();
-    return r.name.toLowerCase().includes(searchLower);
+    const fq = foldForSearch(raionSearch);
+    return foldForSearch(r.name).includes(fq);
   });
 
   // Calculate salary based on hours and hourly rate
@@ -693,6 +701,7 @@ export default function DashboardLayout() {
       duration: job.duration,
       estimatedSalary: job.estimatedSalary,
       imageUrl: job.imageUrl ?? undefined,
+      ...(job.galleryImageUrls != null && job.galleryImageUrls.length > 0 ? { galleryImageUrls: job.galleryImageUrls } : {}),
       jobCategoryCode: job.jobCategoryCode ?? 1,
       hourlyRateBase: job.hourlyRateBase ?? 0,
       ...(job.raionId != null ? { raionId: job.raionId } : {}),
@@ -723,6 +732,7 @@ export default function DashboardLayout() {
           duration: created.duration,
           estimatedSalary: created.estimatedSalary,
           imageUrl: created.imageUrl,
+          galleryImageUrls: Array.isArray(created.galleryImageUrls) ? created.galleryImageUrls : undefined,
           postedBy: created.postedBy,
           jobCategoryCode: created.jobCategoryCode,
           hourlyRateBase: created.hourlyRateBase,
@@ -1543,6 +1553,8 @@ export default function DashboardLayout() {
                         estimatedSalary: salaryVal || undefined,
                         raionId: selectedRaionId,
                         localitate: localitate.trim() || undefined,
+                        ...(jobCoverImageUrl ? { imageUrl: jobCoverImageUrl } : {}),
+                        ...(jobGalleryUrls.length > 0 ? { galleryImageUrls: jobGalleryUrls } : {}),
                         ...(jobCheckInGeo
                           ? { checkInLat: jobCheckInGeo.lat, checkInLng: jobCheckInGeo.lng, checkInRadiusM: jobCheckInGeo.radiusM }
                           : {}),
@@ -1569,6 +1581,9 @@ export default function DashboardLayout() {
                     setJobDate("");
                     setJobEndDate("");
                     setJobDocuments([]);
+                    setJobCoverImageUrl(null);
+                    setJobGalleryUrls([]);
+                    setJobImageUploadError("");
                     setPhoneCountryCode("+373");
                     setStaffPhoneNumber("");
                     setJobDescription("");
@@ -2098,6 +2113,104 @@ export default function DashboardLayout() {
                   </section>
 
                   <section>
+                    <h4 className="text-sm font-semibold text-gray-900 mb-2">{t("dashboard.jobImagesSection")}</h4>
+                    <p className="text-sm text-gray-500 mb-3">{t("dashboard.jobImagesHint")}</p>
+                    <div className="space-y-4 rounded-xl border border-gray-100 bg-gray-50/80 p-4">
+                      <div>
+                        <span className="text-sm font-medium text-gray-800">{t("dashboard.jobCoverImage")}</span>
+                        <p className="text-xs text-gray-500 mt-0.5">{t("dashboard.jobCoverHint")}</p>
+                        {jobCoverImageUrl && (
+                          <div className="mt-2 relative rounded-xl overflow-hidden border border-gray-200 bg-white max-h-40">
+                            <img src={jobCoverImageUrl} alt="" className="w-full h-36 object-cover" />
+                            <button
+                              type="button"
+                              onClick={() => setJobCoverImageUrl(null)}
+                              className="absolute top-2 right-2 p-1.5 rounded-lg bg-black/50 text-white hover:bg-black/70"
+                              aria-label={t("dashboard.remove")}
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                            </button>
+                          </div>
+                        )}
+                        <label className="mt-2 inline-block">
+                          <input
+                            type="file"
+                            accept="image/jpeg,image/png,image/webp"
+                            className="sr-only"
+                            disabled={jobImageUploading}
+                            onChange={async (e) => {
+                              const f = e.target.files?.[0];
+                              e.target.value = "";
+                              if (!f) return;
+                              setJobImageUploadError("");
+                              setJobImageUploading(true);
+                              try {
+                                const { url } = await jobsApi.uploadJobImage(f);
+                                setJobCoverImageUrl(url);
+                              } catch (err) {
+                                setJobImageUploadError(err instanceof Error ? err.message : t("dashboard.jobImageUploadError"));
+                              } finally {
+                                setJobImageUploading(false);
+                              }
+                            }}
+                          />
+                          <span className="inline-flex px-4 py-2.5 rounded-xl border border-gray-300 font-medium text-gray-700 hover:bg-white cursor-pointer">
+                            {jobImageUploading ? t("dashboard.jobImageUploading") : t("dashboard.chooseCoverImage")}
+                          </span>
+                        </label>
+                      </div>
+                      <div>
+                        <span className="text-sm font-medium text-gray-800">{t("dashboard.jobGallery")}</span>
+                        <p className="text-xs text-gray-500 mt-0.5">{t("dashboard.jobGalleryHint")}</p>
+                        {jobGalleryUrls.length > 0 && (
+                          <ul className="mt-2 flex flex-wrap gap-2">
+                            {jobGalleryUrls.map((u) => (
+                              <li key={u} className="relative w-20 h-20 rounded-lg overflow-hidden border border-gray-200 bg-white shrink-0">
+                                <img src={u} alt="" className="w-full h-full object-cover" />
+                                <button
+                                  type="button"
+                                  onClick={() => setJobGalleryUrls((prev) => prev.filter((x) => x !== u))}
+                                  className="absolute top-1 right-1 p-1 rounded bg-black/50 text-white hover:bg-black/70"
+                                  aria-label={t("dashboard.remove")}
+                                >
+                                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                                </button>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                        <label className="mt-2 inline-block">
+                          <input
+                            type="file"
+                            accept="image/jpeg,image/png,image/webp"
+                            className="sr-only"
+                            disabled={jobImageUploading || jobGalleryUrls.length >= 24}
+                            onChange={async (e) => {
+                              const f = e.target.files?.[0];
+                              e.target.value = "";
+                              if (!f) return;
+                              setJobImageUploadError("");
+                              setJobImageUploading(true);
+                              try {
+                                const { url } = await jobsApi.uploadJobImage(f);
+                                setJobGalleryUrls((prev) => (prev.includes(url) ? prev : [...prev, url]));
+                              } catch (err) {
+                                setJobImageUploadError(err instanceof Error ? err.message : t("dashboard.jobImageUploadError"));
+                              } finally {
+                                setJobImageUploading(false);
+                              }
+                            }}
+                          />
+                          <span className={`inline-flex px-4 py-2.5 rounded-xl border border-gray-300 font-medium text-gray-700 hover:bg-white ${jobGalleryUrls.length >= 24 ? "opacity-40 pointer-events-none" : "cursor-pointer"}`}>
+                            {jobImageUploading ? t("dashboard.jobImageUploading") : t("dashboard.addGalleryImage")}
+                          </span>
+                        </label>
+                      </div>
+                    </div>
+                    {jobImageUploadError ? <p className="text-sm text-red-600 mt-2">{jobImageUploadError}</p> : null}
+                  </section>
+
+                  <section>
                     <h4 className="text-sm font-semibold text-gray-900 mb-3">{t("dashboard.additionalDocuments")}</h4>
                     <p className="text-sm text-gray-500 mb-2">{t("dashboard.addDocumentsHint")}</p>
                     <button
@@ -2200,6 +2313,9 @@ export default function DashboardLayout() {
                           setLocalitate("");
                           setStaffPhoneNumber("");
                           setJobDescription("");
+                          setJobCoverImageUrl(null);
+                          setJobGalleryUrls([]);
+                          setJobImageUploadError("");
                           setTemplateSavedFeedback(false);
                           setShowTemplateSavePanel(false);
                           setTemplateSaveTitle("");

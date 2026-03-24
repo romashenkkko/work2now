@@ -457,7 +457,41 @@ export async function initDatabase(): Promise<void> {
     `);
     await ensureInnoDB(conn, "raioane");
     
-    // Populate raioane table with Moldova's administrative divisions
+    // Redenumiri din versiuni vechi (ASCII) → formă cu diacritice (păstrează același id / FK-uri jobs)
+    const raionNameMigrations: Array<[string, string]> = [
+      ["Chisinau", "Chișinău"],
+      ["Calarasi", "Călărași"],
+      ["Causeni", "Căușeni"],
+      ["Cimislia", "Cimișlia"],
+      ["Donduseni", "Dondușeni"],
+      ["Dubasari", "Dubăsari"],
+      ["Edinet", "Edineț"],
+      ["Falesti", "Fălești"],
+      ["Floresti", "Florești"],
+      ["Hincesti", "Hîncești"],
+      ["Ocnita", "Ocnița"],
+      ["Riscani", "Rîșcani"],
+      ["Singerei", "Sîngerei"],
+      ["Straseni", "Strășeni"],
+      ["Soldanesti", "Șoldănești"],
+      ["Stefan Voda", "Ștefan Vodă"],
+      ["Telenesti", "Telenești"],
+      ["Balti", "Bălți"],
+      ["Ribnita", "Rîbnița"],
+      ["Ceadir-Lunga", "Ceadîr-Lunga"],
+      ["Vulcanesti", "Vulcănești"],
+      ["Gagauzia", "Găgăuzia"],
+      ["Stinga Nistrului", "Stînga Nistrului"],
+    ];
+    for (const [fromName, toName] of raionNameMigrations) {
+      try {
+        await conn.query("UPDATE `raioane` SET `name` = ? WHERE `name` = ? LIMIT 1", [toName, fromName]);
+      } catch (e) {
+        console.warn(`[DB] Could not migrate raion name "${fromName}" → "${toName}":`, e);
+      }
+    }
+
+    // Populate raioane table with Moldova's administrative divisions (denumiri cu diacritice)
     // NOTE: `name` is UNIQUE in schema, so we cannot have the same "Cahul" as both raion and municipiu.
     // For municipii that share a name with a raion, we prefix with "mun. " to keep uniqueness.
     const raioaneList: Array<{ name: string; type: "raion" | "municipiu" | "unitate_autonoma" }> = [
@@ -467,51 +501,51 @@ export async function initDatabase(): Promise<void> {
       { name: "Briceni", type: "raion" },
       { name: "Cahul", type: "raion" },
       { name: "Cantemir", type: "raion" },
-      { name: "Calarasi", type: "raion" },
-      { name: "Causeni", type: "raion" },
-      { name: "Cimislia", type: "raion" },
+      { name: "Călărași", type: "raion" },
+      { name: "Căușeni", type: "raion" },
+      { name: "Cimișlia", type: "raion" },
       { name: "Criuleni", type: "raion" },
-      { name: "Donduseni", type: "raion" },
+      { name: "Dondușeni", type: "raion" },
       { name: "Drochia", type: "raion" },
-      { name: "Dubasari", type: "raion" },
-      { name: "Edinet", type: "raion" },
-      { name: "Falesti", type: "raion" },
-      { name: "Floresti", type: "raion" },
+      { name: "Dubăsari", type: "raion" },
+      { name: "Edineț", type: "raion" },
+      { name: "Fălești", type: "raion" },
+      { name: "Florești", type: "raion" },
       { name: "Glodeni", type: "raion" },
-      { name: "Hincesti", type: "raion" },
+      { name: "Hîncești", type: "raion" },
       { name: "Ialoveni", type: "raion" },
       { name: "Leova", type: "raion" },
       { name: "Nisporeni", type: "raion" },
-      { name: "Ocnita", type: "raion" },
+      { name: "Ocnița", type: "raion" },
       { name: "Orhei", type: "raion" },
       { name: "Rezina", type: "raion" },
-      { name: "Riscani", type: "raion" },
-      { name: "Singerei", type: "raion" },
+      { name: "Rîșcani", type: "raion" },
+      { name: "Sîngerei", type: "raion" },
       { name: "Soroca", type: "raion" },
-      { name: "Straseni", type: "raion" },
-      { name: "Soldanesti", type: "raion" },
-      { name: "Stefan Voda", type: "raion" },
+      { name: "Strășeni", type: "raion" },
+      { name: "Șoldănești", type: "raion" },
+      { name: "Ștefan Vodă", type: "raion" },
       { name: "Taraclia", type: "raion" },
-      { name: "Telenesti", type: "raion" },
+      { name: "Telenești", type: "raion" },
       { name: "Ungheni", type: "raion" },
-      // 13 Municipii
-      { name: "Chisinau", type: "municipiu" },
-      { name: "Balti", type: "municipiu" },
+      // Municipii (și localități cu statut separat)
+      { name: "Chișinău", type: "municipiu" },
+      { name: "Bălți", type: "municipiu" },
       { name: "Tiraspol", type: "municipiu" },
       { name: "Bender", type: "municipiu" },
       { name: "Tighina", type: "municipiu" },
-      { name: "Ribnita", type: "municipiu" },
+      { name: "Rîbnița", type: "municipiu" },
       { name: "mun. Cahul", type: "municipiu" },
       { name: "mun. Ungheni", type: "municipiu" },
       { name: "mun. Soroca", type: "municipiu" },
       { name: "mun. Orhei", type: "municipiu" },
       { name: "Comrat", type: "municipiu" },
-      { name: "Ceadir-Lunga", type: "municipiu" },
-      { name: "Vulcanesti", type: "municipiu" },
+      { name: "Ceadîr-Lunga", type: "municipiu" },
+      { name: "Vulcănești", type: "municipiu" },
       { name: "mun. Taraclia", type: "municipiu" },
-      // 2 Unitati teritoriale autonome
-      { name: "Gagauzia", type: "unitate_autonoma" },
-      { name: "Stinga Nistrului", type: "unitate_autonoma" },
+      // Unități teritoriale autonome
+      { name: "Găgăuzia", type: "unitate_autonoma" },
+      { name: "Stînga Nistrului", type: "unitate_autonoma" },
     ];
     
     // Upsert raioane on every start so new items added in code appear without requiring a DB reset.
@@ -550,6 +584,7 @@ export async function initDatabase(): Promise<void> {
     await ensureColumn(conn, "jobs", "job_category_code", "INT NULL");
     await ensureColumn(conn, "jobs", "hourly_rate_base", "DECIMAL(10,2) NULL");
     await ensureColumn(conn, "jobs", "is_promoted", "TINYINT(1) NOT NULL DEFAULT 0");
+    await ensureColumn(conn, "jobs", "gallery_image_urls", "TEXT NULL");
     
     // Migration: Add Title column (max 30 chars) and migrate data from job column
     await ensureColumn(conn, "jobs", "Title", "VARCHAR(30) NULL");

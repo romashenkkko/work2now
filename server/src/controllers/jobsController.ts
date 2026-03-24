@@ -1,3 +1,4 @@
+import path from "path";
 import type { Request, Response } from "express";
 import type { JwtPayload } from "../middleware/auth";
 import { ServiceError } from "../services/ServiceError";
@@ -18,6 +19,7 @@ import {
   getStatistics,
   setApplicationStatus,
   getAdminStatistics,
+  getResolvedRoleAndCustomerLike,
 } from "../services/jobsService";
 import { notifyCustomerNewApplication, notifyStaffAccepted, notifyStaffRefused } from "../email";
 
@@ -261,5 +263,50 @@ export async function getAdminStatisticsController(req: ReqWithUser, res: Respon
   } catch (error) {
     handleError(res, error, "GET /api/jobs/admin/statistics error:", "Eroare la încărcarea statisticilor admin.");
   }
+}
+
+const JOB_IMAGES_DIR = path.join(__dirname, "../../uploads/job-images");
+
+type ReqWithUploadedFile = ReqWithUser & { file?: Express.Multer.File };
+
+export async function postUploadJobImageController(req: ReqWithUser, res: Response): Promise<void> {
+  const userId = getUserId(req);
+  if (!userId) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+  try {
+    const { customerLike } = await getResolvedRoleAndCustomerLike(userId);
+    if (!customerLike) {
+      res.status(403).json({ error: "Doar angajatorii pot încărca imagini." });
+      return;
+    }
+    const file = (req as ReqWithUploadedFile).file;
+    if (!file?.filename) {
+      res.status(400).json({ error: "Lipsește imaginea." });
+      return;
+    }
+    res.status(201).json({ url: `/api/jobs/media/${file.filename}` });
+  } catch (error) {
+    handleError(res, error, "POST /api/jobs/upload-image error:", "Eroare la încărcarea imaginii.");
+  }
+}
+
+export function getJobMediaController(req: Request, res: Response): void {
+  const raw = req.params.filename ?? "";
+  const base = path.basename(raw);
+  if (base !== raw || !/^[a-zA-Z0-9._-]+\.(jpe?g|png|webp)$/i.test(base)) {
+    res.status(400).end();
+    return;
+  }
+  const resolvedDir = path.resolve(JOB_IMAGES_DIR);
+  const full = path.resolve(JOB_IMAGES_DIR, base);
+  if (!full.startsWith(resolvedDir + path.sep)) {
+    res.status(400).end();
+    return;
+  }
+  res.sendFile(full, (err) => {
+    if (err && !res.headersSent) res.status(404).end();
+  });
 }
 

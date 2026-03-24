@@ -36,3 +36,33 @@ export const uploadCv = multer({
     }
   },
 }).single("cv");
+
+// --- Imagini job (copertă + galerie) ---
+const JOB_IMAGES_DIR = path.join(__dirname, "../../uploads/job-images");
+if (!fs.existsSync(JOB_IMAGES_DIR)) {
+  fs.mkdirSync(JOB_IMAGES_DIR, { recursive: true });
+}
+
+const jobImageStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => cb(null, JOB_IMAGES_DIR),
+  filename: (_req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase();
+    const safeExt = [".jpg", ".jpeg", ".png", ".webp"].includes(ext) ? ext : ".jpg";
+    cb(null, `${randomUUID()}${safeExt}`);
+  },
+});
+
+const JOB_IMAGE_MIMES = ["image/jpeg", "image/png", "image/webp"];
+const JOB_IMAGE_MAX = 5 * 1024 * 1024; // 5 MB
+
+export const uploadJobImage = multer({
+  storage: jobImageStorage,
+  limits: { fileSize: JOB_IMAGE_MAX },
+  fileFilter: (_req, file, cb) => {
+    if (JOB_IMAGE_MIMES.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error("Doar imagini JPEG, PNG sau WebP."));
+    }
+  },
+}).single("image");

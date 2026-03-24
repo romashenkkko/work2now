@@ -124,8 +124,8 @@ export default function Register() {
     jobsApi
       .getRaioane()
       .then((r) => {
-        // Include: 32 raioane (districts) + UTA Gagauzia cities (Comrat, Ceadir-Lunga, Vulcanesti)
-        const gagauziaCities = ["Comrat", "Ceadir-Lunga", "Vulcanesti"];
+        // Include: 32 raioane + municipiile UTA Găgăuzia (denumiri cu diacritice ca în API)
+        const gagauziaCities = ["Comrat", "Ceadîr-Lunga", "Vulcănești"];
         const raioaneOnly = (r.raioane || []).filter((raion) => 
           raion.type === "raion" || 
           (raion.type === "municipiu" && gagauziaCities.includes(raion.name))
@@ -546,6 +546,7 @@ export default function Register() {
                 openUpward
                 disableFutureDates
                 disablePastDates={false}
+                hideFooter
               />
               <label>
                 {t("auth.phoneNumber")} <span className="text-red-500">*</span>
@@ -631,6 +632,7 @@ export default function Register() {
                 openUpward
                 disableFutureDates
                 disablePastDates={false}
+                hideFooter
               />
               <label>
                 {t("auth.contactPhoneNumber")} <span className="text-red-500">*</span>

@@ -2392,18 +2392,21 @@
   animation: none !important;
 }
 
+.auth-date-wrap .date-picker-month-trigger,
 .auth-date-wrap .date-picker-year-trigger {
   border-color: rgba(203, 191, 243, 0.9);
   color: #2a2740;
   background: #fff;
 }
 
+.auth-date-wrap .date-picker-month-trigger:focus,
 .auth-date-wrap .date-picker-year-trigger:focus {
   outline: none;
   border-color: #7a63f1;
   box-shadow: 0 0 0 3px rgba(122, 99, 241, 0.12);
 }
 
+.auth-date-wrap .date-picker-month-dropdown ul,
 .auth-date-wrap .date-picker-year-list {
   border-color: rgba(203, 191, 243, 0.95);
   box-shadow: 0 12px 26px rgba(66, 50, 120, 0.16), 0 4px 10px rgba(122, 99, 241, 0.12);
@@ -2421,6 +2424,23 @@
 
 .auth-date-wrap .date-picker-year-option--active,
 .auth-date-wrap .date-picker-year-option--active:hover {
+  background: linear-gradient(135deg, rgba(122, 99, 241, 0.24), rgba(157, 123, 255, 0.24));
+  color: #4e39b9;
+  font-weight: 700;
+}
+
+.auth-date-wrap .date-picker-month-option {
+  color: #2a2740;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.auth-date-wrap .date-picker-month-option:hover {
+  background: rgba(122, 99, 241, 0.12);
+  color: #5f49d2;
+}
+
+.auth-date-wrap .date-picker-month-option--active,
+.auth-date-wrap .date-picker-month-option--active:hover {
   background: linear-gradient(135deg, rgba(122, 99, 241, 0.24), rgba(157, 123, 255, 0.24));
   color: #4e39b9;
   font-weight: 700;

@@ -182,6 +182,20 @@ function formatTimeFromIso(iso: string): string {
 
 export default function JobScheduleModal({ open, onClose, job, viewerIsStaff = false, myAppInfo, onCheckIn, onCheckOut, checkInOutLoading, jobApplications = [] }: Props) {
   const { t } = useTranslation();
+  const [galleryLightbox, setGalleryLightbox] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!galleryLightbox) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setGalleryLightbox(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [galleryLightbox]);
+
+  useEffect(() => {
+    if (!open) setGalleryLightbox(null);
+  }, [open]);
 
   // Lock body scroll when modal is open
   useEffect(() => {
@@ -216,11 +230,22 @@ export default function JobScheduleModal({ open, onClose, job, viewerIsStaff = f
 
   const isJobFull = job && (job.acceptedCount ?? 0) >= (parseInt(String(job.peopleNeeded ?? "1"), 10) || 1);
 
+  const galleryUrls = (job?.galleryImageUrls ?? []).filter((u) => typeof u === "string" && u.trim() !== "");
+  const backdropStyle =
+    job?.imageUrl != null && String(job.imageUrl).trim() !== ""
+      ? {
+          backgroundImage: `linear-gradient(rgba(12, 8, 32, 0.88), rgba(12, 8, 32, 0.92)), url(${job.imageUrl})`,
+          backgroundSize: "cover" as const,
+          backgroundPosition: "center" as const,
+        }
+      : undefined;
+
   if (!open) return null;
 
   const modalContent = (
     <div
-      className="fixed inset-0 z-[70] flex items-center justify-center p-4 sm:p-6 bg-black/50 modal-overlay-enter"
+      className={`fixed inset-0 z-[70] flex items-center justify-center p-4 sm:p-6 modal-overlay-enter ${backdropStyle ? "" : "bg-black/50"}`}
+      style={backdropStyle}
       onClick={onClose}
     >
       <div
@@ -249,11 +274,6 @@ export default function JobScheduleModal({ open, onClose, job, viewerIsStaff = f
           {job && (
             <>
               <div className="p-4 pb-2">
-              {job.imageUrl && (
-                <div className="mb-4 rounded-xl overflow-hidden border border-gray-100 bg-gray-50">
-                  <img src={job.imageUrl} alt="" className="w-full h-40 sm:h-48 object-cover" />
-                </div>
-              )}
               <div className="flex items-center justify-between gap-2 mb-4">
                 <h3 className="text-xl font-extrabold bg-gradient-to-r from-primary via-[#7d66ff] to-[#5f7cff] bg-clip-text text-transparent">
                   {job.job}
@@ -366,6 +386,23 @@ export default function JobScheduleModal({ open, onClose, job, viewerIsStaff = f
                   </li>
                 )}
               </ul>
+              {galleryUrls.length > 0 && (
+                <div className="mt-4 pt-4 border-t border-gray-100">
+                  <h4 className="text-sm font-semibold text-gray-900 mb-2">{t("dashboard.jobGalleryModalTitle")}</h4>
+                  <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+                    {galleryUrls.map((src) => (
+                      <button
+                        key={src}
+                        type="button"
+                        className="relative aspect-square rounded-lg overflow-hidden border border-gray-100 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-primary"
+                        onClick={() => setGalleryLightbox(src)}
+                      >
+                        <img src={src} alt="" className="w-full h-full object-cover" />
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
               <div className="mt-4 pt-4 border-t border-gray-100">
                 <ShareJobButton job={job} t={t} />
               </div>
@@ -474,6 +511,28 @@ export default function JobScheduleModal({ open, onClose, job, viewerIsStaff = f
     </div>
   );
 
+  const lightbox =
+    galleryLightbox != null ? (
+      <div
+        className="fixed inset-0 z-[90] flex items-center justify-center p-4 bg-black/80"
+        onClick={() => setGalleryLightbox(null)}
+        role="presentation"
+      >
+        <img
+          src={galleryLightbox}
+          alt=""
+          className="max-w-full max-h-[90vh] object-contain rounded-lg shadow-2xl"
+          onClick={(e) => e.stopPropagation()}
+        />
+      </div>
+    ) : null;
+
   // Render modal to document.body via portal to avoid parent container positioning issues
-  return typeof document !== 'undefined' ? createPortal(modalContent, document.body) : null;
+  if (typeof document === "undefined") return null;
+  return (
+    <>
+      {createPortal(modalContent, document.body)}
+      {lightbox ? createPortal(lightbox, document.body) : null}
+    </>
+  );
 }

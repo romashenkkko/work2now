@@ -10,6 +10,7 @@ import StaffProfileModal from "../components/StaffProfileModal";
 import { MapPin, Clock, Users, Banknote, Calendar, Briefcase, Map, Search, Archive } from "lucide-react";
 import { addStaffArchivedJob, getArchivedApplicationIds } from "../utils/staffJobArchive";
 import { getBusinessTotal, roundMoney } from "../utils/salary";
+import { foldForSearch } from "../utils/foldForSearch";
 
 /** Minutes from "HH:mm". Returns NaN if invalid. */
 function timeToMinutes(s: string | undefined): number {
@@ -202,6 +203,9 @@ export default function DashboardJoburi() {
           duration: j.duration,
           estimatedSalary: j.estimatedSalary,
           imageUrl: j.imageUrl,
+          galleryImageUrls: Array.isArray((j as { galleryImageUrls?: string[] }).galleryImageUrls)
+            ? (j as { galleryImageUrls: string[] }).galleryImageUrls
+            : undefined,
           postedBy: j.postedBy ?? (j.posted_by_name as string),
           jobCategoryCode: (j as any).jobCategoryCode,
           hourlyRateBase: (j as any).hourlyRateBase,
@@ -279,8 +283,8 @@ export default function DashboardJoburi() {
     jobsApi
       .getRaioane()
       .then((r) => {
-        // Include: 32 raioane (districts) + UTA Gagauzia cities (Comrat, Ceadir-Lunga, Vulcanesti)
-        const gagauziaCities = ["Comrat", "Ceadir-Lunga", "Vulcanesti"];
+        // Include: 32 raioane + municipiile UTA Găgăuzia (denumiri cu diacritice ca în API)
+        const gagauziaCities = ["Comrat", "Ceadîr-Lunga", "Vulcănești"];
         const raioaneOnly = (r.raioane || []).filter((raion) => 
           raion.type === "raion" || 
           (raion.type === "municipiu" && gagauziaCities.includes(raion.name))
@@ -602,21 +606,21 @@ export default function DashboardJoburi() {
     const isAcceptedToJob = (row: JobRow) => myApp(normJobId(row.id))?.status === "accepted";
     const showJobForStaff = (row: JobRow) => !isJobFull(row) || isAcceptedToJob(row);
     const staffJobsForMap = publicJobs.filter((j) => showJobForStaff(j) && ((j.location?.trim()) || (j.checkInLat != null && j.checkInLng != null)));
-    const q = searchQuery.trim().toLowerCase();
+    const qFold = foldForSearch(searchQuery);
     const filteredJobs = publicJobs.filter((row) => {
       if (!showJobForStaff(row)) return false;
       const acc = myApp(normJobId(row.id));
       if (acc?.applicationId && staffArchivedAppIds.has(acc.applicationId)) return false;
-      const matchSearch = !q || (row.job?.toLowerCase().includes(q) || (row.location ?? "").toLowerCase().includes(q));
+      const matchSearch =
+        !searchQuery.trim() ||
+        foldForSearch(row.job ?? "").includes(qFold) ||
+        foldForSearch(row.location ?? "").includes(qFold);
       const matchCategory = categoryFilter === "all" || (row.jobType ?? "") === categoryFilter;
-      // Match location by raion name: check if job location contains the selected raion name
+      // Locație job vs raion: potrivire fără diacritice (ex. Chisinau vs Chișinău)
       const matchLocation = locationFilter === "all" || (() => {
         const selectedRaion = raioane.find((r) => r.name === locationFilter);
         if (!selectedRaion) return false;
-        const jobLocation = (row.location?.trim() ?? "").toLowerCase();
-        const raionName = selectedRaion.name.toLowerCase();
-        // Check if job location contains the raion name
-        return jobLocation.includes(raionName);
+        return foldForSearch(row.location ?? "").includes(foldForSearch(selectedRaion.name));
       })();
       const matchProfession = professionFilter === "all" || (row.job?.trim() ?? "") === professionFilter;
       return matchSearch && matchCategory && matchLocation && matchProfession;
@@ -647,7 +651,6 @@ export default function DashboardJoburi() {
       { value: "all", label: t("findJobs.allCategories") },
       { value: "one-day", label: t("dashboard.oneDayJob") },
       { value: "multi-day", label: t("dashboard.multiDayJob") },
-      { value: "full-time", label: t("dashboard.fullTimeRecruitment") },
     ];
     return (
       <>

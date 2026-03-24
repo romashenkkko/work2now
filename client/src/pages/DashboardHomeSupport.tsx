@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "../hooks/useAuth";
 import { authApi } from "../api/client";
+import DatePicker from "../components/DatePicker";
 
 type StaffRow = {
   id: string;
@@ -507,10 +508,16 @@ export default function DashboardHomeSupport() {
                 </label>
               </div>
 
-              <label className="text-sm text-gray-700">
-                Data nașterii
-                <input className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2" type="date" value={staffForm.dateOfBirth} onChange={(e) => setStaffForm({ ...staffForm, dateOfBirth: e.target.value })} />
-              </label>
+              <DatePicker
+                name="supportStaffDob"
+                value={staffForm.dateOfBirth}
+                onChange={(v) => setStaffForm({ ...staffForm, dateOfBirth: v })}
+                label="Data nașterii"
+                disableFutureDates
+                disablePastDates={false}
+                hideFooter
+                className="[&_.date-picker-label]:text-sm [&_.date-picker-label]:font-normal [&_.date-picker-label]:text-gray-700"
+              />
 
               <label className="text-sm text-gray-700">
                 About me
@@ -582,10 +589,16 @@ export default function DashboardHomeSupport() {
                 </label>
               </div>
 
-              <label className="text-sm text-gray-700">
-                Data nașterii contactului
-                <input className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2" type="date" value={customerForm.contactDateOfBirth} onChange={(e) => setCustomerForm({ ...customerForm, contactDateOfBirth: e.target.value })} />
-              </label>
+              <DatePicker
+                name="supportContactDob"
+                value={customerForm.contactDateOfBirth}
+                onChange={(v) => setCustomerForm({ ...customerForm, contactDateOfBirth: v })}
+                label="Data nașterii contactului"
+                disableFutureDates
+                disablePastDates={false}
+                hideFooter
+                className="[&_.date-picker-label]:text-sm [&_.date-picker-label]:font-normal [&_.date-picker-label]:text-gray-700"
+              />
 
               <label className="text-sm text-gray-700">
                 Company category (code)

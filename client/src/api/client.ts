@@ -1,18 +1,32 @@
 /**
  * Baza URL pentru API.
  *
- * - Dacă VITE_API_URL este setat (production / hosting custom) → îl folosim ca absolut.
- * - În rest → folosim mereu `/api` pe același host și port ca frontend-ul,
- *   iar Vite sau serverul Node se ocupă de proxy/route.
+ * - VITE_API_URL setat → URL absolut (recomandat în producție pe hosting separat).
+ * - PROD pe localhost/127.0.0.1 și portul paginii ≠ portul API (VITE_API_PORT sau 5600) →
+ *   `http://host:PORT/api` ca să nu trimită `/api` către Apache/Vite pe același port (404).
+ * - În rest → `/api` (proxy Vite în dev sau Express care servește UI+API pe același port).
  */
-function getApiBase(): string {
+export function getApiBase(): string {
   if (typeof window === "undefined") return "/api";
   const envUrl = import.meta.env.VITE_API_URL;
   if (envUrl && typeof envUrl === "string" && envUrl.trim()) {
     const base = envUrl.trim().replace(/\/+$/, "");
     return base.endsWith("/api") ? base : `${base}/api`;
   }
-  // Same-origin: frontend și backend pe același host:port (Vite proxy sau Node servește build-ul)
+  const proto = window.location.protocol;
+  if (proto !== "http:" && proto !== "https:") return "/api";
+  const host = window.location.hostname;
+  const pagePort = window.location.port; // gol = 80/443 implicit
+  const isLocalHost = host === "localhost" || host === "127.0.0.1" || host === "[::1]" || host === "::1";
+  const apiPort = String(import.meta.env.VITE_API_PORT || "5600").trim() || "5600";
+  /**
+   * Comparăm portul „vizibil” al paginii cu cel al API-ului.
+   * http://localhost fără port în bară → pagePort "" dar browserul folosește 80; API e pe 5600 → redirect explicit.
+   */
+  const samePortAsApi = pagePort === apiPort || (!pagePort && (apiPort === "80" || apiPort === "443"));
+  if (import.meta.env.PROD && isLocalHost && !samePortAsApi) {
+    return `${proto}//${host}:${apiPort}/api`;
+  }
   return "/api";
 }
 
@@ -53,6 +67,33 @@ export async function api<T>(path: string, options: RequestInit = {}): Promise<T
       (data as { error?: string }).error ??
       (data as { message?: string }).message ??
       defaultMsg;
+    throw new Error(msg);
+  }
+  return data as T;
+}
+
+export async function apiFormData<T>(path: string, formData: FormData): Promise<T> {
+  const token = getToken();
+  const headers: HeadersInit = {
+    ...(token && { Authorization: `Bearer ${token}` }),
+  };
+  let res: Response;
+  try {
+    res = await fetch(`${getApiBase()}${path}`, { method: "POST", headers, body: formData });
+  } catch (e) {
+    const err = e as Error;
+    throw new Error(err.message || "Serverul nu raspunde. Verifica ca backend-ul ruleaza (npm run dev).");
+  }
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    let msg =
+      (data as { error?: string }).error ??
+      (data as { message?: string }).message ??
+      res.statusText;
+    if (res.status === 404 && (!msg || msg === "Not Found")) {
+      msg =
+        "API 404: ruta nu există sau cererea nu ajunge la serverul Node. Dacă folosești XAMPP, pornește API-ul (npm run dev din rădăcina proiectului sau npm run start în server) și, la nevoie, setează în client/.env VITE_API_URL=http://localhost:5600 apoi rebuild.";
+    }
     throw new Error(msg);
   }
   return data as T;
@@ -222,6 +263,11 @@ export type JobPayload = {
   /** Filială business (opțional; trebuie să aparțină angajatorului) */
   branchId?: string;
 
+  /** URL imagine copertă (ex. după POST /jobs/upload-image) */
+  imageUrl?: string;
+  /** URL-uri galerie (aceeași sursă ca imageUrl) */
+  galleryImageUrls?: string[];
+
 };
 
 
@@ -258,6 +304,7 @@ export type JobResponse = {
   checkInRadiusM?: number;
   /** Filială asociată jobului (dacă a fost trimisă la creare) */
   branchId?: string;
+  galleryImageUrls?: string[];
 };
 
 export type StaffApplicationItem = {
@@ -297,6 +344,11 @@ export type JobCategory = {
 export const jobsApi = {
   list: () => api<{ jobs: JobResponse[] }>("/jobs"),
   getCategories: () => api<{ categories: JobCategory[] }>("/jobs/categories"),
+  uploadJobImage: (file: File) => {
+    const fd = new FormData();
+    fd.append("image", file);
+    return apiFormData<{ url: string }>("/jobs/upload-image", fd);
+  },
   create: (payload: JobPayload) =>
     api<JobResponse>("/jobs", { method: "POST", body: JSON.stringify(payload) }),
   delete: (id: string) => api<{ ok: boolean }>(`/jobs/${id}`, { method: "DELETE" }),
