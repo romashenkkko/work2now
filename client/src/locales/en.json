@@ -368,6 +368,26 @@
     "romania": "Romania",
     "romaniaDesc": "Coming to Romania."
   },
+  "onboarding": {
+    "loading": "Loading…",
+    "stepProgress": "Step {{step}} of 2",
+    "welcome": "Welcome, {{name}}!",
+    "welcomeNoName": "Welcome!",
+    "step1Lead": "Select the job categories you have experience in. You can select several.",
+    "selectOneCategory": "Please select at least one job category.",
+    "step2Title": "Experience duration",
+    "step2Lead": "Choose a duration for each category, then describe your experience in that role (at least {{min}} characters each).",
+    "missingDurationError": "Please select experience duration for all chosen categories.",
+    "minDescriptionError": "For each category, the description must be at least {{min}} characters.",
+    "describeLabel": "Describe your experience",
+    "describePlaceholder": "E.g. where you worked, responsibilities, skills gained…",
+    "charsHint": "{{current}} / {{min}} characters (minimum {{min}})",
+    "continue": "Continue →",
+    "back": "← Back",
+    "finalize": "Finish",
+    "saving": "Saving…",
+    "saveError": "Could not save your experience entries."
+  },
   "dashboard": {
     "postJob": "Post job",
     "home": "Home",
@@ -711,6 +731,7 @@
     "experienceDurationOneToFive": "1-5 years",
     "experienceDurationMoreThanFive": "More than 5 years",
     "addedDuringOnboarding": "Added during onboarding",
+    "experienceNoDetail": "No detailed description",
     "reviewsForJob": "Reviews received",
     "reviewsReceived": "Reviews received",
     "staffName": "Employee",
@@ -1026,7 +1047,15 @@
       "created": "Branch created successfully"
     },
     "experiences": {
-      "title": "Professional Experiences"
+      "title": "Professional Experiences",
+      "subtitle": "Experiences from signup and any you add appear here. You can edit the description for each role.",
+      "loading": "Loading…",
+      "descriptionLabel": "Description",
+      "descriptionOptional": "Description (optional)",
+      "descriptionPlaceholder": "Where you worked, responsibilities, results…",
+      "charHint": "{{current}} / {{min}} characters (minimum {{min}} if you add a description)",
+      "descriptionTooShort": "Description must be at least {{min}} characters, or leave the field empty.",
+      "noDetailYet": "No detailed description yet — fill in the field below."
     },
     "cv": {
       "title": "CV / Resume",

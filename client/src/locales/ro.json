@@ -368,6 +368,26 @@
     "romania": "Romania",
     "romaniaDesc": "Se va activa in Romania."
   },
+  "onboarding": {
+    "loading": "Se încarcă…",
+    "stepProgress": "Pas {{step}} din 2",
+    "welcome": "Bine ai venit, {{name}}!",
+    "welcomeNoName": "Bine ai venit!",
+    "step1Lead": "Selectează categoriile de joburi în care ai experiență. Poți selecta mai multe.",
+    "selectOneCategory": "Vă rugăm să selectați cel puțin o categorie de job.",
+    "step2Title": "Durata experienței",
+    "step2Lead": "Alege durata pentru fiecare categorie, apoi descrie experiența ta în acel rol (minim {{min}} caractere pentru fiecare).",
+    "missingDurationError": "Selectează durata experienței pentru toate categoriile alese.",
+    "minDescriptionError": "Pentru fiecare categorie, descrierea trebuie să aibă cel puțin {{min}} de caractere.",
+    "describeLabel": "Descrierea experienței tale",
+    "describePlaceholder": "Ex.: unde ai lucrat, responsabilități, aptitudini dobândite…",
+    "charsHint": "{{current}} / {{min}} caractere (minim {{min}})",
+    "continue": "Continuă →",
+    "back": "← Înapoi",
+    "finalize": "Finalizează",
+    "saving": "Salvare…",
+    "saveError": "Eroare la salvarea experiențelor."
+  },
   "dashboard": {
     "postJob": "Publică job",
     "home": "Home",
@@ -745,6 +765,7 @@
     "experienceDurationOneToFive": "1-5 ani",
     "experienceDurationMoreThanFive": "Mai mult de 5 ani",
     "addedDuringOnboarding": "Adăugat la înregistrare",
+    "experienceNoDetail": "Fără descriere detaliată",
     "reviewsForJob": "Recenziile primite",
     "reviewsReceived": "Recenziile primite",
     "savedJobs": "Joburi salvate",
@@ -1026,7 +1047,15 @@
       "created": "Filiala a fost creată cu succes"
     },
     "experiences": {
-      "title": "Experiențe profesionale"
+      "title": "Experiențe profesionale",
+      "subtitle": "Aici apar experiențele din înregistrare și pe care le adaugi tu. Poți edita descrierea pentru fiecare rol.",
+      "loading": "Se încarcă…",
+      "descriptionLabel": "Descriere",
+      "descriptionOptional": "Descriere (opțional)",
+      "descriptionPlaceholder": "Unde ai lucrat, responsabilități, rezultate…",
+      "charHint": "{{current}} / {{min}} caractere (minim {{min}} dacă completezi descrierea)",
+      "descriptionTooShort": "Descrierea trebuie să aibă cel puțin {{min}} de caractere sau lasă câmpul gol.",
+      "noDetailYet": "Încă nu ai o descriere detaliată — completează câmpul de mai jos."
     },
     "cv": {
       "title": "CV / Rezumat",

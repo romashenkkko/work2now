@@ -3,6 +3,14 @@ import { prisma } from "../prismaClient";
 import { ExperienceDuration, JobCategory } from "../enums";
 import { ServiceError } from "./ServiceError";
 
+/** La onboarding nu permitem „Fără experiență”; descrierea e obligatorie. */
+const EXPERIENCE_DESCRIPTION_MIN_LENGTH = 50;
+const ONBOARDING_ALLOWED_DURATIONS: number[] = [
+  ExperienceDuration.LessThanOneYear,
+  ExperienceDuration.OneToFiveYears,
+  ExperienceDuration.MoreThanFiveYears,
+];
+
 type ExperienceRow = { Id: string; JobCategory: number; Duration: number; Description: string };
 
 type ExperienceDto = {
@@ -29,6 +37,16 @@ async function getEmployeeProfileId(userId: string): Promise<string | null> {
     select: { Id: true },
   });
   return employeeProfile?.Id ?? null;
+}
+
+function assertOptionalDescriptionLength(desc: string): void {
+  const t = desc.trim();
+  if (t.length > 0 && t.length < EXPERIENCE_DESCRIPTION_MIN_LENGTH) {
+    throw new ServiceError(
+      `Descrierea trebuie să aibă cel puțin ${EXPERIENCE_DESCRIPTION_MIN_LENGTH} de caractere sau lasă câmpul gol.`,
+      400
+    );
+  }
 }
 
 function mapExperience(exp: ExperienceRow): ExperienceDto {
@@ -64,12 +82,19 @@ export async function saveOnboardingExperiences(userId?: string, payload?: { exp
   }
 
   for (const exp of experiences) {
-    const item = exp as { jobCategory?: unknown; duration?: unknown };
+    const item = exp as { jobCategory?: unknown; duration?: unknown; description?: unknown };
     if (typeof item.jobCategory !== "number" || !Object.values(JobCategory).includes(item.jobCategory)) {
       throw new ServiceError("Categoria de job invalidă.", 400);
     }
-    if (typeof item.duration !== "number" || !Object.values(ExperienceDuration).includes(item.duration)) {
-      throw new ServiceError("Durata experienței invalidă.", 400);
+    if (typeof item.duration !== "number" || !ONBOARDING_ALLOWED_DURATIONS.includes(item.duration)) {
+      throw new ServiceError("Selectează o durată a experienței (fără opțiunea «Fără experiență»).", 400);
+    }
+    const desc = typeof item.description === "string" ? item.description.trim() : "";
+    if (desc.length < EXPERIENCE_DESCRIPTION_MIN_LENGTH) {
+      throw new ServiceError(
+        `Descrierea experienței trebuie să aibă cel puțin ${EXPERIENCE_DESCRIPTION_MIN_LENGTH} de caractere pentru fiecare categorie.`,
+        400
+      );
     }
   }
 
@@ -79,17 +104,18 @@ export async function saveOnboardingExperiences(userId?: string, payload?: { exp
   }
 
   await prisma.$transaction(
-    (experiences as Array<{ jobCategory: number; duration: number }>).map((exp) =>
-      prisma.experiences.create({
+    (experiences as Array<{ jobCategory: number; duration: number; description?: string }>).map((exp) => {
+      const desc = String(exp.description ?? "").trim();
+      return prisma.experiences.create({
         data: {
           Id: randomUUID(),
           EmployeeProfileId: employeeProfileId,
           JobCategory: exp.jobCategory,
           Duration: exp.duration,
-          Description: "Added during onboarding",
+          Description: desc,
         },
-      })
-    )
+      });
+    })
   );
   return { ok: true, message: "Experiențele au fost salvate cu succes." };
 }
@@ -166,6 +192,7 @@ export async function createExperience(userId: string | undefined, payload: Expe
 
   const experienceId = randomUUID();
   const normalizedDescription = String(description || "").trim() || "";
+  assertOptionalDescriptionLength(normalizedDescription);
   await prisma.experiences.create({
     data: {
       Id: experienceId,
@@ -212,7 +239,9 @@ export async function updateExperience(userId: string | undefined, id: string, p
     data.Duration = duration;
   }
   if (description !== undefined) {
-    data.Description = String(description).trim();
+    const nextDesc = String(description).trim();
+    assertOptionalDescriptionLength(nextDesc);
+    data.Description = nextDesc;
   }
   if (Object.keys(data).length === 0) {
     throw new ServiceError("Nu s-a specificat niciun câmp de actualizat.", 400);

@@ -532,7 +532,7 @@ export type Experience = {
 
 export const experiencesApi = {
   checkOnboarding: () => api<{ needsOnboarding: boolean }>("/experiences/check-onboarding"),
-  submitOnboarding: (experiences: { jobCategory: number; duration: number }[]) =>
+  submitOnboarding: (experiences: { jobCategory: number; duration: number; description: string }[]) =>
     api<{ ok: boolean; message: string }>("/experiences/onboarding", {
       method: "POST",
       body: JSON.stringify({ experiences }),

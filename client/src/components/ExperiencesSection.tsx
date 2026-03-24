@@ -1,6 +1,10 @@
 import { useState, useEffect, useRef } from "react";
 import { Briefcase, Plus, Edit, Trash2, Save, X, ChevronDown } from "lucide-react";
 import { experiencesApi } from "../api/client";
+import {
+  MIN_EXPERIENCE_DESCRIPTION_LENGTH,
+  descriptionForEditing,
+} from "../constants/experienceDescription";
 
 // Job categories matching the database enum (codes 1-22)
 enum JobCategory {
@@ -77,7 +81,7 @@ export type Experience = {
 
 interface ExperiencesSectionProps {
   onBack: () => void;
-  t: (key: string) => string;
+  t: (key: string, options?: Record<string, string | number>) => string;
 }
 
 export default function ExperiencesSection({ onBack, t }: ExperiencesSectionProps) {
@@ -125,7 +129,7 @@ export default function ExperiencesSection({ onBack, t }: ExperiencesSectionProp
       // Initialize editing descriptions
       const descMap: Record<string, string> = {};
       data.experiences.forEach((exp) => {
-        descMap[exp.id] = exp.description || "";
+        descMap[exp.id] = descriptionForEditing(exp.description);
       });
       setEditingDescription(descMap);
     } catch (e) {
@@ -176,6 +180,14 @@ export default function ExperiencesSection({ onBack, t }: ExperiencesSectionProp
       setMessage({ type: "error", text: "Vă rugăm să completați categoria și durata." });
       return;
     }
+    const descTrim = formData.description.trim();
+    if (descTrim.length > 0 && descTrim.length < MIN_EXPERIENCE_DESCRIPTION_LENGTH) {
+      setMessage({
+        type: "error",
+        text: t("profile.experiences.descriptionTooShort", { min: MIN_EXPERIENCE_DESCRIPTION_LENGTH }),
+      });
+      return;
+    }
 
     setSaving(true);
     setMessage(null);
@@ -216,13 +228,22 @@ export default function ExperiencesSection({ onBack, t }: ExperiencesSectionProp
   };
 
   const handleUpdateDescription = async (id: string, description: string) => {
+    const trimmed = description.trim();
+    if (trimmed.length > 0 && trimmed.length < MIN_EXPERIENCE_DESCRIPTION_LENGTH) {
+      setMessage({
+        type: "error",
+        text: t("profile.experiences.descriptionTooShort", { min: MIN_EXPERIENCE_DESCRIPTION_LENGTH }),
+      });
+      return;
+    }
     setSaving(true);
     setMessage(null);
     try {
-      await experiencesApi.update(id, { description });
+      await experiencesApi.update(id, { description: trimmed });
       setExperiences((prev) =>
-        prev.map((exp) => (exp.id === id ? { ...exp, description } : exp))
+        prev.map((exp) => (exp.id === id ? { ...exp, description: trimmed } : exp))
       );
+      setEditingDescription((prev) => ({ ...prev, [id]: trimmed }));
       setMessage({ type: "success", text: "Descrierea a fost actualizată." });
     } catch (e) {
       setMessage({ type: "error", text: (e as Error).message });
@@ -274,7 +295,7 @@ export default function ExperiencesSection({ onBack, t }: ExperiencesSectionProp
       )}
 
       {loading ? (
-        <div className="text-center py-8 text-gray-500">Se încarcă...</div>
+        <div className="text-center py-8 text-gray-500">{t("profile.experiences.loading")}</div>
       ) : error ? (
         <div className="text-center py-8 text-red-600">{error}</div>
       ) : (
@@ -403,7 +424,7 @@ export default function ExperiencesSection({ onBack, t }: ExperiencesSectionProp
 
                 <label className="block">
                   <span className="text-sm font-medium text-gray-700 mb-1.5 block">
-                    Descriere (opțional)
+                    {t("profile.experiences.descriptionOptional")}
                   </span>
                   <textarea
                     value={formData.description}
@@ -411,9 +432,23 @@ export default function ExperiencesSection({ onBack, t }: ExperiencesSectionProp
                       setFormData((prev) => ({ ...prev, description: e.target.value }))
                     }
                     rows={3}
-                    placeholder="Adăugați detalii despre experiența dvs. în această categorie..."
+                    placeholder={t("profile.experiences.descriptionPlaceholder")}
                     className="w-full px-4 py-2.5 rounded-xl border border-gray-200 bg-white focus:ring-2 focus:ring-primary focus:border-primary resize-none"
                   />
+                  {formData.description.trim().length > 0 && (
+                    <p
+                      className={`text-xs mt-1 ${
+                        formData.description.trim().length >= MIN_EXPERIENCE_DESCRIPTION_LENGTH
+                          ? "text-green-700"
+                          : "text-amber-700"
+                      }`}
+                    >
+                      {t("profile.experiences.charHint", {
+                        current: formData.description.trim().length,
+                        min: MIN_EXPERIENCE_DESCRIPTION_LENGTH,
+                      })}
+                    </p>
+                  )}
                 </label>
 
                 <div className="flex gap-2">
@@ -489,7 +524,7 @@ export default function ExperiencesSection({ onBack, t }: ExperiencesSectionProp
                   <div className="mt-3">
                     <label className="block">
                       <span className="text-xs font-medium text-gray-700 mb-1.5 block">
-                        Descriere
+                        {t("profile.experiences.descriptionLabel")}
                       </span>
                       <textarea
                         value={editingDescription[exp.id] || ""}
@@ -499,11 +534,25 @@ export default function ExperiencesSection({ onBack, t }: ExperiencesSectionProp
                             [exp.id]: e.target.value,
                           }))
                         }
-                        rows={2}
-                        placeholder="Adăugați detalii despre experiența dvs..."
+                        rows={4}
+                        placeholder={t("profile.experiences.descriptionPlaceholder")}
                         className="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 bg-white focus:ring-2 focus:ring-primary focus:border-primary resize-none"
                       />
-                      {editingDescription[exp.id] !== (exp.description || "") && (
+                      <p
+                        className={`text-xs mt-1 ${
+                          (editingDescription[exp.id] || "").trim().length >= MIN_EXPERIENCE_DESCRIPTION_LENGTH ||
+                          (editingDescription[exp.id] || "").trim().length === 0
+                            ? "text-gray-500"
+                            : "text-amber-700"
+                        }`}
+                      >
+                        {t("profile.experiences.charHint", {
+                          current: (editingDescription[exp.id] || "").trim().length,
+                          min: MIN_EXPERIENCE_DESCRIPTION_LENGTH,
+                        })}
+                      </p>
+                      {(editingDescription[exp.id] ?? "").trim() !==
+                        descriptionForEditing(exp.description).trim() && (
                         <div className="mt-2 flex gap-2">
                           <button
                             type="button"
@@ -519,7 +568,7 @@ export default function ExperiencesSection({ onBack, t }: ExperiencesSectionProp
                             onClick={() =>
                               setEditingDescription((prev) => ({
                                 ...prev,
-                                [exp.id]: exp.description || "",
+                                [exp.id]: descriptionForEditing(exp.description),
                               }))
                             }
                             className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors"

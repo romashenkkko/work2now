@@ -488,8 +488,13 @@ export default function StaffProfileModal({
                                 : exp.duration === 4
                                   ? t("dashboard.experienceDurationMoreThanFive", "Mai mult de 5 ani")
                                   : "";
-                        const descriptionText = exp.description?.trim() || t("dashboard.addedDuringOnboarding", "Added during onboarding");
-                        const hasCustomDesc = exp.description?.trim() && exp.description.trim().toLowerCase() !== "added during onboarding";
+                        const rawExpDesc = (exp.description ?? "").trim();
+                        const isLegacyOrEmpty =
+                          !rawExpDesc || rawExpDesc.toLowerCase() === "added during onboarding";
+                        const descriptionText = isLegacyOrEmpty
+                          ? t("dashboard.experienceNoDetail", "Fără descriere detaliată")
+                          : rawExpDesc;
+                        const hasCustomDesc = !isLegacyOrEmpty;
                         const isSelected = selectedExperienceJobLabel === jobLabel;
                         return (
                           <button
