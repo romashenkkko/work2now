@@ -249,6 +249,8 @@ model jobs {
   estimated_salary   String?         @db.VarChar(100)
   image_url          String?         @db.Text
   gallery_image_urls String?         @db.Text
+  /// JSON job attachments: [{"url":"/api/jobs/attachments/...","name":"file.pdf"}, ...]
+  attachment_urls    String?         @db.Text
   created_at         DateTime        @default(now()) @db.Timestamp(0)
   check_in_lat       Float?
   check_in_lng       Float?

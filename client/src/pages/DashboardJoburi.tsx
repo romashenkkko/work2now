@@ -206,6 +206,9 @@ export default function DashboardJoburi() {
           galleryImageUrls: Array.isArray((j as { galleryImageUrls?: string[] }).galleryImageUrls)
             ? (j as { galleryImageUrls: string[] }).galleryImageUrls
             : undefined,
+          jobAttachments: Array.isArray((j as { jobAttachments?: { url: string; name: string }[] }).jobAttachments)
+            ? (j as { jobAttachments: { url: string; name: string }[] }).jobAttachments
+            : undefined,
           postedBy: j.postedBy ?? (j.posted_by_name as string),
           jobCategoryCode: (j as any).jobCategoryCode,
           hourlyRateBase: (j as any).hourlyRateBase,

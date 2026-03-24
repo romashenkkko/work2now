@@ -56,6 +56,8 @@ export type JobRow = {
   imageUrl?: string;
   /** Imagini suplimentare (detalii job) */
   galleryImageUrls?: string[];
+  /** Documente PDF/Word/Excel etc. atașate la publicare */
+  jobAttachments?: { url: string; name: string }[];
   postedBy?: string;
   jobCategoryCode?: number;
   hourlyRateBase?: number;
@@ -81,7 +83,6 @@ export type JobTemplate = {
   hourlyRateBase: string;
   startTime: string;
   endTime: string;
-  unpaidBreak: "no" | "yes";
   raionId?: number | null;
   localitate?: string | null;
   checkInGeo?: { lat: number; lng: number; radiusM: number } | null;
@@ -142,10 +143,12 @@ export function getPublicJobs(): JobRow[] {
   }
 }
 
+export type AddJobResult = { ok: true } | { ok: false; error: string };
+
 export const DashboardContext = createContext<{
   openPostJobModal: () => void;
   jobsAdded: JobRow[];
-  addJob: (job: Omit<JobRow, "id">) => Promise<boolean>;
+  addJob: (job: Omit<JobRow, "id">) => Promise<AddJobResult>;
   removeJob: (id: string) => void;
   refreshJobs: () => void;
   availableToWork: boolean;
@@ -296,6 +299,7 @@ export default function DashboardLayout() {
   const [showPostJob, setShowPostJob] = useState(false);
   const [jobSubmitted, setJobSubmitted] = useState(false);
   const [postJobError, setPostJobError] = useState("");
+  const [postJobBusy, setPostJobBusy] = useState(false);
   const [postJobFieldErrors, setPostJobFieldErrors] = useState<{
     hourlyRateBase?: string;
     jobCategoryCode?: string;
@@ -375,9 +379,6 @@ export default function DashboardLayout() {
   const salaryDropdownRef = useRef<HTMLDivElement>(null);
   const [categoryDropdownOpen, setCategoryDropdownOpen] = useState(false);
   const categoryDropdownRef = useRef<HTMLDivElement>(null);
-  const [unpaidBreak, setUnpaidBreak] = useState<"no" | "yes">("no");
-  const [unpaidBreakOpen, setUnpaidBreakOpen] = useState(false);
-  const unpaidBreakRef = useRef<HTMLDivElement>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [showMyProfileModal, setShowMyProfileModal] = useState(false);
   const [deleteJobConfirmId, setDeleteJobConfirmId] = useState<string | null>(null);
@@ -390,7 +391,7 @@ export default function DashboardLayout() {
   const [activeTemplateId, setActiveTemplateId] = useState<string | null>(null);
   const [showTemplateSavePanel, setShowTemplateSavePanel] = useState(false);
   const [showTemplateCreateModal, setShowTemplateCreateModal] = useState(false);
-  const [templateAction, setTemplateAction] = useState<"use" | "create">("use");
+  const [, setTemplateAction] = useState<"use" | "create">("use");
   const [templateSaveTitle, setTemplateSaveTitle] = useState("");
   const [templateSaveError, setTemplateSaveError] = useState<string>("");
 
@@ -407,8 +408,6 @@ export default function DashboardLayout() {
   const [tplCreateStaffCount, setTplCreateStaffCount] = useState("1");
   const [tplCreateStartTime, setTplCreateStartTime] = useState("00:00");
   const [tplCreateEndTime, setTplCreateEndTime] = useState("00:00");
-  const [tplCreateUnpaidBreak, setTplCreateUnpaidBreak] = useState<"no" | "yes">("no");
-
   useEffect(() => {
     if (!sidebarOpen) return;
     const previousOverflow = document.body.style.overflow;
@@ -464,6 +463,9 @@ export default function DashboardLayout() {
           imageUrl: j.imageUrl,
           galleryImageUrls: Array.isArray((j as { galleryImageUrls?: string[] }).galleryImageUrls)
             ? (j as { galleryImageUrls: string[] }).galleryImageUrls
+            : undefined,
+          jobAttachments: Array.isArray((j as { jobAttachments?: { url: string; name: string }[] }).jobAttachments)
+            ? (j as { jobAttachments: { url: string; name: string }[] }).jobAttachments
             : undefined,
           postedBy: j.postedBy,
           postedById: j.postedById,
@@ -685,8 +687,10 @@ export default function DashboardLayout() {
 
   const addJob = async (
     job: Omit<JobRow, "id"> & { raionId?: number; localitate?: string; branchId?: string }
-  ): Promise<boolean> => {
-    if (job.jobCategoryCode == null || job.hourlyRateBase == null) return false;
+  ): Promise<AddJobResult> => {
+    if (job.jobCategoryCode == null || job.hourlyRateBase == null) {
+      return { ok: false, error: "Date job incomplete (categorie sau tarif)." };
+    }
     const payload = {
       job: job.job, // Custom title (max 30 chars)
       location: job.location,
@@ -702,6 +706,7 @@ export default function DashboardLayout() {
       estimatedSalary: job.estimatedSalary,
       imageUrl: job.imageUrl ?? undefined,
       ...(job.galleryImageUrls != null && job.galleryImageUrls.length > 0 ? { galleryImageUrls: job.galleryImageUrls } : {}),
+      ...(job.jobAttachments != null && job.jobAttachments.length > 0 ? { jobAttachments: job.jobAttachments } : {}),
       jobCategoryCode: job.jobCategoryCode ?? 1,
       hourlyRateBase: job.hourlyRateBase ?? 0,
       ...(job.raionId != null ? { raionId: job.raionId } : {}),
@@ -733,6 +738,9 @@ export default function DashboardLayout() {
           estimatedSalary: created.estimatedSalary,
           imageUrl: created.imageUrl,
           galleryImageUrls: Array.isArray(created.galleryImageUrls) ? created.galleryImageUrls : undefined,
+          jobAttachments: Array.isArray(created.jobAttachments)
+            ? (created.jobAttachments as { url: string; name: string }[])
+            : undefined,
           postedBy: created.postedBy,
           jobCategoryCode: created.jobCategoryCode,
           hourlyRateBase: created.hourlyRateBase,
@@ -746,11 +754,12 @@ export default function DashboardLayout() {
         };
         setJobsAdded((prev) => [...prev, newJob]);
       setJobsLoadError(false);
-      return true;
+      return { ok: true };
     } catch (err) {
       console.error("Failed to persist job on server:", err);
       setJobsLoadError(true);
-      return false;
+      const raw = err instanceof Error ? err.message : String(err);
+      return { ok: false, error: raw || "Eroare necunoscută" };
     }
   };
 
@@ -773,7 +782,6 @@ export default function DashboardLayout() {
     setFormStartTime(tpl.startTime);
     setFormEndTime(tpl.endTime);
     setStaffCountSelect(tpl.staffCount);
-    setUnpaidBreak(tpl.unpaidBreak);
     setLocalitate(tpl.localitate ?? "");
 
     setSelectedJobCategory(tpl.categoryCode);
@@ -838,7 +846,6 @@ export default function DashboardLayout() {
       hourlyRateBase: tplCreateHourlyRate,
       startTime: tplCreateStartTime,
       endTime: tplCreateEndTime,
-      unpaidBreak: tplCreateUnpaidBreak,
       raionId: selectedRaionId ?? null,
       localitate: localitate.trim() || null,
       checkInGeo: jobCheckInGeo ?? null,
@@ -876,7 +883,6 @@ export default function DashboardLayout() {
       hourlyRateBase: hourlyRate,
       startTime: formStartTime,
       endTime: formEndTime,
-      unpaidBreak,
       raionId: selectedRaionId ?? null,
       localitate: localitate.trim() || null,
       checkInGeo: jobCheckInGeo ?? null,
@@ -927,15 +933,6 @@ export default function DashboardLayout() {
     document.addEventListener("mousedown", close);
     return () => document.removeEventListener("mousedown", close);
   }, [phoneCountryOpen]);
-
-  useEffect(() => {
-    if (!unpaidBreakOpen) return;
-    const close = (e: MouseEvent) => {
-      if (unpaidBreakRef.current && !unpaidBreakRef.current.contains(e.target as Node)) setUnpaidBreakOpen(false);
-    };
-    document.addEventListener("mousedown", close);
-    return () => document.removeEventListener("mousedown", close);
-  }, [unpaidBreakOpen]);
 
   useEffect(() => {
     if (!staffDropdownOpen) return;
@@ -1536,38 +1533,63 @@ export default function DashboardLayout() {
                     const isYmd = (v?: string) => !!v && /^\d{4}-\d{2}-\d{2}$/.test(v);
                     const normalizedDate = isYmd(dateVal) ? dateVal : toYmdToday();
                     const normalizedEndDate = selectedJobType === "multi-day" && isYmd(endDateVal) ? endDateVal : undefined;
-                    if (jobTitle && address && selectedJobType) {
-                      const ok = await addJob({
-                        job: jobTitle,
-                        location: address,
-                        status: "Draft",
-                        statusClass: "bg-gray-100 text-gray-700",
-                        date: normalizedDate,
-                        endDate: normalizedEndDate,
-                        jobType: selectedJobType,
-                        jobCategoryCode,
-                        hourlyRateBase,
-                        startTime: formStartTime,
-                        endTime: formEndTime,
-                        peopleNeeded: peopleVal || undefined,
-                        estimatedSalary: salaryVal || undefined,
-                        raionId: selectedRaionId,
-                        localitate: localitate.trim() || undefined,
-                        ...(jobCoverImageUrl ? { imageUrl: jobCoverImageUrl } : {}),
-                        ...(jobGalleryUrls.length > 0 ? { galleryImageUrls: jobGalleryUrls } : {}),
-                        ...(jobCheckInGeo
-                          ? { checkInLat: jobCheckInGeo.lat, checkInLng: jobCheckInGeo.lng, checkInRadiusM: jobCheckInGeo.radiusM }
-                          : {}),
-                        ...(selectedPostBranchId != null && selectedPostBranchId.trim() !== ""
-                          ? { branchId: selectedPostBranchId.trim() }
-                          : {}),
-                      });
-                      if (!ok) {
-                        setPostJobError(t("dashboard.postJobFailed", "Nu am putut salva jobul. Verifică backend-ul și încearcă din nou."));
-                        return;
-                      }
-                    } else {
+                    if (!jobTitle || !address || !selectedJobType) {
                       setPostJobError(t("dashboard.postJobInvalid", "Completează câmpurile obligatorii."));
+                      return;
+                    }
+                    setPostJobBusy(true);
+                    let uploadedJobAttachments: { url: string; name: string }[] = [];
+                    try {
+                      for (const doc of jobDocuments) {
+                        const up = await jobsApi.uploadJobAttachment(doc.file);
+                        uploadedJobAttachments.push({
+                          url: up.url,
+                          name: (up.originalName && up.originalName.trim()) || doc.file.name,
+                        });
+                      }
+                    } catch (docErr) {
+                      setPostJobError(
+                        docErr instanceof Error ? docErr.message : t("dashboard.jobAttachmentUploadError", "Nu am putut încărca un document.")
+                      );
+                      setPostJobBusy(false);
+                      return;
+                    }
+                    const addResult = await addJob({
+                      job: jobTitle,
+                      location: address,
+                      status: "Draft",
+                      statusClass: "bg-gray-100 text-gray-700",
+                      date: normalizedDate,
+                      endDate: normalizedEndDate,
+                      jobType: selectedJobType,
+                      jobCategoryCode,
+                      hourlyRateBase,
+                      startTime: formStartTime,
+                      endTime: formEndTime,
+                      peopleNeeded: peopleVal || undefined,
+                      estimatedSalary: salaryVal || undefined,
+                      raionId: selectedRaionId,
+                      localitate: localitate.trim() || undefined,
+                      ...(jobCoverImageUrl ? { imageUrl: jobCoverImageUrl } : {}),
+                      ...(jobGalleryUrls.length > 0 ? { galleryImageUrls: jobGalleryUrls } : {}),
+                      ...(uploadedJobAttachments.length > 0 ? { jobAttachments: uploadedJobAttachments } : {}),
+                      ...(jobCheckInGeo
+                        ? { checkInLat: jobCheckInGeo.lat, checkInLng: jobCheckInGeo.lng, checkInRadiusM: jobCheckInGeo.radiusM }
+                        : {}),
+                      ...(selectedPostBranchId != null && selectedPostBranchId.trim() !== ""
+                        ? { branchId: selectedPostBranchId.trim() }
+                        : {}),
+                    });
+                    setPostJobBusy(false);
+                    if (!addResult.ok) {
+                      const detail = addResult.error.trim();
+                      const migrationHint =
+                        /unknown column|attachment_urls|doesn't exist|nu există/i.test(detail)
+                          ? ` ${t("dashboard.postJobDbMigrationHint", "Rulează migrările bazei: în folderul server, npx prisma migrate deploy (sau aplică SQL-ul pentru coloana attachment_urls).")}`
+                          : "";
+                      setPostJobError(
+                        `${t("dashboard.postJobFailed", "Nu am putut salva jobul.")} ${detail ? `— ${detail}` : ""}${migrationHint}`.trim()
+                      );
                       return;
                     }
                     setJobSubmitted(true);
@@ -1588,8 +1610,6 @@ export default function DashboardLayout() {
                     setStaffPhoneNumber("");
                     setJobDescription("");
                     setJobTitleSelected("");
-                    setUnpaidBreak("no");
-                    setUnpaidBreakOpen(false);
                     setPostJobError("");
                     setSelectedJobCategory(null);
                     setHourlyRate("");
@@ -1876,51 +1896,7 @@ export default function DashboardLayout() {
                           />
                         )}
                       </div>
-                      <label className="block">
-                        <span className="text-sm font-medium text-gray-700 mb-1 block">{t("dashboard.unpaidBreak")}</span>
-                        <input type="hidden" name="unpaidBreak" value={unpaidBreak} />
-                        <div ref={unpaidBreakRef} className="relative">
-                          <button
-                            type="button"
-                            onClick={() => setUnpaidBreakOpen((v) => !v)}
-                            className="w-full px-4 py-2.5 rounded-xl border border-gray-200 bg-white text-left text-sm font-medium text-gray-800 shadow-sm hover:border-primary/40 focus:outline-none focus:ring-2 focus:ring-primary/30 transition-colors inline-flex items-center justify-between"
-                            aria-haspopup="listbox"
-                            aria-expanded={unpaidBreakOpen}
-                          >
-                            <span>{unpaidBreak === "yes" ? t("dashboard.unpaidBreakYes") : t("dashboard.unpaidBreakNo")}</span>
-                            <svg className={`w-4 h-4 text-gray-500 transition-transform ${unpaidBreakOpen ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                            </svg>
-                          </button>
-                          {unpaidBreakOpen && (
-                            <div className="absolute left-0 right-0 top-full mt-1 z-50 rounded-xl border border-gray-200 bg-white shadow-lg p-1">
-                              {[
-                                { value: "no" as const, label: t("dashboard.unpaidBreakNo") },
-                                { value: "yes" as const, label: t("dashboard.unpaidBreakYes") },
-                              ].map((opt) => (
-                                <button
-                                  key={opt.value}
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.preventDefault();
-                                    e.stopPropagation();
-                                    setUnpaidBreak(opt.value);
-                                    setUnpaidBreakOpen(false);
-                                  }}
-                                  className={`w-full px-3 py-2 rounded-lg text-left text-sm transition-colors ${
-                                    unpaidBreak === opt.value ? "bg-primary text-white" : "text-gray-700 hover:bg-primary/10"
-                                  }`}
-                                  role="option"
-                                  aria-selected={unpaidBreak === opt.value}
-                                >
-                                  {opt.label}
-                                </button>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      </label>
-                      
+
                       {postJobBranches.length > 0 && (
                         <label className="block">
                           <span className="text-sm font-medium text-gray-700 mb-1 block">
@@ -2315,6 +2291,7 @@ export default function DashboardLayout() {
                           setJobDescription("");
                           setJobCoverImageUrl(null);
                           setJobGalleryUrls([]);
+                          setJobDocuments([]);
                           setJobImageUploadError("");
                           setTemplateSavedFeedback(false);
                           setShowTemplateSavePanel(false);
@@ -2327,10 +2304,10 @@ export default function DashboardLayout() {
                       </button>
                       <button
                         type="submit"
-                        disabled={!jobAddress.trim()}
+                        disabled={!jobAddress.trim() || postJobBusy}
                         className="flex-1 py-2.5 rounded-xl bg-primary text-white font-medium hover:bg-primary-dark disabled:opacity-50 disabled:cursor-not-allowed"
                       >
-                        {t("dashboard.postJob")}
+                        {postJobBusy ? t("dashboard.postJobUploading", "Se încarcă…") : t("dashboard.postJob")}
                       </button>
                     </div>
                   </div>
@@ -2581,30 +2558,6 @@ export default function DashboardLayout() {
                   />
                 </div>
 
-                <div className="rounded-xl border border-gray-200 bg-white p-3">
-                  <p className="text-sm font-medium text-gray-700 mb-2">Pauză neplătită</p>
-                  <div className="flex gap-2">
-                    <button
-                      type="button"
-                        onClick={() => setTplCreateUnpaidBreak("no")}
-                      className={`flex-1 px-3 py-2 rounded-xl border transition-colors ${
-                          tplCreateUnpaidBreak === "no" ? "border-primary bg-primary/5 text-primary" : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50"
-                      }`}
-                    >
-                      Nu
-                    </button>
-                    <button
-                      type="button"
-                        onClick={() => setTplCreateUnpaidBreak("yes")}
-                      className={`flex-1 px-3 py-2 rounded-xl border transition-colors ${
-                          tplCreateUnpaidBreak === "yes" ? "border-primary bg-primary/5 text-primary" : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50"
-                      }`}
-                    >
-                      Da
-                    </button>
-                  </div>
-                </div>
-
                 {templateSaveError && <p className="text-sm text-red-600">{templateSaveError}</p>}
 
                 <div className="flex gap-3 pt-2">
@@ -2619,7 +2572,6 @@ export default function DashboardLayout() {
                       setTplCreateStaffCount("1");
                       setTplCreateStartTime("00:00");
                       setTplCreateEndTime("00:00");
-                      setTplCreateUnpaidBreak("no");
                     }}
                     className="flex-1 py-2.5 rounded-xl border border-gray-300 font-medium text-gray-700 hover:bg-gray-50 transition-colors"
                   >

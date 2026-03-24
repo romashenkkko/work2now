@@ -7,10 +7,13 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "dev": "tsx watch src/index.ts",
-    "prisma:generate": "prisma generate",
-    "prisma:migrate": "prisma migrate dev",
-    "prisma:migrate:init": "prisma migrate dev --name init",
-    "prisma:studio": "prisma studio"
+    "prisma:generate": "node scripts/prisma-with-env.cjs generate",
+    "prisma:migrate": "node scripts/prisma-with-env.cjs migrate dev",
+    "prisma:migrate:init": "node scripts/prisma-with-env.cjs migrate dev --name init",
+    "prisma:studio": "node scripts/prisma-with-env.cjs studio",
+    "db:add-attachment-urls": "node scripts/prisma-with-env.cjs db execute --file prisma/scripts/add_jobs_attachment_urls.sql --schema prisma/schema.prisma",
+    "prisma:resolve-attachment-migration": "node scripts/prisma-with-env.cjs migrate resolve --applied 20260324120000_job_attachment_urls",
+    "prisma:migrate:deploy": "node scripts/prisma-with-env.cjs migrate deploy"
   },
   "dependencies": {
     "@prisma/client": "^5.21.1",

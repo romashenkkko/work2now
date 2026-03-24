@@ -1,5 +1,6 @@
 import path from "path";
 import type { Request, Response } from "express";
+import { Prisma } from "@prisma/client";
 import type { JwtPayload } from "../middleware/auth";
 import { ServiceError } from "../services/ServiceError";
 import {
@@ -78,6 +79,20 @@ export async function createJobController(req: ReqWithUser, res: Response): Prom
     const created = await createJob(userId, req.body ?? {});
     res.status(201).json(created);
   } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError) {
+      console.error("POST /api/jobs prisma:", error.code, error.message);
+      const col =
+        typeof error.meta?.column_name === "string" ? error.meta.column_name : "";
+      if (error.code === "P2022" || /unknown column|doesn't exist/i.test(String(error.message))) {
+        res.status(500).json({
+          error:
+            col === "attachment_urls" || /attachment_urls/i.test(String(error.message))
+              ? "Lipsește coloana attachment_urls. Din folderul server: 1) npm run db:add-attachment-urls  2) npm run prisma:resolve-attachment-migration  3) repornește API-ul. Verifică că .env din server indică aceeași bază ca în phpMyAdmin (DB_NAME / DATABASE_URL). migrate deploy trebuie rulat din folderul server; dacă l-ai rulat din alt loc, migrarea putea merge pe altă schemă."
+              : "Baza de date nu corespunde cu versiunea aplicației. În folderul server: npx prisma migrate deploy",
+        });
+        return;
+      }
+    }
     handleError(res, error, "POST /api/jobs error:", "Eroare la crearea jobului.");
   }
 }
@@ -266,6 +281,7 @@ export async function getAdminStatisticsController(req: ReqWithUser, res: Respon
 }
 
 const JOB_IMAGES_DIR = path.join(__dirname, "../../uploads/job-images");
+const JOB_ATTACHMENTS_DIR = path.join(__dirname, "../../uploads/job-attachments");
 
 type ReqWithUploadedFile = ReqWithUser & { file?: Express.Multer.File };
 
@@ -301,6 +317,52 @@ export function getJobMediaController(req: Request, res: Response): void {
   }
   const resolvedDir = path.resolve(JOB_IMAGES_DIR);
   const full = path.resolve(JOB_IMAGES_DIR, base);
+  if (!full.startsWith(resolvedDir + path.sep)) {
+    res.status(400).end();
+    return;
+  }
+  res.sendFile(full, (err) => {
+    if (err && !res.headersSent) res.status(404).end();
+  });
+}
+
+export async function postUploadJobAttachmentController(req: ReqWithUser, res: Response): Promise<void> {
+  const userId = getUserId(req);
+  if (!userId) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+  try {
+    const { customerLike } = await getResolvedRoleAndCustomerLike(userId);
+    if (!customerLike) {
+      res.status(403).json({ error: "Doar angajatorii pot încărca documente." });
+      return;
+    }
+    const file = (req as ReqWithUploadedFile).file;
+    if (!file?.filename) {
+      res.status(400).json({ error: "Lipsește fișierul." });
+      return;
+    }
+    const originalName =
+      typeof file.originalname === "string" && file.originalname.trim() ? file.originalname.trim().slice(0, 200) : file.filename;
+    res.status(201).json({
+      url: `/api/jobs/attachments/${file.filename}`,
+      originalName,
+    });
+  } catch (error) {
+    handleError(res, error, "POST /api/jobs/upload-attachment error:", "Eroare la încărcarea documentului.");
+  }
+}
+
+export function getJobAttachmentController(req: Request, res: Response): void {
+  const raw = req.params.filename ?? "";
+  const base = path.basename(raw);
+  if (base !== raw || !/^[a-zA-Z0-9._-]+\.(pdf|doc|docx|png|jpe?g|xls|xlsx)$/i.test(base)) {
+    res.status(400).end();
+    return;
+  }
+  const resolvedDir = path.resolve(JOB_ATTACHMENTS_DIR);
+  const full = path.resolve(JOB_ATTACHMENTS_DIR, base);
   if (!full.startsWith(resolvedDir + path.sep)) {
     res.status(400).end();
     return;

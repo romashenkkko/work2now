@@ -119,6 +119,62 @@ export function toNumber(v: unknown): number | null {
 export type JobListItem = Record<string, unknown>;
 
 const JOB_MEDIA_PREFIX = "/api/jobs/media/";
+const JOB_ATTACHMENTS_PREFIX = "/api/jobs/attachments/";
+const JOB_ATTACHMENT_FILENAME_RE = /^[a-zA-Z0-9._-]+\.(pdf|doc|docx|png|jpe?g|xls|xlsx)$/i;
+
+function sanitizeJobAttachmentDisplayName(raw: unknown): string {
+  const s = typeof raw === "string" ? raw.trim().slice(0, 200) : "";
+  const cleaned = s.replace(/[\u0000-\u001F<>"]/g, "").trim();
+  return cleaned || "document";
+}
+
+export type JobAttachmentItem = { url: string; name: string };
+
+function parseJobAttachmentsJson(raw: string | null | undefined): JobAttachmentItem[] | undefined {
+  if (raw == null || !String(raw).trim()) return undefined;
+  try {
+    const a = JSON.parse(String(raw)) as unknown;
+    if (!Array.isArray(a)) return undefined;
+    const out: JobAttachmentItem[] = [];
+    for (const item of a) {
+      const obj = item && typeof item === "object" ? (item as Record<string, unknown>) : null;
+      const url =
+        typeof obj?.url === "string"
+          ? obj.url.trim()
+          : typeof item === "string"
+            ? item.trim()
+            : "";
+      if (!url || url.includes("..") || !url.startsWith(JOB_ATTACHMENTS_PREFIX)) continue;
+      const rest = url.slice(JOB_ATTACHMENTS_PREFIX.length);
+      if (!JOB_ATTACHMENT_FILENAME_RE.test(rest)) continue;
+      out.push({ url, name: sanitizeJobAttachmentDisplayName(obj?.name ?? obj?.originalName) });
+      if (out.length >= 10) break;
+    }
+    return out.length ? out : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function sanitizeJobAttachmentsJson(input: unknown): string | null {
+  if (!Array.isArray(input)) return null;
+  const out: JobAttachmentItem[] = [];
+  for (const item of input) {
+    const obj = item && typeof item === "object" ? (item as Record<string, unknown>) : null;
+    const url =
+      typeof obj?.url === "string"
+        ? obj.url.trim()
+        : typeof item === "string"
+          ? item.trim()
+          : "";
+    if (!url || url.includes("..") || !url.startsWith(JOB_ATTACHMENTS_PREFIX)) continue;
+    const rest = url.slice(JOB_ATTACHMENTS_PREFIX.length);
+    if (!JOB_ATTACHMENT_FILENAME_RE.test(rest)) continue;
+    out.push({ url, name: sanitizeJobAttachmentDisplayName(obj?.name ?? obj?.originalName) });
+    if (out.length >= 10) break;
+  }
+  return out.length ? JSON.stringify(out) : null;
+}
 
 function parseGalleryImageUrlsJson(raw: string | null | undefined): string[] | undefined {
   if (raw == null || !String(raw).trim()) return undefined;
@@ -177,6 +233,7 @@ function buildJobListItem(row: {
   estimated_salary: string | null;
   image_url: string | null;
   gallery_image_urls?: string | null;
+  attachment_urls?: string | null;
   job_category_code: number | null;
   hourly_rate_base: unknown;
   is_promoted: boolean;
@@ -198,6 +255,7 @@ function buildJobListItem(row: {
   const duration = storedDuration ?? (computedDuration != null ? String(computedDuration) : undefined);
   const acceptedCount = row.accepted_count ?? 0;
   const galleryUrls = parseGalleryImageUrlsJson(row.gallery_image_urls ?? null);
+  const jobAttachments = parseJobAttachmentsJson(row.attachment_urls ?? null);
   return {
     id: String(row.id),
     job: row.Title,
@@ -217,6 +275,7 @@ function buildJobListItem(row: {
     estimatedSalary: row.estimated_salary ?? undefined,
     imageUrl: row.image_url ?? undefined,
     ...(galleryUrls?.length ? { galleryImageUrls: galleryUrls } : {}),
+    ...(jobAttachments?.length ? { jobAttachments } : {}),
     postedBy: typeof row.posted_by_name === "string" && row.posted_by_name.trim() ? row.posted_by_name.trim() : undefined,
     isPromoted: row.is_promoted,
     jobCategoryCode: row.job_category_code ?? undefined,
@@ -354,6 +413,7 @@ export async function listJobs(userId: string): Promise<{ jobs: JobListItem[] }>
       estimated_salary: j.estimated_salary,
       image_url: j.image_url,
       gallery_image_urls: j.gallery_image_urls ?? null,
+      attachment_urls: j.attachment_urls ?? null,
       job_category_code: j.job_category_code,
       hourly_rate_base: j.hourly_rate_base,
       is_promoted: j.is_promoted ?? false,
@@ -413,6 +473,7 @@ export type CreateJobBody = {
   endTime?: unknown;
   branchId?: unknown;
   galleryImageUrls?: unknown;
+  jobAttachments?: unknown;
 };
 
 export async function createJob(userId: string, body: CreateJobBody): Promise<JobListItem> {
@@ -426,6 +487,7 @@ export async function createJob(userId: string, body: CreateJobBody): Promise<Jo
   const date = String(b.date ?? "");
   const imageUrl = sanitizeJobImageUrl(b.imageUrl);
   const galleryImageUrlsJson = sanitizeGalleryImageUrlsJson(b.galleryImageUrls);
+  const attachmentUrlsJson = sanitizeJobAttachmentsJson(b.jobAttachments);
   const jobCategoryCode = toNumber(b.jobCategoryCode);
   const hourlyRateBase = toNumber(b.hourlyRateBase);
   const raionId = toNumber(b.raionId);
@@ -481,6 +543,7 @@ export async function createJob(userId: string, body: CreateJobBody): Promise<Jo
       estimated_salary: b.estimatedSalary != null ? String(b.estimatedSalary) : null,
       image_url: imageUrl,
       gallery_image_urls: galleryImageUrlsJson,
+      attachment_urls: attachmentUrlsJson,
       job_category_code: jobCategoryCode,
       hourly_rate_base: hourlyRateBase,
       raion_id: raionId,
@@ -535,6 +598,7 @@ export async function createJob(userId: string, body: CreateJobBody): Promise<Jo
     estimated_salary: job.estimated_salary,
     image_url: job.image_url,
     gallery_image_urls: job.gallery_image_urls ?? null,
+    attachment_urls: job.attachment_urls ?? null,
     job_category_code: job.job_category_code,
     hourly_rate_base: job.hourly_rate_base,
     is_promoted: job.is_promoted ?? false,

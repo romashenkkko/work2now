@@ -30,6 +30,17 @@ export function getApiBase(): string {
   return "/api";
 }
 
+/** URL absolut pentru asset-uri `/api/...` (ex. imagini job, atașamente) când API e pe alt port. */
+export function resolveApiAssetUrl(apiPath: string): string {
+  const p = apiPath.startsWith("/") ? apiPath : `/${apiPath}`;
+  const base = getApiBase();
+  if (base.endsWith("/api")) {
+    const root = base.slice(0, -4);
+    return root ? `${root}${p}` : p;
+  }
+  return `${base}${p}`;
+}
+
 function getToken(): string | null {
   if (typeof window === "undefined") return null;
   return localStorage.getItem("token");
@@ -268,6 +279,9 @@ export type JobPayload = {
   /** URL-uri galerie (aceeași sursă ca imageUrl) */
   galleryImageUrls?: string[];
 
+  /** Documente încărcate cu POST /jobs/upload-attachment (url + nume afișat) */
+  jobAttachments?: { url: string; name: string }[];
+
 };
 
 
@@ -305,6 +319,7 @@ export type JobResponse = {
   /** Filială asociată jobului (dacă a fost trimisă la creare) */
   branchId?: string;
   galleryImageUrls?: string[];
+  jobAttachments?: { url: string; name: string }[];
 };
 
 export type StaffApplicationItem = {
@@ -348,6 +363,11 @@ export const jobsApi = {
     const fd = new FormData();
     fd.append("image", file);
     return apiFormData<{ url: string }>("/jobs/upload-image", fd);
+  },
+  uploadJobAttachment: (file: File) => {
+    const fd = new FormData();
+    fd.append("file", file);
+    return apiFormData<{ url: string; originalName: string }>("/jobs/upload-attachment", fd);
   },
   create: (payload: JobPayload) =>
     api<JobResponse>("/jobs", { method: "POST", body: JSON.stringify(payload) }),

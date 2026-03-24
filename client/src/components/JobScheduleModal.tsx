@@ -1,9 +1,25 @@
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState, useEffect, type MouseEvent } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import type { JobRow } from "../pages/DashboardLayout";
-import { Briefcase, Clock, MapPin, Calendar, Banknote, Users, AlertTriangle, Share2 } from "lucide-react";
+import {
+  Briefcase,
+  Clock,
+  MapPin,
+  Calendar,
+  Banknote,
+  Users,
+  AlertTriangle,
+  Share2,
+  ChevronLeft,
+  ChevronRight,
+  X,
+  FileText,
+} from "lucide-react";
+import { resolveApiAssetUrl } from "../api/client";
 import { getBusinessTotal, getStaffNet, roundMoney } from "../utils/salary";
+import { geocodeAddress } from "../utils/geocodeAddress";
+import JobDetailLocationMap from "./JobDetailLocationMap";
 
 const WEEKDAY_KEYS = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"] as const;
 const MONTH_KEYS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"] as const;
@@ -182,20 +198,102 @@ function formatTimeFromIso(iso: string): string {
 
 export default function JobScheduleModal({ open, onClose, job, viewerIsStaff = false, myAppInfo, onCheckIn, onCheckOut, checkInOutLoading, jobApplications = [] }: Props) {
   const { t } = useTranslation();
-  const [galleryLightbox, setGalleryLightbox] = useState<string | null>(null);
+  const [galleryLightboxIndex, setGalleryLightboxIndex] = useState<number | null>(null);
+  const [jobPin, setJobPin] = useState<[number, number] | null>(null);
+  const [jobMapOverlay, setJobMapOverlay] = useState<null | "loading" | "no-token" | "fail">(null);
+
+  const galleryUrls = useMemo(
+    () => (job?.galleryImageUrls ?? []).filter((u) => typeof u === "string" && u.trim() !== ""),
+    [job?.galleryImageUrls]
+  );
+
+  const jobAttachmentItems = useMemo(() => {
+    const raw = job?.jobAttachments;
+    if (!Array.isArray(raw)) return [];
+    return raw.filter(
+      (a): a is { url: string; name: string } =>
+        !!a && typeof a === "object" && typeof (a as { url?: string }).url === "string" && (a as { url: string }).url.trim() !== ""
+    );
+  }, [job?.jobAttachments]);
 
   useEffect(() => {
-    if (!galleryLightbox) return;
+    if (galleryLightboxIndex == null) return;
+    const n = galleryUrls.length;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setGalleryLightbox(null);
+      if (e.key === "Escape") {
+        setGalleryLightboxIndex(null);
+        return;
+      }
+      if (n <= 1) return;
+      if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        setGalleryLightboxIndex((i) => {
+          if (i == null) return null;
+          return i <= 0 ? n - 1 : i - 1;
+        });
+      }
+      if (e.key === "ArrowRight") {
+        e.preventDefault();
+        setGalleryLightboxIndex((i) => {
+          if (i == null) return null;
+          return i >= n - 1 ? 0 : i + 1;
+        });
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [galleryLightbox]);
+  }, [galleryLightboxIndex, galleryUrls.length]);
 
   useEffect(() => {
-    if (!open) setGalleryLightbox(null);
+    if (!open) {
+      setGalleryLightboxIndex(null);
+      setJobPin(null);
+      setJobMapOverlay(null);
+    }
   }, [open]);
+
+  useEffect(() => {
+    if (!open || !job) return;
+
+    const lat = job.checkInLat;
+    const lng = job.checkInLng;
+    if (typeof lat === "number" && typeof lng === "number" && Number.isFinite(lat) && Number.isFinite(lng)) {
+      setJobPin([lat, lng]);
+      setJobMapOverlay(null);
+      return;
+    }
+
+    const addr = job.location?.trim();
+    if (!addr) {
+      setJobPin(null);
+      setJobMapOverlay(null);
+      return;
+    }
+
+    const token = (import.meta.env.VITE_MAPBOX_ACCESS_TOKEN ?? "").trim();
+    if (!token) {
+      setJobPin(null);
+      setJobMapOverlay("no-token");
+      return;
+    }
+
+    setJobMapOverlay("loading");
+    setJobPin(null);
+    let cancelled = false;
+    geocodeAddress(addr, token).then((c) => {
+      if (cancelled) return;
+      if (c) {
+        setJobPin(c);
+        setJobMapOverlay(null);
+      } else {
+        setJobPin(null);
+        setJobMapOverlay("fail");
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, job?.id, job?.location, job?.checkInLat, job?.checkInLng]);
 
   // Lock body scroll when modal is open
   useEffect(() => {
@@ -230,7 +328,14 @@ export default function JobScheduleModal({ open, onClose, job, viewerIsStaff = f
 
   const isJobFull = job && (job.acceptedCount ?? 0) >= (parseInt(String(job.peopleNeeded ?? "1"), 10) || 1);
 
-  const galleryUrls = (job?.galleryImageUrls ?? []).filter((u) => typeof u === "string" && u.trim() !== "");
+  const showJobMapColumn =
+    !!job &&
+    (!!job.location?.trim() ||
+      (typeof job.checkInLat === "number" &&
+        typeof job.checkInLng === "number" &&
+        Number.isFinite(job.checkInLat) &&
+        Number.isFinite(job.checkInLng)));
+
   const backdropStyle =
     job?.imageUrl != null && String(job.imageUrl).trim() !== ""
       ? {
@@ -249,7 +354,7 @@ export default function JobScheduleModal({ open, onClose, job, viewerIsStaff = f
       onClick={onClose}
     >
       <div
-        className="w-full max-w-2xl bg-white rounded-2xl shadow-2xl overflow-hidden max-h-[calc(100vh-3rem)] flex flex-col modal-content-enter"
+        className="w-full max-w-6xl bg-white rounded-2xl shadow-2xl overflow-hidden max-h-[calc(100vh-3rem)] flex flex-col modal-content-enter"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header - shrink-0 */}
@@ -269,8 +374,8 @@ export default function JobScheduleModal({ open, onClose, job, viewerIsStaff = f
           </div>
         </div>
 
-        {/* Body - flex-1 min-h-0 overflow-y-auto overscroll-contain */}
-        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
+        <div className="flex flex-1 min-h-0 flex-col overflow-hidden">
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
           {job && (
             <>
               <div className="p-4 pb-2">
@@ -306,7 +411,8 @@ export default function JobScheduleModal({ open, onClose, job, viewerIsStaff = f
                   </div>
                 </div>
               )}
-              <ul className="space-y-2.5 text-sm text-gray-600">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-stretch lg:gap-4">
+              <ul className="min-w-0 flex-1 space-y-2.5 text-sm text-gray-600">
                 {(job.jobCategoryTitle || job.job) && (
                   <li className="flex items-center gap-2">
                     <Briefcase className="w-4 h-4 text-primary shrink-0" />
@@ -386,18 +492,69 @@ export default function JobScheduleModal({ open, onClose, job, viewerIsStaff = f
                   </li>
                 )}
               </ul>
+              {showJobMapColumn && (
+                <aside
+                  className="flex h-48 w-full shrink-0 flex-col overflow-hidden rounded-xl border border-gray-200 bg-gray-100 sm:h-52 lg:h-auto lg:min-h-[13rem] lg:max-h-[24rem] lg:w-[min(100%,17rem)] lg:shrink-0 xl:w-[18.5rem]"
+                  aria-label={t("dashboard.jobDetailMapTitle")}
+                >
+                  {jobMapOverlay === "loading" && (
+                    <div className="flex flex-1 items-center justify-center p-4 text-center text-sm text-gray-600">
+                      {t("dashboard.jobDetailMapLoading")}
+                    </div>
+                  )}
+                  {jobMapOverlay === "no-token" && (
+                    <div className="flex flex-1 items-center justify-center p-4 text-center text-xs text-gray-600">
+                      {t("dashboard.jobDetailMapNoToken")}
+                    </div>
+                  )}
+                  {jobMapOverlay === "fail" && (
+                    <div className="flex flex-1 items-center justify-center p-4 text-center text-sm text-gray-600">
+                      {t("dashboard.jobDetailMapGeocodeFail")}
+                    </div>
+                  )}
+                  {jobMapOverlay === null && jobPin && (
+                    <JobDetailLocationMap lat={jobPin[0]} lng={jobPin[1]} className="h-full min-h-[11rem] w-full flex-1" />
+                  )}
+                </aside>
+              )}
+              </div>
+              {jobAttachmentItems.length > 0 && (
+                <div className="mt-4 pt-4 border-t border-gray-100">
+                  <h4 className="text-sm font-semibold text-gray-900 mb-2">{t("dashboard.jobDetailAttachmentsTitle")}</h4>
+                  <ul className="space-y-2">
+                    {jobAttachmentItems.map((att, idx) => {
+                      const label =
+                        typeof att.name === "string" && att.name.trim() ? att.name.trim() : att.url.split("/").pop() || att.url;
+                      return (
+                        <li key={`${att.url}-${idx}`}>
+                          <a
+                            href={resolveApiAssetUrl(att.url)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-2 text-sm font-medium text-primary hover:underline break-all"
+                          >
+                            <FileText className="w-4 h-4 shrink-0 text-primary" aria-hidden />
+                            <span>{label}</span>
+                            <span className="text-xs font-normal text-gray-500">({t("dashboard.jobAttachmentOpen")})</span>
+                          </a>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              )}
               {galleryUrls.length > 0 && (
                 <div className="mt-4 pt-4 border-t border-gray-100">
-                  <h4 className="text-sm font-semibold text-gray-900 mb-2">{t("dashboard.jobGalleryModalTitle")}</h4>
-                  <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
-                    {galleryUrls.map((src) => (
+                  <h4 className="text-sm font-semibold text-gray-900 mb-1.5">{t("dashboard.jobGalleryModalTitle")}</h4>
+                  <div className="flex flex-wrap gap-1.5 sm:gap-2">
+                    {galleryUrls.map((src, i) => (
                       <button
-                        key={src}
+                        key={`${i}-${src}`}
                         type="button"
-                        className="relative aspect-square rounded-lg overflow-hidden border border-gray-100 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-primary"
-                        onClick={() => setGalleryLightbox(src)}
+                        className="relative h-14 w-14 sm:h-16 sm:w-16 shrink-0 rounded-md overflow-hidden border border-gray-100 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-primary"
+                        onClick={() => setGalleryLightboxIndex(i)}
                       >
-                        <img src={src} alt="" className="w-full h-full object-cover" />
+                        <img src={src} alt="" className="h-full w-full object-cover" />
                       </button>
                     ))}
                   </div>
@@ -430,7 +587,6 @@ export default function JobScheduleModal({ open, onClose, job, viewerIsStaff = f
               })()}
               </div>
 
-              {/* Dates list - part of scrollable body */}
               <div className="px-4 pb-4">
               {dates.length > 2 && (
                 <div className="flex gap-3 p-3 mb-4 rounded-xl bg-amber-50 border border-amber-200">
@@ -506,24 +662,95 @@ export default function JobScheduleModal({ open, onClose, job, viewerIsStaff = f
               </div>
             </>
           )}
+          </div>
         </div>
       </div>
     </div>
   );
 
+  const lightboxOpen = galleryLightboxIndex != null && galleryUrls.length > 0;
+  const lightboxSrc =
+    lightboxOpen && galleryLightboxIndex != null ? galleryUrls[galleryLightboxIndex] ?? null : null;
+  const canGalleryNav = galleryUrls.length > 1;
+
+  const goGalleryPrev = (e?: MouseEvent) => {
+    e?.stopPropagation();
+    setGalleryLightboxIndex((i) => {
+      if (i == null) return null;
+      const n = galleryUrls.length;
+      if (n <= 1) return i;
+      return i <= 0 ? n - 1 : i - 1;
+    });
+  };
+
+  const goGalleryNext = (e?: MouseEvent) => {
+    e?.stopPropagation();
+    setGalleryLightboxIndex((i) => {
+      if (i == null) return null;
+      const n = galleryUrls.length;
+      if (n <= 1) return i;
+      return i >= n - 1 ? 0 : i + 1;
+    });
+  };
+
   const lightbox =
-    galleryLightbox != null ? (
+    lightboxOpen && lightboxSrc ? (
       <div
-        className="fixed inset-0 z-[90] flex items-center justify-center p-4 bg-black/80"
-        onClick={() => setGalleryLightbox(null)}
-        role="presentation"
+        className="fixed inset-0 z-[90] flex items-center justify-center bg-black/90 p-3 sm:p-8"
+        onClick={() => setGalleryLightboxIndex(null)}
+        role="dialog"
+        aria-modal="true"
+        aria-label={t("dashboard.jobGalleryModalTitle")}
       >
-        <img
-          src={galleryLightbox}
-          alt=""
-          className="max-w-full max-h-[90vh] object-contain rounded-lg shadow-2xl"
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            setGalleryLightboxIndex(null);
+          }}
+          className="absolute top-3 right-3 z-10 p-2 rounded-full bg-white/10 text-white hover:bg-white/20 transition-colors"
+          aria-label={t("dashboard.close")}
+        >
+          <X className="w-6 h-6" />
+        </button>
+
+        {canGalleryNav && (
+          <button
+            type="button"
+            onClick={goGalleryPrev}
+            className="absolute left-1 sm:left-3 top-1/2 -translate-y-1/2 z-10 p-2 sm:p-3 rounded-full bg-white/15 text-white hover:bg-white/25 transition-colors"
+            aria-label={t("dashboard.galleryPrev")}
+          >
+            <ChevronLeft className="w-8 h-8 sm:w-10 sm:h-10" strokeWidth={2} />
+          </button>
+        )}
+        {canGalleryNav && (
+          <button
+            type="button"
+            onClick={goGalleryNext}
+            className="absolute right-1 sm:right-3 top-1/2 -translate-y-1/2 z-10 p-2 sm:p-3 rounded-full bg-white/15 text-white hover:bg-white/25 transition-colors"
+            aria-label={t("dashboard.galleryNext")}
+          >
+            <ChevronRight className="w-8 h-8 sm:w-10 sm:h-10" strokeWidth={2} />
+          </button>
+        )}
+
+        <div
+          className="flex max-h-[90vh] max-w-[min(100vw-5rem,1200px)] flex-col items-center justify-center"
           onClick={(e) => e.stopPropagation()}
-        />
+        >
+          <img
+            src={lightboxSrc}
+            alt=""
+            className="max-h-[82vh] max-w-full object-contain rounded-lg shadow-2xl select-none"
+            draggable={false}
+          />
+          {canGalleryNav && galleryLightboxIndex != null && (
+            <p className="mt-3 text-sm font-medium text-white/90 tabular-nums">
+              {galleryLightboxIndex + 1} / {galleryUrls.length}
+            </p>
+          )}
+        </div>
       </div>
     ) : null;
 

@@ -66,3 +66,48 @@ export const uploadJobImage = multer({
     }
   },
 }).single("image");
+
+// --- Documente atașate la job (PDF, Word, Excel, imagini) ---
+const JOB_ATTACHMENTS_DIR = path.join(__dirname, "../../uploads/job-attachments");
+if (!fs.existsSync(JOB_ATTACHMENTS_DIR)) {
+  fs.mkdirSync(JOB_ATTACHMENTS_DIR, { recursive: true });
+}
+
+const jobAttachmentStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => cb(null, JOB_ATTACHMENTS_DIR),
+  filename: (_req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase();
+    const allowed = [".pdf", ".doc", ".docx", ".png", ".jpg", ".jpeg", ".xls", ".xlsx"];
+    const safeExt = allowed.includes(ext) ? ext : ".bin";
+    cb(null, `${randomUUID()}${safeExt}`);
+  },
+});
+
+const JOB_ATTACHMENT_MIMES = new Set([
+  "application/pdf",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "image/png",
+  "image/jpeg",
+  "application/vnd.ms-excel",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+]);
+
+const JOB_ATTACHMENT_MAX = 15 * 1024 * 1024; // 15 MB
+
+export const uploadJobAttachment = multer({
+  storage: jobAttachmentStorage,
+  limits: { fileSize: JOB_ATTACHMENT_MAX },
+  fileFilter: (_req, file, cb) => {
+    if (JOB_ATTACHMENT_MIMES.has(file.mimetype)) {
+      cb(null, true);
+      return;
+    }
+    const ext = path.extname(file.originalname).toLowerCase();
+    if ([".pdf", ".doc", ".docx", ".png", ".jpg", ".jpeg", ".xls", ".xlsx"].includes(ext)) {
+      cb(null, true);
+      return;
+    }
+    cb(new Error("Tip fișier neacceptat (PDF, Word, Excel, PNG, JPEG)."));
+  },
+}).single("file");
