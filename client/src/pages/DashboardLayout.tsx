@@ -352,25 +352,37 @@ export default function DashboardLayout() {
     [t]
   );
 
-  const applyBranchToPostForm = useCallback((branch: Branch) => {
-    setJobAddress((branch.address || "").trim());
-    setLocalitate((branch.city || "").trim());
-    const raw = (branch.phoneNumber || "").replace(/\s/g, "");
-    if (!raw) {
-      setPhoneCountryCode("+373");
-      setStaffPhoneNumber("");
-      return;
-    }
-    const sortedCodes = [...COUNTRY_CODES].sort((a, b) => b.code.length - a.code.length);
-    const found = sortedCodes.find((c) => raw.startsWith(c.code));
-    if (found) {
-      setPhoneCountryCode(found.code);
-      setStaffPhoneNumber(raw.slice(found.code.length));
-    } else {
-      setPhoneCountryCode("+373");
-      setStaffPhoneNumber(raw.replace(/^\+/, ""));
-    }
-  }, []);
+  const applyBranchToPostForm = useCallback(
+    (branch: Branch) => {
+      setJobAddress((branch.address || "").trim());
+      setLocalitate((branch.city || "").trim());
+      const rid = branch.raionId;
+      if (rid != null && rid > 0) {
+        setSelectedRaionId(rid);
+        const rname = raioane.find((r) => r.id === rid)?.name;
+        setRaionSearch(rname ?? "");
+      } else {
+        setSelectedRaionId(null);
+        setRaionSearch("");
+      }
+      const raw = (branch.phoneNumber || "").replace(/\s/g, "");
+      if (!raw) {
+        setPhoneCountryCode("+373");
+        setStaffPhoneNumber("");
+        return;
+      }
+      const sortedCodes = [...COUNTRY_CODES].sort((a, b) => b.code.length - a.code.length);
+      const found = sortedCodes.find((c) => raw.startsWith(c.code));
+      if (found) {
+        setPhoneCountryCode(found.code);
+        setStaffPhoneNumber(raw.slice(found.code.length));
+      } else {
+        setPhoneCountryCode("+373");
+        setStaffPhoneNumber(raw.replace(/^\+/, ""));
+      }
+    },
+    [raioane]
+  );
   const phoneCountryRef = useRef<HTMLDivElement>(null);
   const [staffCountSelect, setStaffCountSelect] = useState("1");
   const [staffDropdownOpen, setStaffDropdownOpen] = useState(false);
@@ -617,6 +629,8 @@ export default function DashboardLayout() {
           const bid =
             tpl?.branchId && active.some((b) => b.id === tpl.branchId) ? tpl.branchId : active[0].id;
           setSelectedPostBranchId(bid);
+          const br = active.find((b) => b.id === bid);
+          if (br) applyBranchToPostForm(br);
         } else {
           const first = active[0];
           setSelectedPostBranchId(first.id);

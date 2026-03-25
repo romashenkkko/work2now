@@ -82,14 +82,17 @@ model branches {
   City                 String            @db.VarChar(120)
   Country              String            @db.VarChar(120)
   PhoneNumber          String            @db.VarChar(50)
+  RaionId              Int?              @db.UnsignedInt
   IsActive             Boolean           @default(true)
   CreatedAt            DateTime          @db.DateTime(0)
   ContactPersonName    String            @default("") @db.VarChar(100)
   ContactPersonSurname String            @default("") @db.VarChar(100)
   business_profiles    business_profiles @relation(fields: [BusinessProfileId], references: [Id], onDelete: Cascade, onUpdate: Restrict, map: "fk_branches_businessprofileid_business_profiles_id")
+  raioane              raioane?          @relation(fields: [RaionId], references: [id], onDelete: SetNull, onUpdate: Restrict, map: "fk_branches_raionid_raioane_id")
   jobs                 jobs[]
 
   @@index([BusinessProfileId], map: "idx_branches_business_profile_id")
+  @@index([RaionId], map: "idx_branches_raion_id")
 }
 
 model business_profiles {
@@ -312,6 +315,7 @@ model raioane {
   name       String       @unique(map: "name") @db.VarChar(100)
   type       raioane_type @default(raion)
   created_at DateTime     @default(now()) @db.Timestamp(0)
+  branches   branches[]
   jobs       jobs[]
 
   @@index([name], map: "idx_raioane_name")

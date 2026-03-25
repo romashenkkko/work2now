@@ -179,6 +179,7 @@ export const authApi = {
       city: string;
       country: string;
       phoneNumber: string;
+      raionId?: number | null;
     };
   }) =>
     api<{ message: string }>("/auth/register", { method: "POST", body: JSON.stringify(body) }),
@@ -501,18 +502,37 @@ export type Branch = {
   city: string;
   country: string;
   phoneNumber: string;
+  raionId: number | null;
   isActive: boolean;
   createdAt: string;
 };
 
 export const branchesApi = {
   list: () => api<{ branches: Branch[] }>("/branches"),
-  create: (data: { name: string; address: string; city: string; country?: string; phoneNumber: string }) =>
+  create: (data: {
+    name: string;
+    address: string;
+    city: string;
+    country?: string;
+    phoneNumber: string;
+    raionId: number;
+  }) =>
     api<Branch>("/branches", {
       method: "POST",
       body: JSON.stringify(data),
     }),
-  update: (id: string, data: { name?: string; address?: string; city?: string; country?: string; phoneNumber?: string; isActive?: boolean }) =>
+  update: (
+    id: string,
+    data: {
+      name?: string;
+      address?: string;
+      city?: string;
+      country?: string;
+      phoneNumber?: string;
+      raionId?: number;
+      isActive?: boolean;
+    }
+  ) =>
     api<Branch>(`/branches/${id}`, {
       method: "PATCH",
       body: JSON.stringify(data),

@@ -371,6 +371,20 @@ export async function initDatabase(): Promise<void> {
     // If table existed before, ensure new columns exist (idempotent)
     await ensureColumn(conn, "branches", "ContactPersonName", "VARCHAR(100) NOT NULL DEFAULT ''");
     await ensureColumn(conn, "branches", "ContactPersonSurname", "VARCHAR(100) NOT NULL DEFAULT ''");
+    await ensureColumn(conn, "branches", "RaionId", "INT UNSIGNED NULL");
+
+    if (!(await fkExists(conn, "branches", "fk_branches_raionid_raioane_id"))) {
+      try {
+        await conn.query(`
+          ALTER TABLE \`branches\`
+          ADD CONSTRAINT \`fk_branches_raionid_raioane_id\`
+          FOREIGN KEY (\`RaionId\`) REFERENCES \`raioane\`(\`id\`)
+          ON DELETE SET NULL
+        `);
+      } catch (e) {
+        console.warn("[DB] Could not add FK fk_branches_raionid_raioane_id:", e);
+      }
+    }
 
     // Experiences
     await conn.query(`

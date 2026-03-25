@@ -366,6 +366,9 @@ export async function registerUser(input: RegisterInput) {
         });
 
         if (input.branch) {
+          const rid = input.branch.raionId;
+          const raionId =
+            rid != null && Number.isFinite(Number(rid)) && Number(rid) > 0 ? Number(rid) : null;
           await tx.branches.create({
             data: {
               Id: randomUUID(),
@@ -375,6 +378,7 @@ export async function registerUser(input: RegisterInput) {
               City: input.branch.city!.trim(),
               Country: input.branch.country?.trim() || "Moldova",
               PhoneNumber: input.branch.phoneNumber!.trim(),
+              RaionId: raionId,
               ContactPersonName: input.businessProfile.contactFirstName!.trim(),
               ContactPersonSurname: input.businessProfile.contactLastName!.trim(),
               IsActive: true,

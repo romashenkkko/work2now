@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
@@ -6,6 +6,7 @@ import { authApi, jobsApi } from "../api/client";
 import AddressPickerModal from "../components/AddressPickerModal";
 import DatePicker from "../components/DatePicker";
 import { TERMS_AND_CONDITIONS_RO, TERMS_AND_CONDITIONS_EN } from "../content/termsAndConditions";
+import { foldForSearch } from "../utils/foldForSearch";
 
 /** 0 = none, 1 = weak, 2 = fair, 3 = good, 4 = strong */
 function getPasswordStrength(password: string): 0 | 1 | 2 | 3 | 4 {
@@ -73,8 +74,15 @@ export default function Register() {
   // Raion dropdown for customer registration
   const [raioane, setRaioane] = useState<Array<{ id: number; name: string; type: string }>>([]);
   const [selectedRaionId, setSelectedRaionId] = useState<number | null>(null);
+  const [raionSearch, setRaionSearch] = useState("");
   const [raionDropdownOpen, setRaionDropdownOpen] = useState(false);
   const raionDropdownRef = useRef<HTMLDivElement>(null);
+
+  const filteredRegisterRaioane = useMemo(() => {
+    if (!raionSearch.trim()) return raioane;
+    const fq = foldForSearch(raionSearch);
+    return raioane.filter((r) => foldForSearch(r.name).includes(fq));
+  }, [raioane, raionSearch]);
   const [showBranchAddressModal, setShowBranchAddressModal] = useState(false);
 
   // OTP verification state
@@ -734,49 +742,65 @@ export default function Register() {
                 </button>
                 <p className="mt-1 text-xs text-gray-500">{t("profile.branches.addressPickerHint")}</p>
               </div>
-              <label>
-                Raion <span className="text-red-500">*</span>
-                <div className="auth-custom-dropdown" ref={raionDropdownRef}>
-                  <button
-                    type="button"
-                    className={`auth-custom-dropdown__trigger ${raionDropdownOpen ? "is-open" : ""}`}
-                    onClick={() => setRaionDropdownOpen((v) => !v)}
-                    aria-haspopup="listbox"
+              <div className="grid gap-1.5">
+                <span className="font-semibold text-[#34324a] text-[0.9rem]">
+                  {t("dashboard.raionLabel")} <span className="text-red-500">*</span>
+                </span>
+                <div className="relative" ref={raionDropdownRef}>
+                  <input
+                    type="text"
+                    value={raionSearch}
+                    onChange={(e) => {
+                      setRaionSearch(e.target.value);
+                      setRaionDropdownOpen(true);
+                    }}
+                    onFocus={() => setRaionDropdownOpen(true)}
+                    placeholder={t("dashboard.raionPlaceholder")}
+                    className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:ring-2 focus:ring-primary focus:border-primary transition-colors bg-white/80"
+                    aria-autocomplete="list"
                     aria-expanded={raionDropdownOpen}
-                  >
-                    <span className={selectedRaionId ? "" : "opacity-60"}>
-                      {selectedRaionId 
-                        ? raioane.find((r) => r.id === selectedRaionId)?.name || "Selectați raionul"
-                        : "Selectează"}
-                    </span>
-                    <svg className="auth-custom-dropdown__chevron" viewBox="0 0 24 24" fill="none" aria-hidden>
-                      <path d="M7 10l5 5 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                    </svg>
-                  </button>
-                  {raionDropdownOpen && (
-                    <ul className="auth-custom-dropdown__menu" role="listbox" aria-label="Raion">
-                      {raioane.map((raion) => (
-                        <li key={raion.id}>
-                          <button
-                            type="button"
-                            className={`auth-custom-dropdown__item ${selectedRaionId === raion.id ? "is-selected" : ""}`}
-                            onClick={(e) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              setSelectedRaionId(raion.id);
-                              setRaionDropdownOpen(false);
-                            }}
-                            role="option"
-                            aria-selected={selectedRaionId === raion.id}
-                          >
-                            {raion.name}
-                          </button>
-                        </li>
+                    aria-controls="register-raion-suggestions"
+                  />
+                  {raionDropdownOpen && filteredRegisterRaioane.length > 0 && (
+                    <div
+                      id="register-raion-suggestions"
+                      className="absolute left-0 right-0 top-full z-50 mt-1.5 max-h-64 overflow-y-auto rounded-xl border border-gray-200 bg-white shadow-lg py-1.5"
+                      role="listbox"
+                      aria-label={t("dashboard.raionLabel")}
+                    >
+                      {filteredRegisterRaioane.map((raion) => (
+                        <button
+                          key={raion.id}
+                          type="button"
+                          role="option"
+                          aria-selected={selectedRaionId === raion.id}
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                            setSelectedRaionId(raion.id);
+                            setRaionSearch(raion.name);
+                            setRaionDropdownOpen(false);
+                          }}
+                          className={`block w-full text-left px-4 py-2.5 text-sm font-medium transition-colors ${
+                            selectedRaionId === raion.id
+                              ? "bg-primary/10 text-primary"
+                              : "text-gray-700 hover:bg-gray-50"
+                          }`}
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <span>{raion.name}</span>
+                            <span className="text-xs text-gray-500 capitalize shrink-0">{raion.type}</span>
+                          </div>
+                        </button>
                       ))}
-                    </ul>
+                    </div>
                   )}
                 </div>
-              </label>
+                {selectedRaionId ? (
+                  <p className="text-xs text-gray-500">
+                    {t("dashboard.selectedRaion")}: {raioane.find((r) => r.id === selectedRaionId)?.name}
+                  </p>
+                ) : null}
+              </div>
               <div className="auth-field-row auth-field-row--address">
                 <label>
                   Oraș
