@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { authApi, jobsApi } from "../api/client";
+import AddressPickerModal from "../components/AddressPickerModal";
 import DatePicker from "../components/DatePicker";
 import { TERMS_AND_CONDITIONS_RO, TERMS_AND_CONDITIONS_EN } from "../content/termsAndConditions";
 
@@ -73,6 +75,7 @@ export default function Register() {
   const [selectedRaionId, setSelectedRaionId] = useState<number | null>(null);
   const [raionDropdownOpen, setRaionDropdownOpen] = useState(false);
   const raionDropdownRef = useRef<HTMLDivElement>(null);
+  const [showBranchAddressModal, setShowBranchAddressModal] = useState(false);
 
   // OTP verification state
   const [otpStep, setOtpStep] = useState<"form" | "otp">("form");
@@ -711,16 +714,26 @@ export default function Register() {
                   placeholder={t("auth.branchNamePlaceholder")}
                 />
               </label>
-              <label>
-                {t("auth.branchAddress")}
-                <input
-                  type="text"
-                  value={branchAddress}
-                  onChange={(e) => setBranchAddress(e.target.value)}
-                  required
-                  placeholder={t("auth.branchAddressPlaceholder")}
-                />
-              </label>
+              <div className="grid gap-1.5">
+                <span className="font-semibold text-[#34324a] text-[0.9rem]">
+                  {t("auth.branchAddress")}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setShowBranchAddressModal(true)}
+                  className="w-full px-4 py-2.5 rounded-xl border-2 border-dashed border-gray-300 bg-white text-left text-sm font-medium text-gray-700 hover:border-primary/40 hover:bg-primary/5 transition-colors inline-flex items-center justify-center gap-2"
+                >
+                  <svg className="w-5 h-5 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  </svg>
+                  {branchAddress.trim() ? (
+                    <span className="truncate flex-1 text-left">{branchAddress}</span>
+                  ) : (
+                    <span>{t("dashboard.addAddress")}</span>
+                  )}
+                </button>
+                <p className="mt-1 text-xs text-gray-500">{t("profile.branches.addressPickerHint")}</p>
+              </div>
               <label>
                 Raion <span className="text-red-500">*</span>
                 <div className="auth-custom-dropdown" ref={raionDropdownRef}>
@@ -931,6 +944,22 @@ export default function Register() {
         <p className="auth-link">
           <Link to="/">{t("auth.backToSite")}</Link>
         </p>
+
+        {role === "customer" &&
+          createPortal(
+            <AddressPickerModal
+              open={showBranchAddressModal}
+              onClose={() => setShowBranchAddressModal(false)}
+              onConfirm={(address) => {
+                setBranchAddress(address);
+                setShowBranchAddressModal(false);
+              }}
+              initialAddress={branchAddress}
+              defaultRadiusM={200}
+              purpose="branch"
+            />,
+            document.body
+          )}
       </div>
     </div>
   );
