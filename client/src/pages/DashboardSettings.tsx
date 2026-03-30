@@ -25,6 +25,7 @@ const LANGUAGES = [
   { code: "en", label: "English" },
   { code: "ru", label: "Русский" },
 ] as const;
+const SUPPORT_AVATAR_URL = "/Illustration/SupportAvatar.png";
 
 type Section = "change-password" | "change-language" | "account-privacy" | "faq" | "contact" | "job-preferences" | "profile-info" | "branches" | "experiences";
 
@@ -113,6 +114,8 @@ export default function DashboardSettings() {
   const [showConfirmPw, setShowConfirmPw] = useState(false);
   const [passwordMessage, setPasswordMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [passwordLoading, setPasswordLoading] = useState(false);
+  const userRole = user?.role?.toLowerCase?.().trim?.() ?? "";
+  const profileAvatar = userRole === "support" ? SUPPORT_AVATAR_URL : user?.avatar || "/Illustration/AvatarWhiteGuy.png";
 
   const [contactName, setContactName] = useState("");
   const [contactEmail, setContactEmail] = useState("");
@@ -170,9 +173,11 @@ export default function DashboardSettings() {
         </div>
         <div className="flex flex-shrink-0 items-center gap-3">
           <img
-            src={user?.avatar || "/Illustration/AvatarWhiteGuy.png"}
+            src={profileAvatar}
             alt=""
-            className="w-12 h-12 rounded-full object-cover ring-2 ring-white shadow-md"
+            className={`w-12 h-12 rounded-full object-cover ring-2 ring-white shadow-md ${
+              userRole === "support" ? "object-[center_82%]" : ""
+            }`}
           />
           <div className="min-w-0 hidden sm:block">
             <p className="font-semibold text-gray-900 truncate">{user?.name ?? ""}</p>
@@ -597,6 +602,7 @@ function ProfileInfoSection({
   avatarOptions: string[];
 }) {
   const { user, setUser } = useAuth();
+  const isSupportRole = (user?.role ?? "").toLowerCase().trim() === "support";
   const [name, setName] = useState(user?.name ?? "");
   const [avatar, setAvatar] = useState<string | null>(user?.avatar ?? null);
   const [saving, setSaving] = useState(false);
@@ -604,10 +610,14 @@ function ProfileInfoSection({
 
   // Sincronizează avatarul din context când user se actualizează (ex. după login/refresh)
   useEffect(() => {
+    if (isSupportRole) {
+      setAvatar(SUPPORT_AVATAR_URL);
+      return;
+    }
     if (user?.avatar != null) setAvatar(user.avatar);
-  }, [user?.avatar]);
+  }, [user?.avatar, isSupportRole]);
 
-  const currentAvatar = avatar || avatarOptions[0];
+  const currentAvatar = isSupportRole ? SUPPORT_AVATAR_URL : avatar || avatarOptions[0];
 
   const handleSave = async () => {
     const nameTrim = name.trim();
@@ -618,8 +628,8 @@ function ProfileInfoSection({
     setSaving(true);
     setMessage(null);
     try {
-      const updated = await authApi.updateProfile({ name: nameTrim, avatar: avatar || undefined });
-      setUser(updated);
+      const updated = await authApi.updateProfile({ name: nameTrim, avatar: isSupportRole ? SUPPORT_AVATAR_URL : avatar || undefined });
+      setUser(isSupportRole ? { ...updated, avatar: SUPPORT_AVATAR_URL } : updated);
       setMessage({ type: "success", text: t("profile.profileSaved") });
     } catch (e) {
       setMessage({ type: "error", text: (e as Error).message });
@@ -650,14 +660,22 @@ function ProfileInfoSection({
             onError={(e) => { (e.target as HTMLImageElement).src = avatarOptions[0]; }}
           />
           <span className="text-xs text-gray-500">{t("profile.profilePicture")}</span>
-          <label className="cursor-pointer inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm font-medium text-primary border border-primary/30 hover:bg-primary/5 transition-colors">
+          <label
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm font-medium border transition-colors ${
+              isSupportRole
+                ? "cursor-not-allowed text-gray-400 border-gray-200 bg-gray-50"
+                : "cursor-pointer text-primary border-primary/30 hover:bg-primary/5"
+            }`}
+          >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
-            {t("profile.uploadPersonalPhoto")}
+            {isSupportRole ? t("profile.avatarLocked", "Avatar blocat pentru support") : t("profile.uploadPersonalPhoto")}
             <input
               type="file"
               accept="image/*"
               className="sr-only"
+              disabled={isSupportRole}
               onChange={(e) => {
+                if (isSupportRole) return;
                 const file = e.target.files?.[0];
                 if (!file || !file.type.startsWith("image/")) return;
                 const maxSize = 800 * 1024;
@@ -704,20 +722,24 @@ function ProfileInfoSection({
       <div className="mb-6">
         <h3 className="text-sm font-medium text-gray-900 mb-2">{t("profile.chooseAvatar")}</h3>
         <p className="text-xs text-gray-500 mb-2">{t("profile.chooseAvatarOrUpload")}</p>
-        <div className="flex flex-wrap gap-2">
-          {avatarOptions.map((src) => (
-            <button
-              key={src}
-              type="button"
-              onClick={() => { setAvatar(src); setMessage(null); }}
-              className={`w-12 h-12 rounded-full overflow-hidden border-2 transition-colors flex-shrink-0 ${
-                avatar === src ? "border-primary ring-2 ring-primary/30" : "border-gray-200 hover:border-gray-300"
-              }`}
-            >
-              <img src={src} alt="" className="w-full h-full object-cover" />
-            </button>
-          ))}
-        </div>
+        {isSupportRole ? (
+          <p className="text-xs text-gray-500">{t("profile.avatarLocked", "Avatar blocat pentru support")}</p>
+        ) : (
+          <div className="flex flex-wrap gap-2">
+            {avatarOptions.map((src) => (
+              <button
+                key={src}
+                type="button"
+                onClick={() => { setAvatar(src); setMessage(null); }}
+                className={`w-12 h-12 rounded-full overflow-hidden border-2 transition-colors flex-shrink-0 ${
+                  avatar === src ? "border-primary ring-2 ring-primary/30" : "border-gray-200 hover:border-gray-300"
+                }`}
+              >
+                <img src={src} alt="" className="w-full h-full object-cover" />
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {message && (

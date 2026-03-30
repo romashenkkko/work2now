@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "../hooks/useAuth";
 import { authApi } from "../api/client";
+import { useTranslation } from "react-i18next";
 
 type StaffRow = {
   id: string;
@@ -43,17 +44,80 @@ type ActivityLogRow = {
   summary?: string | null;
 };
 
+type SupportMetrics = {
+  kpi: {
+    openCount: number;
+    acceptedCount: number;
+    closedCount: number;
+    waitingUserCount: number;
+    waitingSupportCount: number;
+    slaBreachedCount: number;
+    firstResponseAvgMinutes: number;
+    resolutionAvgMinutes: number;
+    reopenRate: number;
+    csatAvg: number;
+    csatResponses: number;
+    escalatedCount: number;
+    reassignedCount: number;
+    highPriorityOpenCount: number;
+  };
+  topAgents: Array<{ supportEmail: string; closedCount: number }>;
+  slaMinutes: number;
+};
+
+function parseFilterDate(value: string, endOfDay = false): number | null {
+  const raw = String(value ?? "").trim();
+  if (!raw) return null;
+  // Accept both yyyy-mm-dd and dd/mm/yyyy
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+    const iso = `${raw}T${endOfDay ? "23:59:59.999" : "00:00:00"}`;
+    const ts = new Date(iso).getTime();
+    return Number.isFinite(ts) ? ts : null;
+  }
+  if (/^\d{2}\/\d{2}\/\d{4}$/.test(raw)) {
+    const [dd, mm, yyyy] = raw.split("/");
+    const iso = `${yyyy}-${mm}-${dd}T${endOfDay ? "23:59:59.999" : "00:00:00"}`;
+    const ts = new Date(iso).getTime();
+    return Number.isFinite(ts) ? ts : null;
+  }
+  return null;
+}
+
+function parseToDate(value: string): Date | null {
+  const raw = String(value ?? "").trim();
+  if (!raw) return null;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+    const d = new Date(`${raw}T00:00:00`);
+    return Number.isFinite(d.getTime()) ? d : null;
+  }
+  if (/^\d{2}\/\d{2}\/\d{4}$/.test(raw)) {
+    const [dd, mm, yyyy] = raw.split("/");
+    const d = new Date(`${yyyy}-${mm}-${dd}T00:00:00`);
+    return Number.isFinite(d.getTime()) ? d : null;
+  }
+  return null;
+}
+
+function formatDateDdMmYyyy(date: Date): string {
+  const dd = String(date.getDate()).padStart(2, "0");
+  const mm = String(date.getMonth() + 1).padStart(2, "0");
+  const yyyy = date.getFullYear();
+  return `${dd}/${mm}/${yyyy}`;
+}
+
 function SectionTitle({ title }: { title: string }) {
   return <h2 className="text-base font-semibold text-gray-900">{title}</h2>;
 }
 
 export default function DashboardHomeSupport() {
   const { user } = useAuth();
+  const { t } = useTranslation();
   const role = user?.role?.toLowerCase();
 
   const [staff, setStaff] = useState<StaffRow[]>([]);
   const [customers, setCustomers] = useState<CustomerRow[]>([]);
   const [logs, setLogs] = useState<ActivityLogRow[]>([]);
+  const [metrics, setMetrics] = useState<SupportMetrics | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -71,6 +135,20 @@ export default function DashboardHomeSupport() {
   });
 
   const [customerPanelOpen, setCustomerPanelOpen] = useState(false);
+  const [logsPanelOpen, setLogsPanelOpen] = useState(true);
+  const [logsActorFilter, setLogsActorFilter] = useState("all");
+  const [logsActionFilter, setLogsActionFilter] = useState("all");
+  const [logsDateFrom, setLogsDateFrom] = useState("");
+  const [logsDateTo, setLogsDateTo] = useState("");
+  const [logsActorOpen, setLogsActorOpen] = useState(false);
+  const [logsActionOpen, setLogsActionOpen] = useState(false);
+  const [logsDatePickerOpen, setLogsDatePickerOpen] = useState<"from" | "to" | null>(null);
+  const [logsCalendarMonth, setLogsCalendarMonth] = useState<Date>(() => new Date());
+  const [logsDatePickerPos, setLogsDatePickerPos] = useState<{ top: number; left: number } | null>(null);
+  const logsActorRef = useRef<HTMLDivElement | null>(null);
+  const logsActionRef = useRef<HTMLDivElement | null>(null);
+  const logsDateFromRef = useRef<HTMLDivElement | null>(null);
+  const logsDateToRef = useRef<HTMLDivElement | null>(null);
   const [customerMode, setCustomerMode] = useState<"create" | "edit">("create");
   const [customerForm, setCustomerForm] = useState({
     id: "",
@@ -94,14 +172,16 @@ export default function DashboardHomeSupport() {
     setLoading(true);
     setError(null);
     try {
-      const [staffData, customerData, logsData] = await Promise.all([
+      const [staffData, customerData, logsData, metricsData] = await Promise.all([
         authApi.supportListUsers("staff"),
         authApi.supportListUsers("customer"),
         authApi.supportGetLogs(200, 0),
+        authApi.supportChatMetrics(),
       ]);
       setStaff((staffData as any).users ?? []);
       setCustomers((customerData as any).users ?? []);
       setLogs((logsData as any).logs ?? []);
+      setMetrics((metricsData as SupportMetrics) ?? null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Eroare la încărcare");
     } finally {
@@ -288,6 +368,115 @@ export default function DashboardHomeSupport() {
 
   const staffRows = useMemo(() => staff ?? [], [staff]);
   const customerRows = useMemo(() => customers ?? [], [customers]);
+  const logsActorOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const l of logs) {
+      const actor = String(l.actorEmail ?? "").trim();
+      if (actor) set.add(actor);
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [logs]);
+  const logsActionOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const l of logs) {
+      const action = String(l.actionType ?? "").trim();
+      if (action) set.add(action);
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [logs]);
+  const filteredLogs = useMemo(() => {
+    const fromTs = parseFilterDate(logsDateFrom, false);
+    const toTs = parseFilterDate(logsDateTo, true);
+    return logs.filter((l) => {
+      if (logsActorFilter !== "all" && String(l.actorEmail ?? "") !== logsActorFilter) return false;
+      if (logsActionFilter !== "all" && String(l.actionType ?? "") !== logsActionFilter) return false;
+      const ts = l.createdAt ? new Date(l.createdAt).getTime() : NaN;
+      if (fromTs != null && Number.isFinite(ts) && ts < fromTs) return false;
+      if (toTs != null && Number.isFinite(ts) && ts > toTs) return false;
+      return true;
+    });
+  }, [logs, logsActorFilter, logsActionFilter, logsDateFrom, logsDateTo]);
+  const exportLogsCsv = () => {
+    const rows = filteredLogs.map((l) => ({
+      timp: l.createdAt ? new Date(l.createdAt).toLocaleString("ro-MD") : "—",
+      actor: l.actorEmail ?? "—",
+      actiune: l.actionType ?? "—",
+      tinta: `${l.staffName ? `Staff: ${l.staffName}` : ""}${l.jobTitle ? ` ${l.jobTitle}` : ""}${l.targetJobId != null ? ` (job #${l.targetJobId})` : ""}${l.targetApplicationId != null ? ` (app #${l.targetApplicationId})` : ""}`.trim() || "—",
+      rezumat: l.summary ?? "—",
+    }));
+    const escape = (v: string) => `"${String(v ?? "").replace(/"/g, "\"\"")}"`;
+    const header = ["Timp", "Actor", "Actiune", "Tinta", "Rezumat"];
+    const csv = [header.map(escape).join(","), ...rows.map((r) => [r.timp, r.actor, r.actiune, r.tinta, r.rezumat].map(escape).join(","))].join("\n");
+    const blob = new Blob([`\uFEFF${csv}`], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `support_logs_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+  const calendarMonthStart = useMemo(
+    () => new Date(logsCalendarMonth.getFullYear(), logsCalendarMonth.getMonth(), 1),
+    [logsCalendarMonth]
+  );
+  const calendarCells = useMemo(() => {
+    const start = new Date(calendarMonthStart);
+    const firstWeekdayMondayBased = (start.getDay() + 6) % 7; // Mon=0
+    start.setDate(start.getDate() - firstWeekdayMondayBased);
+    return Array.from({ length: 42 }, (_, i) => {
+      const d = new Date(start);
+      d.setDate(start.getDate() + i);
+      return d;
+    });
+  }, [calendarMonthStart]);
+  const fromDateObj = useMemo(() => parseToDate(logsDateFrom), [logsDateFrom]);
+  const toDateObj = useMemo(() => parseToDate(logsDateTo), [logsDateTo]);
+  const openDatePicker = (kind: "from" | "to", currentValue: string, anchor: HTMLElement | null) => {
+    const seed = parseToDate(currentValue) ?? new Date();
+    setLogsCalendarMonth(new Date(seed.getFullYear(), seed.getMonth(), 1));
+    if (anchor && typeof window !== "undefined") {
+      const rect = anchor.getBoundingClientRect();
+      const popupWidth = 280;
+      const top = rect.bottom + 2;
+      const left = Math.min(Math.max(0, rect.left), Math.max(0, window.innerWidth - popupWidth));
+      setLogsDatePickerPos({ top, left });
+    } else {
+      setLogsDatePickerPos(null);
+    }
+    setLogsDatePickerOpen((v) => (v === kind ? null : kind));
+  };
+
+  useEffect(() => {
+    if (!logsActorOpen) return;
+    const onDocClick = (ev: MouseEvent) => {
+      if (!logsActorRef.current) return;
+      if (!logsActorRef.current.contains(ev.target as Node)) setLogsActorOpen(false);
+    };
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, [logsActorOpen]);
+
+  useEffect(() => {
+    if (!logsActionOpen) return;
+    const onDocClick = (ev: MouseEvent) => {
+      if (!logsActionRef.current) return;
+      if (!logsActionRef.current.contains(ev.target as Node)) setLogsActionOpen(false);
+    };
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, [logsActionOpen]);
+
+  useEffect(() => {
+    if (!logsDatePickerOpen) return;
+    const onDocClick = (ev: MouseEvent) => {
+      const target = ev.target as Node;
+      const fromHas = logsDateFromRef.current?.contains(target);
+      const toHas = logsDateToRef.current?.contains(target);
+      if (!fromHas && !toHas) setLogsDatePickerOpen(null);
+    };
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, [logsDatePickerOpen]);
 
   if (!user || (role !== "support" && role !== "admin")) {
     return (
@@ -320,6 +509,53 @@ export default function DashboardHomeSupport() {
       ) : null}
 
       <div className="mt-6 grid grid-cols-1 gap-5 lg:grid-cols-2">
+        <div className="rounded-2xl bg-white shadow-sm border border-gray-100 p-4 lg:col-span-2">
+          <div className="flex items-center justify-between gap-3">
+            <SectionTitle title={t("dashboard.supportKpiTitle")} />
+            <span className="text-xs text-gray-500">
+              {t("dashboard.supportKpiSla", { minutes: metrics?.slaMinutes ?? 15 })}
+            </span>
+          </div>
+          <div className="mt-3 grid grid-cols-2 md:grid-cols-4 xl:grid-cols-8 gap-2">
+            {[
+              [t("dashboard.supportKpiOpen"), metrics?.kpi.openCount ?? 0],
+              [t("dashboard.supportKpiAccepted"), metrics?.kpi.acceptedCount ?? 0],
+              [t("dashboard.supportKpiClosed"), metrics?.kpi.closedCount ?? 0],
+              [t("dashboard.supportKpiWaitingUser"), metrics?.kpi.waitingUserCount ?? 0],
+              [t("dashboard.supportKpiWaitingSupport"), metrics?.kpi.waitingSupportCount ?? 0],
+              [t("dashboard.supportKpiSlaBreached"), metrics?.kpi.slaBreachedCount ?? 0],
+              [t("dashboard.supportKpiFirstResponse"), metrics?.kpi.firstResponseAvgMinutes ?? 0],
+              [t("dashboard.supportKpiResolution"), metrics?.kpi.resolutionAvgMinutes ?? 0],
+              [t("dashboard.supportKpiReopenRate"), metrics?.kpi.reopenRate ?? 0],
+              [t("dashboard.supportKpiCsatAvg"), metrics?.kpi.csatAvg ?? 0],
+              [t("dashboard.supportKpiCsatResponses"), metrics?.kpi.csatResponses ?? 0],
+              [t("dashboard.supportKpiEscalated"), metrics?.kpi.escalatedCount ?? 0],
+              [t("dashboard.supportKpiReassigned"), metrics?.kpi.reassignedCount ?? 0],
+              [t("dashboard.supportKpiHighPriority"), metrics?.kpi.highPriorityOpenCount ?? 0],
+            ].map(([label, value]) => (
+              <div key={String(label)} className="rounded-xl border border-gray-100 bg-gray-50/60 p-2.5">
+                <div className="text-[11px] text-gray-500">{label}</div>
+                <div className="text-lg font-semibold text-gray-900">{value as number}</div>
+              </div>
+            ))}
+          </div>
+          <div className="mt-3">
+            <div className="text-xs font-semibold text-gray-500 mb-1">{t("dashboard.supportTopAgentsTitle")}</div>
+            {metrics?.topAgents?.length ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                {metrics.topAgents.map((a) => (
+                  <div key={a.supportEmail} className="rounded-lg border border-gray-100 px-3 py-2 text-sm flex items-center justify-between">
+                    <span className="text-gray-700 truncate">{a.supportEmail}</span>
+                    <span className="font-semibold text-gray-900">{a.closedCount}</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-xs text-gray-500">{t("dashboard.supportTopAgentsNoData")}</div>
+            )}
+          </div>
+        </div>
+
         <div className="rounded-2xl bg-white shadow-sm border border-gray-100 p-4">
           <div className="flex items-center justify-between gap-3">
             <SectionTitle title="Angajați (staff)" />
@@ -412,54 +648,341 @@ export default function DashboardHomeSupport() {
         </div>
 
         <div className="rounded-2xl bg-white shadow-sm border border-gray-100 p-4 lg:col-span-2">
-          <div className="flex items-center justify-between gap-3">
+          <button
+            type="button"
+            onClick={() => setLogsPanelOpen((v) => !v)}
+            className="w-full flex items-center justify-between gap-3 rounded-xl px-2 py-1 hover:bg-gray-50 transition-colors"
+            aria-expanded={logsPanelOpen}
+            aria-controls="support-logs-panel"
+          >
             <SectionTitle title="Activitate (logs)" />
-          </div>
+            <svg
+              className={`w-5 h-5 text-gray-500 transition-transform duration-300 ${logsPanelOpen ? "rotate-180" : ""}`}
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+              aria-hidden
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
 
-          <div className="mt-3 overflow-auto max-h-[520px] border border-gray-100 rounded-xl">
-            <table className="min-w-full text-sm">
-              <thead className="bg-gray-50 sticky top-0">
-                <tr className="text-left text-xs text-gray-600">
-                  <th className="px-3 py-2">Timp</th>
-                  <th className="px-3 py-2">Actor</th>
-                  <th className="px-3 py-2">Acțiune</th>
-                  <th className="px-3 py-2">Țintă</th>
-                  <th className="px-3 py-2">Rezumat</th>
-                </tr>
-              </thead>
-              <tbody>
-                {logs.length === 0 ? (
-                  <tr>
-                    <td colSpan={5} className="px-3 py-6 text-center text-gray-500">
-                      Nu există logs încă.
-                    </td>
+          <div id="support-logs-panel" className={`admin-panel-expand mt-3 ${logsPanelOpen ? "open" : "closed"}`}>
+            <div className="mb-3 rounded-2xl border border-gray-100 bg-gradient-to-b from-white to-gray-50/70 p-3 shadow-sm">
+              <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-gray-500">Filtre logs</div>
+              <div className="flex flex-wrap items-end gap-2">
+              <label className="text-xs text-gray-600">
+                Actor
+                <div className="relative mt-1 min-w-[170px]" ref={logsActorRef}>
+                  <button
+                    type="button"
+                    onClick={() => setLogsActorOpen((v) => !v)}
+                    className="flex h-10 w-full items-center justify-between rounded-2xl border border-gray-200 bg-white px-3 text-sm text-gray-700 shadow-sm transition-all hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-primary/15"
+                  >
+                    <span className="truncate">{logsActorFilter === "all" ? "Toți" : logsActorFilter}</span>
+                    <svg className={`h-3.5 w-3.5 text-gray-400 transition-transform ${logsActorOpen ? "rotate-180" : ""}`} viewBox="0 0 20 20" fill="currentColor" aria-hidden>
+                      <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clipRule="evenodd" />
+                    </svg>
+                  </button>
+                  {logsActorOpen && (
+                    <div className="absolute left-0 right-0 z-30 mt-1 overflow-hidden rounded-xl border border-gray-200 bg-white p-1 shadow-lg">
+                      {[{ id: "all", label: "Toți" }, ...logsActorOptions.map((a) => ({ id: a, label: a }))].map((opt) => {
+                        const active = logsActorFilter === opt.id;
+                        return (
+                          <button
+                            key={opt.id}
+                            type="button"
+                            onClick={() => {
+                              setLogsActorFilter(opt.id);
+                              setLogsActorOpen(false);
+                            }}
+                            className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-xs transition-colors ${
+                              active ? "bg-primary/10 text-primary" : "text-gray-700 hover:bg-gray-50"
+                            }`}
+                          >
+                            <span className="truncate">{opt.label}</span>
+                            {active ? <span>✓</span> : null}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </label>
+              <label className="text-xs text-gray-600">
+                Acțiune
+                <div className="relative mt-1 min-w-[190px]" ref={logsActionRef}>
+                  <button
+                    type="button"
+                    onClick={() => setLogsActionOpen((v) => !v)}
+                    className="flex h-10 w-full items-center justify-between rounded-2xl border border-gray-200 bg-white px-3 text-sm text-gray-700 shadow-sm transition-all hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-primary/15"
+                  >
+                    <span className="truncate">{logsActionFilter === "all" ? "Toate" : logsActionFilter}</span>
+                    <svg className={`h-3.5 w-3.5 text-gray-400 transition-transform ${logsActionOpen ? "rotate-180" : ""}`} viewBox="0 0 20 20" fill="currentColor" aria-hidden>
+                      <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clipRule="evenodd" />
+                    </svg>
+                  </button>
+                  {logsActionOpen && (
+                    <div className="absolute left-0 right-0 z-30 mt-1 overflow-hidden rounded-xl border border-gray-200 bg-white p-1 shadow-lg">
+                      {[{ id: "all", label: "Toate" }, ...logsActionOptions.map((a) => ({ id: a, label: a }))].map((opt) => {
+                        const active = logsActionFilter === opt.id;
+                        return (
+                          <button
+                            key={opt.id}
+                            type="button"
+                            onClick={() => {
+                              setLogsActionFilter(opt.id);
+                              setLogsActionOpen(false);
+                            }}
+                            className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-xs transition-colors ${
+                              active ? "bg-primary/10 text-primary" : "text-gray-700 hover:bg-gray-50"
+                            }`}
+                          >
+                            <span className="truncate">{opt.label}</span>
+                            {active ? <span>✓</span> : null}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </label>
+              <label className="text-xs text-gray-600">
+                De la
+                <div className="relative mt-1 min-w-[170px]" ref={logsDateFromRef}>
+                  <button
+                    type="button"
+                    onClick={(e) => openDatePicker("from", logsDateFrom, e.currentTarget)}
+                    className="flex h-10 w-full items-center justify-between rounded-2xl border border-gray-200 bg-white px-3 text-sm text-gray-700 shadow-sm transition-all hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-primary/15"
+                  >
+                    <span className={logsDateFrom ? "" : "text-gray-400"}>{logsDateFrom || "dd/mm/yyyy"}</span>
+                    <svg className="h-4 w-4 text-gray-400" viewBox="0 0 24 24" fill="none" aria-hidden>
+                      <path d="M8 2v3M16 2v3M3.5 9.5h17M5 5.5h14a1.5 1.5 0 011.5 1.5v12A1.5 1.5 0 0119 20.5H5A1.5 1.5 0 013.5 19V7A1.5 1.5 0 015 5.5z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                    </svg>
+                  </button>
+                  {logsDatePickerOpen === "from" && (
+                    <div
+                      className="fixed z-[70] w-[280px] rounded-2xl border border-gray-200 bg-white p-3 shadow-xl"
+                      style={{
+                        top: `${logsDatePickerPos?.top ?? 0}px`,
+                        left: `${logsDatePickerPos?.left ?? 0}px`,
+                      }}
+                    >
+                      <div className="mb-2 flex items-center justify-between">
+                        <button
+                          type="button"
+                          className="rounded-lg border border-gray-200 px-2 py-1 text-xs hover:bg-gray-50"
+                          onClick={() => setLogsCalendarMonth((prev) => new Date(prev.getFullYear(), prev.getMonth() - 1, 1))}
+                        >
+                          ←
+                        </button>
+                        <div className="text-sm font-semibold text-gray-800">
+                          {calendarMonthStart.toLocaleString("en-US", { month: "long", year: "numeric" })}
+                        </div>
+                        <button
+                          type="button"
+                          className="rounded-lg border border-gray-200 px-2 py-1 text-xs hover:bg-gray-50"
+                          onClick={() => setLogsCalendarMonth((prev) => new Date(prev.getFullYear(), prev.getMonth() + 1, 1))}
+                        >
+                          →
+                        </button>
+                      </div>
+                      <div className="grid grid-cols-7 gap-1 text-center text-[11px] text-gray-500 mb-1">
+                        {["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"].map((d) => (
+                          <div key={d} className="py-1">{d}</div>
+                        ))}
+                      </div>
+                      <div className="grid grid-cols-7 gap-1">
+                        {calendarCells.map((d) => {
+                          const sameMonth = d.getMonth() === calendarMonthStart.getMonth();
+                          const selected = !!fromDateObj && d.toDateString() === fromDateObj.toDateString();
+                          return (
+                            <button
+                              key={d.toISOString()}
+                              type="button"
+                              onClick={() => {
+                                setLogsDateFrom(formatDateDdMmYyyy(d));
+                                setLogsDatePickerOpen(null);
+                              }}
+                              className={`h-8 rounded-lg text-xs transition-colors ${
+                                selected ? "bg-primary text-white" : sameMonth ? "text-gray-800 hover:bg-gray-100" : "text-gray-400 hover:bg-gray-50"
+                              }`}
+                            >
+                              {d.getDate()}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <div className="mt-2 flex items-center justify-between">
+                        <button type="button" className="text-xs text-primary" onClick={() => setLogsDateFrom("")}>
+                          Clear
+                        </button>
+                        <button
+                          type="button"
+                          className="text-xs text-primary"
+                          onClick={() => {
+                            setLogsDateFrom(formatDateDdMmYyyy(new Date()));
+                            setLogsDatePickerOpen(null);
+                          }}
+                        >
+                          Today
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </label>
+              <label className="text-xs text-gray-600">
+                Până la
+                <div className="relative mt-1 min-w-[170px]" ref={logsDateToRef}>
+                  <button
+                    type="button"
+                    onClick={(e) => openDatePicker("to", logsDateTo, e.currentTarget)}
+                    className="flex h-10 w-full items-center justify-between rounded-2xl border border-gray-200 bg-white px-3 text-sm text-gray-700 shadow-sm transition-all hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-primary/15"
+                  >
+                    <span className={logsDateTo ? "" : "text-gray-400"}>{logsDateTo || "dd/mm/yyyy"}</span>
+                    <svg className="h-4 w-4 text-gray-400" viewBox="0 0 24 24" fill="none" aria-hidden>
+                      <path d="M8 2v3M16 2v3M3.5 9.5h17M5 5.5h14a1.5 1.5 0 011.5 1.5v12A1.5 1.5 0 0119 20.5H5A1.5 1.5 0 013.5 19V7A1.5 1.5 0 015 5.5z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                    </svg>
+                  </button>
+                  {logsDatePickerOpen === "to" && (
+                    <div
+                      className="fixed z-[70] w-[280px] rounded-2xl border border-gray-200 bg-white p-3 shadow-xl"
+                      style={{
+                        top: `${logsDatePickerPos?.top ?? 0}px`,
+                        left: `${logsDatePickerPos?.left ?? 0}px`,
+                      }}
+                    >
+                      <div className="mb-2 flex items-center justify-between">
+                        <button
+                          type="button"
+                          className="rounded-lg border border-gray-200 px-2 py-1 text-xs hover:bg-gray-50"
+                          onClick={() => setLogsCalendarMonth((prev) => new Date(prev.getFullYear(), prev.getMonth() - 1, 1))}
+                        >
+                          ←
+                        </button>
+                        <div className="text-sm font-semibold text-gray-800">
+                          {calendarMonthStart.toLocaleString("en-US", { month: "long", year: "numeric" })}
+                        </div>
+                        <button
+                          type="button"
+                          className="rounded-lg border border-gray-200 px-2 py-1 text-xs hover:bg-gray-50"
+                          onClick={() => setLogsCalendarMonth((prev) => new Date(prev.getFullYear(), prev.getMonth() + 1, 1))}
+                        >
+                          →
+                        </button>
+                      </div>
+                      <div className="grid grid-cols-7 gap-1 text-center text-[11px] text-gray-500 mb-1">
+                        {["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"].map((d) => (
+                          <div key={d} className="py-1">{d}</div>
+                        ))}
+                      </div>
+                      <div className="grid grid-cols-7 gap-1">
+                        {calendarCells.map((d) => {
+                          const sameMonth = d.getMonth() === calendarMonthStart.getMonth();
+                          const selected = !!toDateObj && d.toDateString() === toDateObj.toDateString();
+                          return (
+                            <button
+                              key={d.toISOString()}
+                              type="button"
+                              onClick={() => {
+                                setLogsDateTo(formatDateDdMmYyyy(d));
+                                setLogsDatePickerOpen(null);
+                              }}
+                              className={`h-8 rounded-lg text-xs transition-colors ${
+                                selected ? "bg-primary text-white" : sameMonth ? "text-gray-800 hover:bg-gray-100" : "text-gray-400 hover:bg-gray-50"
+                              }`}
+                            >
+                              {d.getDate()}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <div className="mt-2 flex items-center justify-between">
+                        <button type="button" className="text-xs text-primary" onClick={() => setLogsDateTo("")}>
+                          Clear
+                        </button>
+                        <button
+                          type="button"
+                          className="text-xs text-primary"
+                          onClick={() => {
+                            setLogsDateTo(formatDateDdMmYyyy(new Date()));
+                            setLogsDatePickerOpen(null);
+                          }}
+                        >
+                          Today
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </label>
+              <button
+                type="button"
+                className="h-10 rounded-2xl border border-gray-200 bg-white px-4 text-xs font-medium text-gray-700 shadow-sm transition-all hover:-translate-y-[1px] hover:bg-gray-50"
+                onClick={() => {
+                  setLogsActorFilter("all");
+                  setLogsActionFilter("all");
+                  setLogsDateFrom("");
+                  setLogsDateTo("");
+                }}
+              >
+                Reset
+              </button>
+              <button
+                type="button"
+                className="h-10 rounded-2xl border border-primary/30 bg-primary/5 px-4 text-xs font-semibold text-primary shadow-sm transition-all hover:-translate-y-[1px] hover:bg-primary/10"
+                onClick={exportLogsCsv}
+              >
+                Export CSV
+              </button>
+              </div>
+            </div>
+            <div className={`overflow-auto max-h-[520px] border border-gray-100 rounded-xl ${logsPanelOpen ? "admin-panel-open" : ""}`}>
+              <table className="min-w-full text-sm">
+                <thead className="bg-gray-50 sticky top-0">
+                  <tr className="text-left text-xs text-gray-600">
+                    <th className="px-3 py-2">Timp</th>
+                    <th className="px-3 py-2">Actor</th>
+                    <th className="px-3 py-2">Acțiune</th>
+                    <th className="px-3 py-2">Țintă</th>
+                    <th className="px-3 py-2">Rezumat</th>
                   </tr>
-                ) : null}
-                {logs.map((l) => (
-                  <tr key={l.id} className="border-t border-gray-100">
-                    <td className="px-3 py-2 whitespace-nowrap">
-                      {l.createdAt ? new Date(l.createdAt).toLocaleString("ro-MD") : "—"}
-                    </td>
-                    <td className="px-3 py-2 whitespace-nowrap text-gray-700">
-                      {l.actorEmail ?? "—"}
-                    </td>
-                    <td className="px-3 py-2 whitespace-nowrap font-medium text-gray-900">
-                      {l.actionType}
-                    </td>
-                    <td className="px-3 py-2 text-gray-700">
-                      {l.staffName ? `Staff: ${l.staffName}` : ""}
-                      {l.jobTitle ? ` ${l.jobTitle}` : ""}
-                      {l.targetJobId != null ? ` (job #${l.targetJobId})` : ""}
-                      {l.targetApplicationId != null ? ` (app #${l.targetApplicationId})` : ""}
-                      {!l.staffName && !l.jobTitle && l.targetJobId == null && l.targetApplicationId == null ? "—" : null}
-                    </td>
-                    <td className="px-3 py-2 text-gray-600">
-                      {l.summary ?? "—"}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {filteredLogs.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="px-3 py-6 text-center text-gray-500">
+                        Nu există logs încă.
+                      </td>
+                    </tr>
+                  ) : null}
+                  {filteredLogs.map((l) => (
+                    <tr key={l.id} className="border-t border-gray-100">
+                      <td className="px-3 py-2 whitespace-nowrap">
+                        {l.createdAt ? new Date(l.createdAt).toLocaleString("ro-MD") : "—"}
+                      </td>
+                      <td className="px-3 py-2 whitespace-nowrap text-gray-700">
+                        {l.actorEmail ?? "—"}
+                      </td>
+                      <td className="px-3 py-2 whitespace-nowrap font-medium text-gray-900">
+                        {l.actionType}
+                      </td>
+                      <td className="px-3 py-2 text-gray-700">
+                        {l.staffName ? `Staff: ${l.staffName}` : ""}
+                        {l.jobTitle ? ` ${l.jobTitle}` : ""}
+                        {l.targetJobId != null ? ` (job #${l.targetJobId})` : ""}
+                        {l.targetApplicationId != null ? ` (app #${l.targetApplicationId})` : ""}
+                        {!l.staffName && !l.jobTitle && l.targetJobId == null && l.targetApplicationId == null ? "—" : null}
+                      </td>
+                      <td className="px-3 py-2 text-gray-600">
+                        {l.summary ?? "—"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       </div>

@@ -10,9 +10,11 @@ const DEFAULT_AVATAR = "/Illustration/AvatarWhiteGuy.png";
 function avatarSrc(url: string | undefined): string | undefined {
   if (!url || !url.trim()) return undefined;
   const s = url.trim();
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(s)) return DEFAULT_AVATAR;
   if (s.startsWith("data:") || s.startsWith("http://") || s.startsWith("https://")) return s;
   if (s.startsWith("/")) return typeof window !== "undefined" ? `${window.location.origin}${s}` : s;
-  return s;
+  if (s.startsWith("uploads/")) return typeof window !== "undefined" ? `${window.location.origin}/${s}` : `/${s}`;
+  return typeof window !== "undefined" ? `${window.location.origin}/${s}` : `/${s}`;
 }
 
 export type CustomerProfileModalProps = {
@@ -199,20 +201,12 @@ export default function CustomerProfileModal({
                     >
                       <div className="flex items-start gap-3">
                         <div className="flex-shrink-0 w-10 h-10 rounded-full bg-primary/10 border-2 border-primary/20 flex items-center justify-center overflow-hidden">
-                          {avatarSrc(r.otherPartyAvatar) ? (
-                            <img
-                              src={avatarSrc(r.otherPartyAvatar)!}
-                              alt=""
-                              className="w-full h-full object-cover"
-                              onError={(e) => {
-                                e.currentTarget.style.display = "none";
-                                e.currentTarget.nextElementSibling?.classList.remove("hidden");
-                              }}
-                            />
-                          ) : null}
-                          <span className={`text-primary font-semibold text-sm ${avatarSrc(r.otherPartyAvatar) ? "hidden" : ""}`}>
-                            {(r.otherPartyName || "?").charAt(0).toUpperCase()}
-                          </span>
+                          <img
+                            src={avatarSrc(r.otherPartyAvatar) || DEFAULT_AVATAR}
+                            alt=""
+                            className="w-full h-full object-cover"
+                            onError={(e) => { (e.currentTarget as HTMLImageElement).src = DEFAULT_AVATAR; }}
+                          />
                         </div>
                         <div className="min-w-0 flex-1">
                           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">

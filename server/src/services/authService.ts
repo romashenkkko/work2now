@@ -539,6 +539,19 @@ export async function getCurrentUser(userId?: string) {
   }
 }
 
+export async function logoutUser(userId?: string) {
+  const resolvedUserId = requireUserId(userId);
+  try {
+    await prisma.users.update({
+      where: { Id: resolvedUserId },
+      data: { LastActiveAt: null },
+    });
+  } catch {
+    // best-effort: even if DB update fails, client can still clear token locally
+  }
+  return { ok: true as const };
+}
+
 export async function updateCurrentUser(userId?: string, input: UpdateProfileInput = {}) {
   const resolvedUserId = requireUserId(userId);
   const name = typeof input.name === "string" ? input.name.trim() : undefined;

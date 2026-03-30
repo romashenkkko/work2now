@@ -2,8 +2,9 @@
  * Baza URL pentru API.
  *
  * - Dacă VITE_API_URL este setat (production / hosting custom) → îl folosim ca absolut.
- * - În rest → folosim mereu `/api` pe același host și port ca frontend-ul,
- *   iar Vite sau serverul Node se ocupă de proxy/route.
+ * - În dev fără VITE_API_URL: chemăm API pe același hostname ca fereastra, port VITE_API_PORT sau 5600
+ *   (evită 404 când UI e pe :5500 iar Express pe :5600).
+ * - În production: `/api` pe același host ca build-ul (sau VITE_API_URL).
  */
 function getApiBase(): string {
   if (typeof window === "undefined") return "/api";
@@ -12,13 +13,27 @@ function getApiBase(): string {
     const base = envUrl.trim().replace(/\/+$/, "");
     return base.endsWith("/api") ? base : `${base}/api`;
   }
-  // Same-origin: frontend și backend pe același host:port (Vite proxy sau Node servește build-ul)
+  if (import.meta.env.DEV) {
+    const port = String(import.meta.env.VITE_API_PORT || "5600").replace(/\/+$/, "");
+    return `http://${window.location.hostname}:${port}/api`;
+  }
   return "/api";
 }
 
 function getToken(): string | null {
   if (typeof window === "undefined") return null;
   return localStorage.getItem("token");
+}
+
+function getApiOrigin(): string {
+  if (typeof window === "undefined") return "";
+  const envUrl = import.meta.env.VITE_API_URL;
+  if (envUrl && typeof envUrl === "string" && envUrl.trim()) return envUrl.trim().replace(/\/+$/, "");
+  if (import.meta.env.DEV) {
+    const port = String(import.meta.env.VITE_API_PORT || "5600").replace(/\/+$/, "");
+    return `http://${window.location.hostname}:${port}`;
+  }
+  return window.location.origin;
 }
 
 export async function api<T>(path: string, options: RequestInit = {}): Promise<T> {
@@ -63,6 +78,10 @@ export const authApi = {
     api<{ token: string; user: { id: number; name: string; email: string; role?: string; avatar?: string; isActive?: boolean } }>("/auth/login", {
       method: "POST",
       body: JSON.stringify({ email, password }),
+    }),
+  logout: () =>
+    api<{ ok: true }>("/auth/logout", {
+      method: "POST",
     }),
   sendOTP: (phoneNumber: string) =>
     api<{ message: string }>("/auth/send-otp", {
@@ -170,6 +189,132 @@ export const authApi = {
   /** Support/Admin: activity logs */
   supportGetLogs: (limit = 200, offset = 0) =>
     api<{ logs: Array<any> }>(`/auth/support/logs?limit=${limit}&offset=${offset}`),
+  supportChatRequest: (description: string) =>
+    api<{ ok: true; chatId: string; reused: boolean }>("/auth/support/chat/request", {
+      method: "POST",
+      body: JSON.stringify({ description }),
+    }),
+  supportChatMy: () =>
+    api<{ chats: Array<any> }>("/auth/support/chat/my"),
+  supportChatInbox: () =>
+    api<{ chats: Array<any> }>("/auth/support/chat/inbox"),
+  supportChatMetrics: () =>
+    api<{
+      kpi: {
+        openCount: number;
+        acceptedCount: number;
+        closedCount: number;
+        waitingUserCount: number;
+        waitingSupportCount: number;
+        slaBreachedCount: number;
+        firstResponseAvgMinutes: number;
+        resolutionAvgMinutes: number;
+        reopenRate: number;
+        csatAvg: number;
+        csatResponses: number;
+        escalatedCount: number;
+        reassignedCount: number;
+        highPriorityOpenCount: number;
+      };
+      topAgents: Array<{ supportEmail: string; closedCount: number }>;
+      slaMinutes: number;
+    }>("/auth/support/chat/metrics"),
+  supportChatAccept: (chatId: string) =>
+    api<{ ok: true }>(`/auth/support/chat/${encodeURIComponent(chatId)}/accept`, { method: "POST" }),
+  supportChatMessage: (chatId: string, message: string) =>
+    api<{ ok: true; messageId: string; deliveredAt: string }>(`/auth/support/chat/${encodeURIComponent(chatId)}/message`, {
+      method: "POST",
+      body: JSON.stringify({ message }),
+    }),
+  supportChatTyping: (chatId: string, isTyping: boolean) =>
+    api<{ ok: true }>(`/auth/support/chat/${encodeURIComponent(chatId)}/typing`, {
+      method: "POST",
+      body: JSON.stringify({ isTyping }),
+    }),
+  supportChatSeen: (chatId: string) =>
+    api<{ ok: true; seenByUserId: string; seenAt: string }>(`/auth/support/chat/${encodeURIComponent(chatId)}/seen`, {
+      method: "POST",
+    }),
+  supportChatClose: (chatId: string) =>
+    api<{ ok: true }>(`/auth/support/chat/${encodeURIComponent(chatId)}/close`, {
+      method: "POST",
+    }),
+  supportChatDelete: (chatId: string) =>
+    api<{ ok: true }>(`/auth/support/chat/${encodeURIComponent(chatId)}/delete`, {
+      method: "POST",
+    }),
+  supportChatPriority: (chatId: string, priority: "low" | "normal" | "high" | "urgent") =>
+    api<{ ok: true; priority: "low" | "normal" | "high" | "urgent" }>(`/auth/support/chat/${encodeURIComponent(chatId)}/priority`, {
+      method: "POST",
+      body: JSON.stringify({ priority }),
+    }),
+  supportChatAssign: (chatId: string, userId: string) =>
+    api<{ ok: true; assignedToUserId: string; assignedToEmail: string }>(`/auth/support/chat/${encodeURIComponent(chatId)}/assign`, {
+      method: "POST",
+      body: JSON.stringify({ userId }),
+    }),
+  supportChatReassign: (chatId: string, userId: string, reason?: string) =>
+    api<{ ok: true; assignedToUserId: string; assignedToEmail: string; reason?: string }>(`/auth/support/chat/${encodeURIComponent(chatId)}/reassign`, {
+      method: "POST",
+      body: JSON.stringify({ userId, reason }),
+    }),
+  supportChatReopen: (chatId: string, reason?: string) =>
+    api<{ ok: true }>(`/auth/support/chat/${encodeURIComponent(chatId)}/reopen`, {
+      method: "POST",
+      body: JSON.stringify({ reason }),
+    }),
+  supportChatSetTags: (chatId: string, tags: string[]) =>
+    api<{ ok: true; tags: string[] }>(`/auth/support/chat/${encodeURIComponent(chatId)}/tags`, {
+      method: "POST",
+      body: JSON.stringify({ tags }),
+    }),
+  supportChatTags: () =>
+    api<{ tags: string[] }>("/auth/support/chat/tags"),
+  supportChatTimeline: (chatId: string) =>
+    api<{ events: Array<{ id: number; eventType: string; actorUserId?: string | null; actorEmail?: string | null; details?: any; createdAt?: string | null }> }>(
+      `/auth/support/chat/${encodeURIComponent(chatId)}/timeline`
+    ),
+  supportChatEscalate: (chatId: string, level: "none" | "level_1" | "level_2" | "critical", note?: string) =>
+    api<{ ok: true; level: "none" | "level_1" | "level_2" | "critical" }>(`/auth/support/chat/${encodeURIComponent(chatId)}/escalate`, {
+      method: "POST",
+      body: JSON.stringify({ level, note }),
+    }),
+  supportChatReminder: (chatId: string, dueAt: string, note?: string) =>
+    api<{ ok: true; reminderId: number }>(`/auth/support/chat/${encodeURIComponent(chatId)}/reminder`, {
+      method: "POST",
+      body: JSON.stringify({ dueAt, note }),
+    }),
+  supportChatResolveReminder: (id: number | string) =>
+    api<{ ok: true }>(`/auth/support/chat/reminders/${encodeURIComponent(String(id))}/resolve`, {
+      method: "POST",
+    }),
+  supportChatCsat: (chatId: string, rating: number, comment?: string) =>
+    api<{ ok: true }>(`/auth/support/chat/${encodeURIComponent(chatId)}/csat`, {
+      method: "POST",
+      body: JSON.stringify({ rating, comment }),
+    }),
+  supportChatMacros: () =>
+    api<{ macros: Array<{ id: number; title: string; content: string; isActive: boolean; createdAt?: string | null; updatedAt?: string | null }> }>("/auth/support/chat/macros"),
+  supportChatSaveMacro: (payload: { id?: number; title: string; content: string; isActive?: boolean }) =>
+    api<{ ok: true; id: number }>("/auth/support/chat/macros", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  supportChatDeleteMacro: (id: number | string) =>
+    api<{ ok: true }>(`/auth/support/chat/macros/${encodeURIComponent(String(id))}`, {
+      method: "DELETE",
+    }),
+  supportChatBulk: (payload: { chatIds: Array<number | string>; operation: string; value?: any }) =>
+    api<{ ok: true; updatedCount: number }>("/auth/support/chat/bulk", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  supportChatStreamUrl: () => {
+    const token = getToken() || "";
+    const base = getApiBase();
+    const prefix = base.startsWith("http") ? base : `${typeof window !== "undefined" ? window.location.origin : ""}${base}`;
+    return `${prefix}/auth/support/chat/stream?token=${encodeURIComponent(token)}`;
+  },
   /** Admin: setează subscription booster pentru customer – joburile lui apar primele. boosterUntil: ISO string sau null pentru anulare. */
   setUserBooster: (userId: string, boosterUntil: string | null) =>
     api<{ ok: boolean; boosterUntil?: string }>("/auth/users/set-booster", {

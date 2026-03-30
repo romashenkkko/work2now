@@ -805,6 +805,140 @@ export async function initDatabase(): Promise<void> {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
     `);
 
+    await conn.query(`
+      CREATE TABLE IF NOT EXISTS \`support_chats\` (
+        \`id\` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        \`requester_user_id\` ${GUID_COL} NULL,
+        \`requester_email\` VARCHAR(191) NULL,
+        \`requester_role\` VARCHAR(20) NOT NULL DEFAULT 'unknown',
+        \`status\` VARCHAR(20) NOT NULL DEFAULT 'open',
+        \`accepted_by_user_id\` ${GUID_COL} NULL,
+        \`accepted_by_email\` VARCHAR(191) NULL,
+        \`last_seen_by_requester_at\` TIMESTAMP NULL,
+        \`last_seen_by_support_at\` TIMESTAMP NULL,
+        \`created_at\` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        \`updated_at\` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX \`idx_support_chats_status\` (\`status\`),
+        INDEX \`idx_support_chats_requester\` (\`requester_user_id\`),
+        INDEX \`idx_support_chats_accepted_by\` (\`accepted_by_user_id\`)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
+    `);
+
+    if (!(await columnExists(conn, "support_chats", "last_seen_by_requester_at"))) {
+      await conn.query("ALTER TABLE `support_chats` ADD COLUMN `last_seen_by_requester_at` TIMESTAMP NULL");
+    }
+    if (!(await columnExists(conn, "support_chats", "last_seen_by_support_at"))) {
+      await conn.query("ALTER TABLE `support_chats` ADD COLUMN `last_seen_by_support_at` TIMESTAMP NULL");
+    }
+    await ensureColumn(conn, "support_chats", "priority", "VARCHAR(20) NOT NULL DEFAULT 'normal'");
+    await ensureColumn(conn, "support_chats", "assigned_to_user_id", `${GUID_COL} NULL`);
+    await ensureColumn(conn, "support_chats", "assigned_to_email", "VARCHAR(191) NULL");
+    await ensureColumn(conn, "support_chats", "reopened_count", "INT UNSIGNED NOT NULL DEFAULT 0");
+    await ensureColumn(conn, "support_chats", "closed_reason", "VARCHAR(255) NULL");
+    await ensureColumn(conn, "support_chats", "escalation_level", "VARCHAR(20) NOT NULL DEFAULT 'none'");
+    await ensureColumn(conn, "support_chats", "escalated_at", "TIMESTAMP NULL");
+    await ensureColumn(conn, "support_chats", "first_response_at", "TIMESTAMP NULL");
+    await ensureColumn(conn, "support_chats", "resolved_at", "TIMESTAMP NULL");
+    await ensureColumn(conn, "support_chats", "last_reopened_at", "TIMESTAMP NULL");
+    await ensureColumn(conn, "support_chats", "last_reopen_reason", "VARCHAR(255) NULL");
+    await ensureColumn(conn, "support_chats", "deleted_by_requester_at", "TIMESTAMP NULL");
+    await ensureColumn(conn, "support_chats", "deleted_by_support_at", "TIMESTAMP NULL");
+
+    await conn.query(`
+      CREATE TABLE IF NOT EXISTS \`support_chat_messages\` (
+        \`id\` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        \`chat_id\` INT UNSIGNED NOT NULL,
+        \`sender_user_id\` ${GUID_COL} NULL,
+        \`sender_email\` VARCHAR(191) NULL,
+        \`sender_role\` VARCHAR(20) NOT NULL DEFAULT 'unknown',
+        \`message\` TEXT NOT NULL,
+        \`created_at\` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX \`idx_support_chat_messages_chat_id\` (\`chat_id\`)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
+    `);
+
+    if (!(await fkExists(conn, "support_chat_messages", "fk_support_chat_messages_chat_id"))) {
+      await conn.query(`
+        ALTER TABLE \`support_chat_messages\`
+        ADD CONSTRAINT \`fk_support_chat_messages_chat_id\`
+        FOREIGN KEY (\`chat_id\`) REFERENCES \`support_chats\`(\`id\`)
+        ON DELETE CASCADE
+      `);
+    }
+
+    await conn.query(`
+      CREATE TABLE IF NOT EXISTS \`support_chat_tags\` (
+        \`id\` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        \`name\` VARCHAR(80) NOT NULL,
+        \`created_at\` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY \`uq_support_chat_tags_name\` (\`name\`)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
+    `);
+    await conn.query(`
+      CREATE TABLE IF NOT EXISTS \`support_chat_tag_map\` (
+        \`chat_id\` INT UNSIGNED NOT NULL,
+        \`tag_id\` INT UNSIGNED NOT NULL,
+        \`created_by_user_id\` ${GUID_COL} NULL,
+        \`created_at\` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (\`chat_id\`, \`tag_id\`),
+        INDEX \`idx_support_chat_tag_map_tag_id\` (\`tag_id\`),
+        CONSTRAINT \`fk_support_chat_tag_map_chat_id\` FOREIGN KEY (\`chat_id\`) REFERENCES \`support_chats\`(\`id\`) ON DELETE CASCADE,
+        CONSTRAINT \`fk_support_chat_tag_map_tag_id\` FOREIGN KEY (\`tag_id\`) REFERENCES \`support_chat_tags\`(\`id\`) ON DELETE CASCADE
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
+    `);
+    await conn.query(`
+      CREATE TABLE IF NOT EXISTS \`support_chat_macros\` (
+        \`id\` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        \`title\` VARCHAR(120) NOT NULL,
+        \`content\` TEXT NOT NULL,
+        \`created_by_user_id\` ${GUID_COL} NULL,
+        \`is_active\` TINYINT(1) NOT NULL DEFAULT 1,
+        \`created_at\` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        \`updated_at\` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
+    `);
+    await conn.query(`
+      CREATE TABLE IF NOT EXISTS \`support_chat_reminders\` (
+        \`id\` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        \`chat_id\` INT UNSIGNED NOT NULL,
+        \`assigned_to_user_id\` ${GUID_COL} NULL,
+        \`note\` VARCHAR(255) NULL,
+        \`due_at\` TIMESTAMP NOT NULL,
+        \`resolved_at\` TIMESTAMP NULL,
+        \`created_at\` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX \`idx_support_chat_reminders_chat_id\` (\`chat_id\`),
+        INDEX \`idx_support_chat_reminders_due_at\` (\`due_at\`),
+        CONSTRAINT \`fk_support_chat_reminders_chat_id\` FOREIGN KEY (\`chat_id\`) REFERENCES \`support_chats\`(\`id\`) ON DELETE CASCADE
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
+    `);
+    await conn.query(`
+      CREATE TABLE IF NOT EXISTS \`support_chat_audit_logs\` (
+        \`id\` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        \`chat_id\` INT UNSIGNED NOT NULL,
+        \`actor_user_id\` ${GUID_COL} NULL,
+        \`actor_email\` VARCHAR(191) NULL,
+        \`event_type\` VARCHAR(80) NOT NULL,
+        \`details\` TEXT NULL,
+        \`created_at\` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX \`idx_support_chat_audit_logs_chat_id\` (\`chat_id\`),
+        INDEX \`idx_support_chat_audit_logs_created_at\` (\`created_at\`),
+        CONSTRAINT \`fk_support_chat_audit_logs_chat_id\` FOREIGN KEY (\`chat_id\`) REFERENCES \`support_chats\`(\`id\`) ON DELETE CASCADE
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
+    `);
+    await conn.query(`
+      CREATE TABLE IF NOT EXISTS \`support_chat_csat\` (
+        \`id\` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        \`chat_id\` INT UNSIGNED NOT NULL,
+        \`rating\` TINYINT UNSIGNED NOT NULL,
+        \`comment\` VARCHAR(500) NULL,
+        \`created_by_user_id\` ${GUID_COL} NULL,
+        \`created_at\` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY \`uq_support_chat_csat_chat_id\` (\`chat_id\`),
+        INDEX \`idx_support_chat_csat_rating\` (\`rating\`),
+        CONSTRAINT \`fk_support_chat_csat_chat_id\` FOREIGN KEY (\`chat_id\`) REFERENCES \`support_chats\`(\`id\`) ON DELETE CASCADE
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
+    `);
+
     // Allow one rating per (application, rater): both customer and staff can rate the same application
     const [idxRows] = await conn.query<RowDataPacket[]>(
       `SELECT 1 AS ok FROM INFORMATION_SCHEMA.STATISTICS

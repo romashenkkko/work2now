@@ -15,6 +15,7 @@ import DashboardRapoarte from "./pages/DashboardRapoarte";
 import DashboardMesaje from "./pages/DashboardMesaje";
 import DashboardSettings from "./pages/DashboardSettings";
 import DashboardSubscription from "./pages/DashboardSubscription";
+import DashboardChat from "./pages/DashboardChat";
 import EmployeeOnboarding from "./pages/EmployeeOnboarding";
 import About from "./pages/About";
 import HowItWorks from "./pages/HowItWorks";
@@ -33,6 +34,7 @@ export default function App() {
         <Route path="rapoarte" element={<DashboardRapoarte />} />
         <Route path="calendar" element={<Navigate to="/dashboard" replace />} />
         <Route path="mesaje" element={<DashboardMesaje />} />
+        <Route path="chat" element={<DashboardChat />} />
         <Route path="subscription" element={<DashboardSubscription />} />
         <Route path="settings" element={<DashboardSettings />} />
         <Route path="*" element={<Navigate to="/dashboard" replace />} />

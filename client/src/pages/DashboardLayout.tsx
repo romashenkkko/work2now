@@ -22,6 +22,7 @@ import {
   UtensilsCrossed,
   CreditCard,
   Trash2,
+  MessageCircle,
 } from "lucide-react";
 import { coffeemaker } from "@lucide/lab";
 import { useAuth } from "../hooks/useAuth";
@@ -33,6 +34,7 @@ import DatePicker from "../components/DatePicker";
 import AddressPickerModal from "../components/AddressPickerModal";
 import DocumentsModal, { type DocItem } from "../components/DocumentsModal";
 import StaffProfileModal from "../components/StaffProfileModal";
+import SupportChatWidget from "../components/SupportChatWidget";
 
 export type JobType = "one-day" | "multi-day" | "full-time";
 export type JobRow = {
@@ -102,6 +104,8 @@ export type Application = {
   ratingScore?: number;
 };
 
+const SUPPORT_AVATAR_URL = "/Illustration/SupportAvatar.png";
+
 const APPLICATIONS_KEY = "work2now_applications";
 const PUBLIC_JOBS_KEY = "work2now_public_jobs";
 
@@ -148,6 +152,7 @@ const NAV_ICONS: Record<string, ComponentType<{ className?: string; size?: numbe
   briefcase: Briefcase as ComponentType<{ className?: string; size?: number }>,
   fileText: FileText as ComponentType<{ className?: string; size?: number }>,
   barChart: BarChart2 as ComponentType<{ className?: string; size?: number }>,
+  messageCircle: MessageCircle as ComponentType<{ className?: string; size?: number }>,
   review: Star as ComponentType<{ className?: string; size?: number }>,
   settings: Settings as ComponentType<{ className?: string; size?: number }>,
   creditCard: CreditCard as ComponentType<{ className?: string; size?: number }>,
@@ -158,23 +163,27 @@ const NAV_CUSTOMER = [
   { to: "/dashboard/joburi", labelKey: "dashboard.joburi", end: false, icon: "briefcase" },
   { to: "/dashboard/aplicatii", labelKey: "dashboard.aplicatii", end: false, icon: "fileText" },
   { to: "/dashboard/rapoarte", labelKey: "dashboard.rapoarte", end: false, icon: "barChart" },
+  { to: "/dashboard/chat", labelKey: "dashboard.supportChat", end: false, icon: "messageCircle" },
 ];
 
 const NAV_STAFF = [
   { to: "/dashboard", labelKey: "dashboard.home", end: true, icon: "home" },
   { to: "/dashboard/joburi", labelKey: "dashboard.joburi", end: false, icon: "briefcase" },
   { to: "/dashboard/aplicatii", labelKey: "dashboard.myApplications", end: false, icon: "fileText" },
+  { to: "/dashboard/chat", labelKey: "dashboard.supportChat", end: false, icon: "messageCircle" },
 ];
 
 const NAV_ADMIN = [
   { to: "/dashboard", labelKey: "dashboard.home", end: true, icon: "home" },
   { to: "/dashboard/joburi", labelKey: "dashboard.adminUsers", end: false, icon: "briefcase" },
   { to: "/dashboard/rapoarte", labelKey: "dashboard.rapoarte", end: false, icon: "barChart" },
+  { to: "/dashboard/chat", labelKey: "dashboard.supportChat", end: false, icon: "messageCircle" },
   { to: "/dashboard/settings", labelKey: "dashboard.adminSettings", end: false, icon: "settings" },
 ];
 
 const NAV_SUPPORT = [
   { to: "/dashboard", labelKey: "dashboard.home", end: true, icon: "home" },
+  { to: "/dashboard/chat", labelKey: "dashboard.supportChat", end: false, icon: "messageCircle" },
 ];
 
 function getNavForRole(role: string | undefined) {
@@ -580,7 +589,7 @@ export default function DashboardLayout() {
     const baseTotal = totalHours * rate;
     setCalculatedSalary(roundMoney(getBusinessTotal(baseTotal)));
   }, [formStartTime, formEndTime, hourlyRate]);
-  const [availableToWork, setAvailableToWorkState] = useState(() => {
+  const [availableToWorkState, setAvailableToWorkState] = useState(() => {
     if (typeof window === "undefined") return true;
     try {
       return localStorage.getItem("dashboard_availableToWork") !== "false";
@@ -594,6 +603,7 @@ export default function DashboardLayout() {
       localStorage.setItem("dashboard_availableToWork", String(v));
     } catch {}
   };
+  const availableToWork = Boolean(user) && availableToWorkState;
 
   const addJob = async (job: Omit<JobRow, "id"> & { raionId?: number; localitate?: string }): Promise<boolean> => {
     if (job.jobCategoryCode == null || job.hourlyRateBase == null) return false;
@@ -843,6 +853,7 @@ export default function DashboardLayout() {
   if (loading) return <div className="container mx-auto px-4 py-16 text-center">{t("dashboard.loading")}</div>;
   if (!user) return <Navigate to="/login" replace />;
   const userRole = user.role?.toLowerCase?.().trim?.() ?? "";
+  const userAvatar = userRole === "support" ? SUPPORT_AVATAR_URL : user.avatar || "/Illustration/AvatarWhiteGuy.png";
   const isCustomer = userRole === "customer";
 
   const closeSidebar = () => setSidebarOpen(false);
@@ -965,9 +976,11 @@ export default function DashboardLayout() {
           >
             <span className="relative flex-shrink-0 rounded-full">
               <img
-                src={user?.avatar || "/Illustration/AvatarWhiteGuy.png"}
+                src={userAvatar}
                 alt=""
-                className="w-12 h-12 rounded-full object-cover ring-2 ring-white shadow-md hover:opacity-90 transition-opacity"
+                className={`w-12 h-12 rounded-full object-cover ring-2 ring-white shadow-md hover:opacity-90 transition-opacity ${
+                  userRole === "support" ? "object-[center_82%]" : ""
+                }`}
               />
               <span
                 className={`absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-white ${
@@ -1033,7 +1046,7 @@ export default function DashboardLayout() {
           staffId={String(user.id)}
           staffName={user.name}
           staffEmail={user.email}
-          staffAvatar={user.avatar}
+          staffAvatar={userRole === "support" ? SUPPORT_AVATAR_URL : user.avatar}
           currentUserId={String(user.id)}
           userRole={user.role}
           scrollToReviewsOnOpen
@@ -1059,6 +1072,7 @@ export default function DashboardLayout() {
           <Outlet />
         </DashboardContext.Provider>
       </main>
+      <SupportChatWidget hideFloatingButton={location.pathname === "/dashboard/chat"} />
 
       {/* Modal Posteaza un job – doar pentru Customer (portal în body pentru centrare viewport) */}
       {isCustomer && showPostJob && createPortal(
