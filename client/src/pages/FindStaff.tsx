@@ -17,7 +17,7 @@ import {
 function MockupPostJob() {
   const { t } = useTranslation();
   return (
-    <div className="rounded-2xl border border-primary/15 bg-white shadow-[0_4px_20px_rgba(122,99,241,0.08)] overflow-hidden text-left text-[13px]">
+    <div className="rounded-2xl border border-primary/15 bg-white shadow-[0_4px_20px_rgba(122,99,241,0.08)] overflow-hidden text-left text-[13px] pointer-events-none select-none">
       <div className="bg-gradient-to-r from-primary to-primary/80 px-5 py-3 flex items-center gap-2.5">
         <div className="w-6 h-6 rounded-lg bg-white/20 flex items-center justify-center">
           <Plus className="w-4 h-4 text-white" strokeWidth={2.5} />
@@ -32,9 +32,9 @@ function MockupPostJob() {
         </div>
         <div className="h-9 rounded-xl bg-gray-50 border border-gray-200 flex items-center px-3 text-gray-400">{t("findStaff.mockupLocationPlaceholder")}</div>
         <div className="h-9 rounded-xl bg-gray-50 border border-gray-200 flex items-center px-3 text-gray-400">{t("findStaff.mockupSalaryPlaceholder")}</div>
-        <button className="w-full h-10 rounded-xl bg-primary text-white font-semibold text-sm flex items-center justify-center gap-2 mt-1 shadow-[0_4px_12px_rgba(122,99,241,0.25)]">
+        <div className="w-full h-10 rounded-xl bg-primary text-white font-semibold text-sm flex items-center justify-center gap-2 mt-1 shadow-[0_4px_12px_rgba(122,99,241,0.25)] pointer-events-none select-none">
           <Plus className="w-4 h-4" /> {t("findStaff.mockupPostNow")}
-        </button>
+        </div>
       </div>
     </div>
   );
@@ -48,7 +48,7 @@ function MockupCandidates() {
     { name: "Ion D.", rating: 4.9, status: "applied", exp: t("findStaff.mockupExp5") },
   ];
   return (
-    <div className="rounded-2xl border border-primary/15 bg-white shadow-[0_4px_20px_rgba(122,99,241,0.08)] overflow-hidden text-left text-[13px]">
+    <div className="rounded-2xl border border-primary/15 bg-white shadow-[0_4px_20px_rgba(122,99,241,0.08)] overflow-hidden text-left text-[13px] pointer-events-none select-none">
       <div className="bg-gradient-to-r from-primary to-primary/80 px-5 py-3 flex items-center gap-2.5">
         <Bell className="w-4 h-4 text-white" />
         <span className="text-white font-semibold">{t("findStaff.mockupCandidatesTitle")}</span>
@@ -56,7 +56,7 @@ function MockupCandidates() {
       </div>
       <div className="p-4 space-y-2.5">
         {candidates.map((c) => (
-          <div key={c.name} className="flex items-center gap-3 p-2.5 rounded-xl bg-gray-50/80 border border-gray-100 hover:bg-primary/[0.03] transition-colors">
+          <div key={c.name} className="flex items-center gap-3 p-2.5 rounded-xl bg-gray-50/80 border border-gray-100">
             <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary/25 to-primary/10 flex items-center justify-center text-primary font-bold text-sm">
               {c.name[0]}
             </div>
@@ -81,7 +81,7 @@ function MockupCandidates() {
 function MockupRecruit() {
   const { t } = useTranslation();
   return (
-    <div className="rounded-2xl border border-primary/15 bg-white shadow-[0_4px_20px_rgba(122,99,241,0.08)] overflow-hidden text-left text-[13px]">
+    <div className="rounded-2xl border border-primary/15 bg-white shadow-[0_4px_20px_rgba(122,99,241,0.08)] overflow-hidden text-left text-[13px] pointer-events-none select-none">
       <div className="bg-gradient-to-r from-primary to-primary/80 px-5 py-3 flex items-center gap-2.5">
         <ListFilter className="w-4 h-4 text-white" />
         <span className="text-white font-semibold">{t("findStaff.mockupRecruitTitle")}</span>
@@ -100,7 +100,7 @@ function MockupRecruit() {
             <p className="font-semibold text-gray-800">Alex I.</p>
             <p className="text-[11px] text-green-600 font-medium">{t("findStaff.mockupAcceptedReady")}</p>
           </div>
-          <button className="px-3 py-1.5 rounded-xl bg-primary text-white text-[11px] font-semibold shadow-sm">{t("findStaff.mockupContact")}</button>
+          <span className="px-3 py-1.5 rounded-xl bg-primary text-white text-[11px] font-semibold shadow-sm pointer-events-none select-none">{t("findStaff.mockupContact")}</span>
         </div>
         <div className="flex items-center gap-3 p-2.5 rounded-xl bg-amber-50/60 border border-amber-200/60">
           <div className="w-10 h-10 rounded-full bg-gradient-to-br from-amber-300/30 to-amber-400/10 flex items-center justify-center text-amber-600 font-bold text-sm">I</div>
@@ -108,7 +108,7 @@ function MockupRecruit() {
             <p className="font-semibold text-gray-800">Ion D.</p>
             <p className="text-[11px] text-amber-600 font-medium">{t("findStaff.mockupInReview")}</p>
           </div>
-          <button className="px-3 py-1.5 rounded-xl bg-gray-100 text-gray-600 text-[11px] font-semibold">{t("findStaff.mockupProfile")}</button>
+          <span className="px-3 py-1.5 rounded-xl bg-gray-100 text-gray-600 text-[11px] font-semibold pointer-events-none select-none">{t("findStaff.mockupProfile")}</span>
         </div>
       </div>
     </div>

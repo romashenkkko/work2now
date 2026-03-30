@@ -1,6 +1,9 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
+import { createPortal } from "react-dom";
 import { MapPin, Plus, Edit, Trash2 } from "lucide-react";
-import { branchesApi, type Branch } from "../api/client";
+import { branchesApi, jobsApi, type Branch } from "../api/client";
+import AddressPickerModal from "./AddressPickerModal";
+import { foldForSearch } from "../utils/foldForSearch";
 
 interface BranchesSectionProps {
   onBack: () => void;
@@ -12,6 +15,14 @@ type BranchExt = Branch & {
   contactPersonName?: string;
   contactPersonSurname?: string;
 };
+
+function filterRaioaneForForm(raioane: Array<{ id: number; name: string; type: string }>) {
+  const gagauziaCities = ["Comrat", "Ceadîr-Lunga", "Vulcănești"];
+  return raioane.filter(
+    (raion) =>
+      raion.type === "raion" || (raion.type === "municipiu" && gagauziaCities.includes(raion.name))
+  );
+}
 
 export default function BranchesSection({ onBack, t }: BranchesSectionProps) {
   const [branches, setBranches] = useState<BranchExt[]>([]);
@@ -27,12 +38,41 @@ export default function BranchesSection({ onBack, t }: BranchesSectionProps) {
     city: "",
     country: "Moldova",
     phoneNumber: "",
+    raionId: null as number | null,
   });
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [showAddressModal, setShowAddressModal] = useState(false);
+  const [raioane, setRaioane] = useState<Array<{ id: number; name: string; type: string }>>([]);
+  const [raionSearch, setRaionSearch] = useState("");
+  const [raionDropdownOpen, setRaionDropdownOpen] = useState(false);
+  const raionDropdownRef = useRef<HTMLDivElement>(null);
+
+  const filteredBranchRaioane = useMemo(() => {
+    if (!raionSearch.trim()) return raioane;
+    const fq = foldForSearch(raionSearch);
+    return raioane.filter((r) => foldForSearch(r.name).includes(fq));
+  }, [raioane, raionSearch]);
 
   useEffect(() => {
     loadBranches();
+  }, []);
+
+  useEffect(() => {
+    jobsApi
+      .getRaioane()
+      .then((r) => setRaioane(filterRaioaneForForm(r.raioane || [])))
+      .catch(() => setRaioane([]));
+  }, []);
+
+  useEffect(() => {
+    const onOutside = (e: MouseEvent) => {
+      if (raionDropdownRef.current && !raionDropdownRef.current.contains(e.target as Node)) {
+        setRaionDropdownOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onOutside);
+    return () => document.removeEventListener("mousedown", onOutside);
   }, []);
 
   const loadBranches = async () => {
@@ -59,7 +99,9 @@ export default function BranchesSection({ onBack, t }: BranchesSectionProps) {
       city: "",
       country: "Moldova",
       phoneNumber: "",
+      raionId: null,
     });
+    setRaionSearch("");
     setShowForm(true);
     setMessage(null);
   };
@@ -74,10 +116,21 @@ export default function BranchesSection({ onBack, t }: BranchesSectionProps) {
       city: branch.city,
       country: branch.country,
       phoneNumber: branch.phoneNumber,
+      raionId: branch.raionId ?? null,
     });
+    setRaionSearch(
+      branch.raionId ? (raioane.find((r) => r.id === branch.raionId)?.name ?? "") : ""
+    );
     setShowForm(true);
     setMessage(null);
   };
+
+  useEffect(() => {
+    if (!showForm || formData.raionId == null || raioane.length === 0) return;
+    const name = raioane.find((r) => r.id === formData.raionId)?.name;
+    if (!name) return;
+    setRaionSearch((prev) => (prev === "" ? name : prev));
+  }, [showForm, formData.raionId, raioane]);
 
   const handleDelete = async (id: string) => {
     const confirmMsg = t("profile.branches.confirmDelete") || "Are you sure you want to delete this branch?";
@@ -100,7 +153,9 @@ export default function BranchesSection({ onBack, t }: BranchesSectionProps) {
       !formData.contactPersonSurname.trim() ||
       !formData.address.trim() ||
       !formData.city.trim() ||
-      !formData.phoneNumber.trim()
+      !formData.phoneNumber.trim() ||
+      !formData.raionId ||
+      formData.raionId <= 0
     ) {
       setMessage({
         type: "error",
@@ -111,15 +166,26 @@ export default function BranchesSection({ onBack, t }: BranchesSectionProps) {
 
     setSaving(true);
     setMessage(null);
+    const payload = {
+      name: formData.name.trim(),
+      address: formData.address.trim(),
+      city: formData.city.trim(),
+      country: formData.country.trim() || "Moldova",
+      phoneNumber: formData.phoneNumber.trim(),
+      raionId: formData.raionId!,
+    };
     try {
       if (editingId) {
-        await branchesApi.update(editingId, formData as any);
+        await branchesApi.update(editingId, payload);
         setMessage({ type: "success", text: t("profile.branches.updated") || "Branch updated successfully" });
       } else {
-        await branchesApi.create(formData as any);
+        await branchesApi.create(payload);
         setMessage({ type: "success", text: t("profile.branches.created") || "Branch created successfully" });
       }
       setShowForm(false);
+      setShowAddressModal(false);
+      setRaionSearch("");
+      setRaionDropdownOpen(false);
       loadBranches();
     } catch (e) {
       setMessage({ type: "error", text: (e as Error).message });
@@ -228,17 +294,88 @@ export default function BranchesSection({ onBack, t }: BranchesSectionProps) {
               />
             </label>
 
-            {/* Address */}
-            <label className="block md:col-span-2">
-              <span className="text-sm font-medium text-gray-700">{t("profile.branches.address")} *</span>
-              <input
-                type="text"
-                value={formData.address}
-                onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                className="mt-1 block w-full px-4 py-2 rounded-xl border border-gray-200 focus:ring-2 focus:ring-primary focus:border-primary"
-                required
-              />
-            </label>
+            {/* Address — același flux ca la publicarea jobului (căutare Mapbox + hartă) */}
+            <div className="block md:col-span-2">
+              <span className="text-sm font-medium text-gray-700 mb-1 block">
+                {t("dashboard.address")} <span className="text-red-500">*</span>
+              </span>
+              <button
+                type="button"
+                onClick={() => setShowAddressModal(true)}
+                className="w-full px-4 py-2.5 rounded-xl border-2 border-dashed border-gray-300 bg-white text-left text-sm font-medium text-gray-700 hover:border-primary/40 hover:bg-primary/5 transition-colors inline-flex items-center justify-center gap-2"
+              >
+                <svg className="w-5 h-5 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+                {formData.address.trim() ? (
+                  <span className="truncate flex-1 text-left">{formData.address}</span>
+                ) : (
+                  <span>{t("dashboard.addAddress")}</span>
+                )}
+              </button>
+              <p className="mt-1 text-xs text-gray-500">{t("profile.branches.addressPickerHint")}</p>
+            </div>
+
+            {/* Raion / municipiu — căutare ca la publicarea jobului */}
+            <div className="block md:col-span-2">
+              <span className="text-sm font-medium text-gray-700 mb-1 block">
+                {t("profile.branches.raionLabel")} <span className="text-red-500">*</span>
+              </span>
+              <div ref={raionDropdownRef} className="relative">
+                <input
+                  type="text"
+                  value={raionSearch}
+                  onChange={(e) => {
+                    setRaionSearch(e.target.value);
+                    setRaionDropdownOpen(true);
+                  }}
+                  onFocus={() => setRaionDropdownOpen(true)}
+                  placeholder={t("dashboard.raionPlaceholder")}
+                  className="mt-1 block w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:ring-2 focus:ring-primary focus:border-primary transition-colors"
+                  aria-autocomplete="list"
+                  aria-expanded={raionDropdownOpen}
+                  aria-controls="branch-raion-suggestions"
+                />
+                {raionDropdownOpen && filteredBranchRaioane.length > 0 && (
+                  <div
+                    id="branch-raion-suggestions"
+                    className="absolute left-0 right-0 top-full z-[70] mt-1.5 max-h-64 overflow-y-auto rounded-xl border border-gray-200 bg-white shadow-lg py-1.5 dropdown-enter origin-top"
+                    role="listbox"
+                    aria-label={t("profile.branches.raionLabel")}
+                  >
+                    {filteredBranchRaioane.map((raion) => (
+                      <button
+                        key={raion.id}
+                        type="button"
+                        role="option"
+                        aria-selected={formData.raionId === raion.id}
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          setFormData((prev) => ({ ...prev, raionId: raion.id }));
+                          setRaionSearch(raion.name);
+                          setRaionDropdownOpen(false);
+                        }}
+                        className={`block w-full text-left px-4 py-2.5 text-sm font-medium transition-colors ${
+                          formData.raionId === raion.id
+                            ? "bg-primary/10 text-primary"
+                            : "text-gray-700 hover:bg-gray-50"
+                        }`}
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <span>{raion.name}</span>
+                          <span className="text-xs text-gray-500 capitalize shrink-0">{raion.type}</span>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              {formData.raionId ? (
+                <p className="mt-1 text-xs text-gray-500">
+                  {t("dashboard.selectedRaion")}: {raioane.find((r) => r.id === formData.raionId)?.name}
+                </p>
+              ) : null}
+            </div>
 
             {/* City */}
             <label className="block">
@@ -276,6 +413,9 @@ export default function BranchesSection({ onBack, t }: BranchesSectionProps) {
               type="button"
               onClick={() => {
                 setShowForm(false);
+                setShowAddressModal(false);
+                setRaionSearch("");
+                setRaionDropdownOpen(false);
                 setMessage(null);
               }}
               className="px-4 py-2 rounded-xl border border-gray-300 text-gray-700 font-medium hover:bg-gray-50"
@@ -311,7 +451,8 @@ export default function BranchesSection({ onBack, t }: BranchesSectionProps) {
 
                   <p className="text-sm text-gray-600 mb-1">
                     <MapPin className="w-4 h-4 inline mr-1" />
-                    {branch.address}, {branch.city}, {branch.country}
+                    {branch.address}, {branch.city}
+                    {branch.raionId ? `, ${raioane.find((r) => r.id === branch.raionId)?.name ?? ""}` : ""}, {branch.country}
                   </p>
                   <p className="text-sm text-gray-600">{branch.phoneNumber}</p>
 
@@ -345,6 +486,21 @@ export default function BranchesSection({ onBack, t }: BranchesSectionProps) {
           ))}
         </div>
       )}
+
+      {showForm &&
+        createPortal(
+          <AddressPickerModal
+            open={showAddressModal}
+            onClose={() => setShowAddressModal(false)}
+            onConfirm={(address) => {
+              setFormData((prev) => ({ ...prev, address: address.trim() }));
+            }}
+            initialAddress={formData.address}
+            defaultRadiusM={200}
+            purpose="branch"
+          />,
+          document.body
+        )}
     </section>
   );
 }

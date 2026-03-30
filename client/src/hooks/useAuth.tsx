@@ -2,7 +2,7 @@ import { createContext, useContext, useState, useEffect, ReactNode } from "react
 import { useTranslation } from "react-i18next";
 import { authApi } from "../api/client";
 
-type User = { id: number; name: string; email: string; role?: string; avatar?: string; isActive?: boolean; boosterUntil?: string } | null;
+type User = { id: number; name: string; email: string; role?: string; avatar?: string; isActive?: boolean; boosterUntil?: string; cvFileUrl?: string; cvOriginalName?: string } | null;
 
 const AuthContext = createContext<{
   user: User;
@@ -10,6 +10,7 @@ const AuthContext = createContext<{
   login: (email: string, password: string) => Promise<User>;
   logout: () => void;
   setUser: (u: User) => void;
+  refreshUser: () => Promise<void>;
 }>(null!);
 
 function BlockedAccountModal({ onLogout }: { onLogout: () => void }) {
@@ -73,10 +74,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
   };
 
+  const refreshUser = async () => {
+    try {
+      const u = await authApi.me();
+      setUser({ ...u, isActive: u.isActive !== false });
+    } catch { /* ignore */ }
+  };
+
   const isBlocked = user && user.isActive === false;
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout, setUser }}>
+    <AuthContext.Provider value={{ user, loading, login, logout, setUser, refreshUser }}>
       {isBlocked ? <BlockedAccountModal onLogout={logout} /> : children}
     </AuthContext.Provider>
   );

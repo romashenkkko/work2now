@@ -1,7 +1,9 @@
 import { useState } from "react";
 import { useNavigate, Navigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { experiencesApi } from "../api/client";
 import { useAuth } from "../hooks/useAuth";
+import { MIN_EXPERIENCE_DESCRIPTION_LENGTH } from "../constants/experienceDescription";
 
 // Job categories matching the database enum (codes 1-22)
 enum JobCategory {
@@ -62,21 +64,26 @@ const JOB_CATEGORIES = [
   { id: JobCategory.Waiter, name: "Waiter", icon: "🍽️" },
 ];
 
-const EXPERIENCE_DURATIONS = [
-  { id: ExperienceDuration.NoExperience, name: "No Experience", label: "Fără experiență" },
-  { id: ExperienceDuration.LessThanOneYear, name: "LessThanOneYear", label: "Mai puțin de 1 an" },
-  { id: ExperienceDuration.OneToFiveYears, name: "OneToFiveYears", label: "1-5 ani" },
-  { id: ExperienceDuration.MoreThanFiveYears, name: "MoreThanFiveYears", label: "Mai mult de 5 ani" },
-];
+/** La onboarding nu oferim „Fără experiență” (id 1). */
+const ONBOARDING_DURATION_IDS = [
+  ExperienceDuration.LessThanOneYear,
+  ExperienceDuration.OneToFiveYears,
+  ExperienceDuration.MoreThanFiveYears,
+] as const;
 
 export default function EmployeeOnboarding() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const { user, loading: authLoading } = useAuth();
   const [step, setStep] = useState<1 | 2>(1);
 
   // Redirect if not logged in or not staff
   if (authLoading) {
-    return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
+    return (
+      <div className="min-h-screen flex items-center justify-center text-gray-600">
+        {t("onboarding.loading")}
+      </div>
+    );
   }
   if (!user) {
     return <Navigate to="/login" replace />;
@@ -86,27 +93,29 @@ export default function EmployeeOnboarding() {
   }
   const [selectedCategories, setSelectedCategories] = useState<JobCategory[]>([]);
   const [categoryDurations, setCategoryDurations] = useState<Record<number, ExperienceDuration>>({});
+  const [categoryDescriptions, setCategoryDescriptions] = useState<Record<number, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   const toggleCategory = (categoryId: JobCategory) => {
     setSelectedCategories((prev) => {
       if (prev.includes(categoryId)) {
-        // Remove category and its duration
         const newDurations = { ...categoryDurations };
         delete newDurations[categoryId];
         setCategoryDurations(newDurations);
+        const newDesc = { ...categoryDescriptions };
+        delete newDesc[categoryId];
+        setCategoryDescriptions(newDesc);
         return prev.filter((id) => id !== categoryId);
-      } else {
-        return [...prev, categoryId];
       }
+      return [...prev, categoryId];
     });
     setError(null);
   };
 
   const handleCategoryNext = () => {
     if (selectedCategories.length === 0) {
-      setError("Vă rugăm să selectați cel puțin o categorie de job.");
+      setError(t("onboarding.selectOneCategory"));
       return;
     }
     setStep(2);
@@ -121,11 +130,41 @@ export default function EmployeeOnboarding() {
     setError(null);
   };
 
+  const handleDescriptionChange = (categoryId: number, value: string) => {
+    setCategoryDescriptions((prev) => ({ ...prev, [categoryId]: value }));
+    setError(null);
+  };
+
+  const step2Incomplete = selectedCategories.some((catId) => {
+    if (!categoryDurations[catId]) return true;
+    return (categoryDescriptions[catId] ?? "").trim().length < MIN_EXPERIENCE_DESCRIPTION_LENGTH;
+  });
+
+  const durationLabel = (id: ExperienceDuration) => {
+    switch (id) {
+      case ExperienceDuration.LessThanOneYear:
+        return t("dashboard.experienceDurationLessThanOne");
+      case ExperienceDuration.OneToFiveYears:
+        return t("dashboard.experienceDurationOneToFive");
+      case ExperienceDuration.MoreThanFiveYears:
+        return t("dashboard.experienceDurationMoreThanFive");
+      default:
+        return "";
+    }
+  };
+
   const handleSubmit = async () => {
-    // Validate all selected categories have durations
     const missingDurations = selectedCategories.filter((catId) => !categoryDurations[catId]);
     if (missingDurations.length > 0) {
-      setError("Vă rugăm să selectați durata experienței pentru toate categoriile alese.");
+      setError(t("onboarding.missingDurationError"));
+      return;
+    }
+
+    const shortDesc = selectedCategories.find(
+      (catId) => (categoryDescriptions[catId] ?? "").trim().length < MIN_EXPERIENCE_DESCRIPTION_LENGTH
+    );
+    if (shortDesc != null) {
+      setError(t("onboarding.minDescriptionError", { min: MIN_EXPERIENCE_DESCRIPTION_LENGTH }));
       return;
     }
 
@@ -136,13 +175,13 @@ export default function EmployeeOnboarding() {
       const experiences = selectedCategories.map((categoryId) => ({
         jobCategory: categoryId,
         duration: categoryDurations[categoryId],
+        description: (categoryDescriptions[categoryId] ?? "").trim(),
       }));
 
       await experiencesApi.submitOnboarding(experiences);
-      // Redirect to dashboard after successful onboarding
       navigate("/dashboard", { replace: true });
     } catch (e) {
-      setError((e as Error).message || "Eroare la salvarea experiențelor.");
+      setError((e as Error).message || t("onboarding.saveError"));
       setLoading(false);
     }
   };
@@ -150,40 +189,39 @@ export default function EmployeeOnboarding() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-primary/5 via-white to-primary/5 flex items-center justify-center p-4">
       <div className="w-full max-w-4xl">
-        {/* Progress indicator */}
         <div className="mb-8">
           <div className="flex items-center justify-center gap-2 mb-4">
-            <div className={`w-10 h-10 rounded-full flex items-center justify-center font-semibold ${
-              step >= 1 ? "bg-primary text-white" : "bg-gray-200 text-gray-500"
-            }`}>
+            <div
+              className={`w-10 h-10 rounded-full flex items-center justify-center font-semibold ${
+                step >= 1 ? "bg-primary text-white" : "bg-gray-200 text-gray-500"
+              }`}
+            >
               1
             </div>
             <div className={`h-1 w-20 ${step >= 2 ? "bg-primary" : "bg-gray-200"}`} />
-            <div className={`w-10 h-10 rounded-full flex items-center justify-center font-semibold ${
-              step >= 2 ? "bg-primary text-white" : "bg-gray-200 text-gray-500"
-            }`}>
+            <div
+              className={`w-10 h-10 rounded-full flex items-center justify-center font-semibold ${
+                step >= 2 ? "bg-primary text-white" : "bg-gray-200 text-gray-500"
+              }`}
+            >
               2
             </div>
           </div>
-          <p className="text-center text-sm text-gray-600">
-            Pas {step} din 2
-          </p>
+          <p className="text-center text-sm text-gray-600">{t("onboarding.stepProgress", { step })}</p>
         </div>
 
         <div className="bg-white rounded-2xl border border-gray-200 shadow-lg p-6 sm:p-8">
           {step === 1 && (
             <>
               <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">
-                Bine ai venit, {user?.name}!
+                {user?.name?.trim()
+                  ? t("onboarding.welcome", { name: user.name.trim() })
+                  : t("onboarding.welcomeNoName")}
               </h1>
-              <p className="text-gray-600 mb-6">
-                Selectează categoriile de joburi în care ai experiență. Poți selecta mai multe.
-              </p>
+              <p className="text-gray-600 mb-6">{t("onboarding.step1Lead")}</p>
 
               {error && (
-                <div className="mb-6 px-4 py-3 rounded-xl bg-red-50 text-red-800 text-sm">
-                  {error}
-                </div>
+                <div className="mb-6 px-4 py-3 rounded-xl bg-red-50 text-red-800 text-sm">{error}</div>
               )}
 
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 mb-6">
@@ -201,9 +239,7 @@ export default function EmployeeOnboarding() {
                       }`}
                     >
                       <div className="text-3xl mb-2">{category.icon}</div>
-                      <div className={`text-sm font-medium ${
-                        isSelected ? "text-primary" : "text-gray-700"
-                      }`}>
+                      <div className={`text-sm font-medium ${isSelected ? "text-primary" : "text-gray-700"}`}>
                         {category.name}
                       </div>
                     </button>
@@ -218,7 +254,7 @@ export default function EmployeeOnboarding() {
                   disabled={selectedCategories.length === 0}
                   className="px-6 py-3 rounded-xl bg-primary text-white font-medium hover:bg-primary-dark disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                 >
-                  Continuă →
+                  {t("onboarding.continue")}
                 </button>
               </div>
             </>
@@ -226,49 +262,77 @@ export default function EmployeeOnboarding() {
 
           {step === 2 && (
             <>
-              <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">
-                Durata experienței
-              </h1>
+              <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">{t("onboarding.step2Title")}</h1>
               <p className="text-gray-600 mb-6">
-                Selectează durata experienței pentru fiecare categorie de job selectată.
+                {t("onboarding.step2Lead", { min: MIN_EXPERIENCE_DESCRIPTION_LENGTH })}
               </p>
 
               {error && (
-                <div className="mb-6 px-4 py-3 rounded-xl bg-red-50 text-red-800 text-sm">
-                  {error}
-                </div>
+                <div className="mb-6 px-4 py-3 rounded-xl bg-red-50 text-red-800 text-sm">{error}</div>
               )}
 
-              <div className="space-y-4 mb-6">
+              <div className="space-y-6 mb-6">
                 {selectedCategories.map((categoryId) => {
                   const category = JOB_CATEGORIES.find((c) => c.id === categoryId);
                   const selectedDuration = categoryDurations[categoryId];
+                  const desc = categoryDescriptions[categoryId] ?? "";
+                  const descLen = desc.trim().length;
 
                   return (
-                    <div
-                      key={categoryId}
-                      className="p-4 border border-gray-200 rounded-xl bg-gray-50"
-                    >
+                    <div key={categoryId} className="p-4 border border-gray-200 rounded-xl bg-gray-50">
                       <div className="flex items-center gap-3 mb-3">
                         <span className="text-2xl">{category?.icon}</span>
                         <h3 className="font-semibold text-gray-900">{category?.name}</h3>
                       </div>
-                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                        {EXPERIENCE_DURATIONS.map((duration) => (
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                        {ONBOARDING_DURATION_IDS.map((durationId) => (
                           <button
-                            key={duration.id}
+                            key={durationId}
                             type="button"
-                            onClick={() => handleDurationChange(categoryId, duration.id)}
+                            onClick={() => handleDurationChange(categoryId, durationId)}
                             className={`px-4 py-2 rounded-lg border-2 text-sm font-medium transition-all ${
-                              selectedDuration === duration.id
+                              selectedDuration === durationId
                                 ? "border-primary bg-primary text-white"
                                 : "border-gray-200 hover:border-gray-300 text-gray-700"
                             }`}
                           >
-                            {duration.label}
+                            {durationLabel(durationId)}
                           </button>
                         ))}
                       </div>
+
+                      {selectedDuration != null && (
+                        <div className="mt-4 space-y-2">
+                          <label
+                            htmlFor={`exp-desc-${categoryId}`}
+                            className="block text-sm font-medium text-gray-800"
+                          >
+                            {t("onboarding.describeLabel")}
+                          </label>
+                          <textarea
+                            id={`exp-desc-${categoryId}`}
+                            rows={5}
+                            value={desc}
+                            onChange={(e) => handleDescriptionChange(categoryId, e.target.value)}
+                            placeholder={t("onboarding.describePlaceholder")}
+                            className={`w-full rounded-xl border px-4 py-3 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary ${
+                              descLen > 0 && descLen < MIN_EXPERIENCE_DESCRIPTION_LENGTH
+                                ? "border-amber-300 ring-1 ring-amber-200"
+                                : "border-gray-200"
+                            }`}
+                          />
+                          <p
+                            className={`text-xs ${
+                              descLen >= MIN_EXPERIENCE_DESCRIPTION_LENGTH ? "text-green-700" : "text-gray-500"
+                            }`}
+                          >
+                            {t("onboarding.charsHint", {
+                              current: descLen,
+                              min: MIN_EXPERIENCE_DESCRIPTION_LENGTH,
+                            })}
+                          </p>
+                        </div>
+                      )}
                     </div>
                   );
                 })}
@@ -280,15 +344,15 @@ export default function EmployeeOnboarding() {
                   onClick={() => setStep(1)}
                   className="px-6 py-3 rounded-xl border border-gray-300 text-gray-700 font-medium hover:bg-gray-50 transition-colors"
                 >
-                  ← Înapoi
+                  {t("onboarding.back")}
                 </button>
                 <button
                   type="button"
                   onClick={handleSubmit}
-                  disabled={loading || selectedCategories.some((catId) => !categoryDurations[catId])}
+                  disabled={loading || step2Incomplete}
                   className="px-6 py-3 rounded-xl bg-primary text-white font-medium hover:bg-primary-dark disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                 >
-                  {loading ? "Salvare..." : "Finalizează"}
+                  {loading ? t("onboarding.saving") : t("onboarding.finalize")}
                 </button>
               </div>
             </>
@@ -298,4 +362,3 @@ export default function EmployeeOnboarding() {
     </div>
   );
 }
-

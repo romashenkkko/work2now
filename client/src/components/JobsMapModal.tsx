@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import mapboxgl from "mapbox-gl";
 import { Map, Satellite } from "lucide-react";
+import { geocodeAddress } from "../utils/geocodeAddress";
 
 const CHISINAU_CENTER: [number, number] = [46.99, 28.98];
 const DEFAULT_ZOOM = 12;
@@ -11,24 +12,6 @@ const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN ?? "";
 
 type JobWithLocation = { job: string; location: string; lat?: number; lng?: number };
 type GeocodedJob = { lat: number; lon: number; job: string; location: string };
-
-async function geocodeAddress(address: string, token: string): Promise<[number, number] | null> {
-  const q = address.trim();
-  if (!q || !token.trim()) return null;
-  try {
-    const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(q)}.json?access_token=${encodeURIComponent(token)}&limit=1`;
-    const res = await fetch(url);
-    const data = await res.json();
-    const features = data?.features ?? [];
-    if (features[0]?.center) {
-      const [lng, lat] = features[0].center as [number, number];
-      if (Number.isFinite(lat) && Number.isFinite(lng)) return [lat, lng];
-    }
-  } catch {
-    // ignore
-  }
-  return null;
-}
 
 type Props = {
   open: boolean;

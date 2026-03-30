@@ -1,9 +1,12 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { authApi, jobsApi } from "../api/client";
+import AddressPickerModal from "../components/AddressPickerModal";
 import DatePicker from "../components/DatePicker";
 import { TERMS_AND_CONDITIONS_RO, TERMS_AND_CONDITIONS_EN } from "../content/termsAndConditions";
+import { foldForSearch } from "../utils/foldForSearch";
 
 /** 0 = none, 1 = weak, 2 = fair, 3 = good, 4 = strong */
 function getPasswordStrength(password: string): 0 | 1 | 2 | 3 | 4 {
@@ -49,14 +52,15 @@ export default function Register() {
   const [lastName, setLastName] = useState("");
   const [dateOfBirth, setDateOfBirth] = useState("");
   const [aboutMe, setAboutMe] = useState("");
-  const [phoneNumber, setPhoneNumber] = useState(""); // Staff phone number
+  const [cvFile, setCvFile] = useState<File | null>(null);
+  const [phoneNumber, setPhoneNumber] = useState(""); // Staff phone number (without prefix)
   
   // Business/Customer fields
   const [companyName, setCompanyName] = useState("");
   const [contactFirstName, setContactFirstName] = useState("");
   const [contactLastName, setContactLastName] = useState("");
   const [contactDateOfBirth, setContactDateOfBirth] = useState("");
-  const [contactPhoneNumber, setContactPhoneNumber] = useState(""); // Customer contact phone number
+  const [contactPhoneNumber, setContactPhoneNumber] = useState(""); // Customer contact phone number (without prefix)
   const [companyCategory, setCompanyCategory] = useState("1");
   const [companyCategoryOpen, setCompanyCategoryOpen] = useState(false);
   const companyCategoryRef = useRef<HTMLDivElement>(null);
@@ -66,12 +70,20 @@ export default function Register() {
   const [branchAddress, setBranchAddress] = useState("");
   const [branchCity, setBranchCity] = useState("");
   const [branchCountry, setBranchCountry] = useState("Moldova");
-  const [branchPhone, setBranchPhone] = useState("");
+  const [branchPhone, setBranchPhone] = useState(""); // without prefix
   // Raion dropdown for customer registration
   const [raioane, setRaioane] = useState<Array<{ id: number; name: string; type: string }>>([]);
   const [selectedRaionId, setSelectedRaionId] = useState<number | null>(null);
+  const [raionSearch, setRaionSearch] = useState("");
   const [raionDropdownOpen, setRaionDropdownOpen] = useState(false);
   const raionDropdownRef = useRef<HTMLDivElement>(null);
+
+  const filteredRegisterRaioane = useMemo(() => {
+    if (!raionSearch.trim()) return raioane;
+    const fq = foldForSearch(raionSearch);
+    return raioane.filter((r) => foldForSearch(r.name).includes(fq));
+  }, [raioane, raionSearch]);
+  const [showBranchAddressModal, setShowBranchAddressModal] = useState(false);
 
   // OTP verification state
   const [otpStep, setOtpStep] = useState<"form" | "otp">("form");
@@ -123,8 +135,8 @@ export default function Register() {
     jobsApi
       .getRaioane()
       .then((r) => {
-        // Include: 32 raioane (districts) + UTA Gagauzia cities (Comrat, Ceadir-Lunga, Vulcanesti)
-        const gagauziaCities = ["Comrat", "Ceadir-Lunga", "Vulcanesti"];
+        // Include: 32 raioane + municipiile UTA Găgăuzia (denumiri cu diacritice ca în API)
+        const gagauziaCities = ["Comrat", "Ceadîr-Lunga", "Vulcănești"];
         const raioaneOnly = (r.raioane || []).filter((raion) => 
           raion.type === "raion" || 
           (raion.type === "municipiu" && gagauziaCities.includes(raion.name))
@@ -246,7 +258,7 @@ export default function Register() {
           address: branchAddress.trim(),
           city: branchCity.trim(),
           country: branchCountry.trim() || "Moldova",
-          phoneNumber: branchPhone.trim(),
+          phoneNumber: `+373${branchPhone.trim()}`,
           raionId: selectedRaionId,
         };
       }
@@ -324,14 +336,25 @@ export default function Register() {
           address: branchAddress.trim(),
           city: branchCity.trim(),
           country: branchCountry.trim() || "Moldova",
-          phoneNumber: branchPhone.trim(),
+          phoneNumber: `+373${branchPhone.trim()}`,
           raionId: selectedRaionId,
         };
       }
       
       await authApi.register(registerData);
+
+      if (cvFile && role === "staff") {
+        try {
+          const loginResult = await authApi.login(email, password);
+          localStorage.setItem("token", loginResult.token);
+          await authApi.uploadCv(cvFile);
+          localStorage.removeItem("token");
+        } catch {
+          // CV upload is best-effort; user can re-upload from profile later
+        }
+      }
+
       setSuccess(t("auth.registerSuccess"));
-      // Always redirect to login - onboarding will be checked after login
       setTimeout(() => navigate("/login"), 2000);
     } catch (err) {
       setError(err instanceof Error ? err.message : t("auth.registerError"));
@@ -341,7 +364,7 @@ export default function Register() {
   }
 
   async function handleAcceptTerms() {
-    const phoneToVerify = role === "staff" ? phoneNumber.trim() : contactPhoneNumber.trim();
+    const phoneToVerify = role === "staff" ? `+373${phoneNumber.trim()}` : `+373${contactPhoneNumber.trim()}`;
     
     // Validate phone number before sending OTP
     if (!phoneToVerify) {
@@ -534,17 +557,22 @@ export default function Register() {
                 openUpward
                 disableFutureDates
                 disablePastDates={false}
+                hideFooter
               />
               <label>
                 {t("auth.phoneNumber")} <span className="text-red-500">*</span>
-                <input
-                  type="tel"
-                  value={phoneNumber}
-                  onChange={(e) => setPhoneNumber(e.target.value)}
-                  required
-                  placeholder={t("auth.phoneNumberPlaceholder") || "+37312345678"}
-                />
-                <small className="text-gray-500 text-xs mt-1 block">{t("auth.phoneNumberHint") || "Folosește formatul internațional (ex: +37312345678)"}</small>
+                <div className="flex items-center rounded-xl border border-gray-200 bg-white overflow-hidden focus-within:ring-2 focus-within:ring-primary/30 focus-within:border-primary transition-all mt-1">
+                  <span className="px-3 py-2.5 text-sm font-medium text-gray-500 bg-gray-50 border-r border-gray-200 select-none shrink-0">+373</span>
+                  <input
+                    type="tel"
+                    value={phoneNumber}
+                    onChange={(e) => setPhoneNumber(e.target.value.replace(/[^0-9]/g, ""))}
+                    required
+                    placeholder="69123456"
+                    className="!border-0 !ring-0 !shadow-none !rounded-none flex-1 !mt-0"
+                  />
+                </div>
+                <small className="text-gray-500 text-xs mt-1 block">{t("auth.phoneNumberHint") || "Introduceți numărul fără prefix"}</small>
               </label>
               <label>
                 {t("auth.aboutMe")}
@@ -554,6 +582,18 @@ export default function Register() {
                   rows={4}
                   placeholder={t("auth.aboutMePlaceholder")}
                 />
+              </label>
+              <label>
+                {t("auth.cvUpload")}
+                <div className="mt-1 flex items-center gap-3">
+                  <input
+                    type="file"
+                    accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                    onChange={(e) => setCvFile(e.target.files?.[0] || null)}
+                    className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"
+                  />
+                </div>
+                <small className="text-gray-500 text-xs mt-1 block">{t("auth.cvUploadHint")}</small>
               </label>
             </>
           )}
@@ -603,17 +643,22 @@ export default function Register() {
                 openUpward
                 disableFutureDates
                 disablePastDates={false}
+                hideFooter
               />
               <label>
                 {t("auth.contactPhoneNumber")} <span className="text-red-500">*</span>
-                <input
-                  type="tel"
-                  value={contactPhoneNumber}
-                  onChange={(e) => setContactPhoneNumber(e.target.value)}
-                  required
-                  placeholder={t("auth.phoneNumberPlaceholder") || "+37312345678"}
-                />
-                <small className="text-gray-500 text-xs mt-1 block">{t("auth.phoneNumberHint") || "Folosește formatul internațional (ex: +37312345678)"}</small>
+                <div className="flex items-center rounded-xl border border-gray-200 bg-white overflow-hidden focus-within:ring-2 focus-within:ring-primary/30 focus-within:border-primary transition-all mt-1">
+                  <span className="px-3 py-2.5 text-sm font-medium text-gray-500 bg-gray-50 border-r border-gray-200 select-none shrink-0">+373</span>
+                  <input
+                    type="tel"
+                    value={contactPhoneNumber}
+                    onChange={(e) => setContactPhoneNumber(e.target.value.replace(/[^0-9]/g, ""))}
+                    required
+                    placeholder="69123456"
+                    className="!border-0 !ring-0 !shadow-none !rounded-none flex-1 !mt-0"
+                  />
+                </div>
+                <small className="text-gray-500 text-xs mt-1 block">{t("auth.phoneNumberHint") || "Introduceți numărul fără prefix"}</small>
               </label>
               <label>
                 {t("auth.companyCategory")}
@@ -677,59 +722,85 @@ export default function Register() {
                   placeholder={t("auth.branchNamePlaceholder")}
                 />
               </label>
-              <label>
-                {t("auth.branchAddress")}
-                <input
-                  type="text"
-                  value={branchAddress}
-                  onChange={(e) => setBranchAddress(e.target.value)}
-                  required
-                  placeholder={t("auth.branchAddressPlaceholder")}
-                />
-              </label>
-              <label>
-                Raion <span className="text-red-500">*</span>
-                <div className="auth-custom-dropdown" ref={raionDropdownRef}>
-                  <button
-                    type="button"
-                    className={`auth-custom-dropdown__trigger ${raionDropdownOpen ? "is-open" : ""}`}
-                    onClick={() => setRaionDropdownOpen((v) => !v)}
-                    aria-haspopup="listbox"
+              <div className="grid gap-1.5">
+                <span className="font-semibold text-[#34324a] text-[0.9rem]">
+                  {t("auth.branchAddress")}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setShowBranchAddressModal(true)}
+                  className="w-full px-4 py-2.5 rounded-xl border-2 border-dashed border-gray-300 bg-white text-left text-sm font-medium text-gray-700 hover:border-primary/40 hover:bg-primary/5 transition-colors inline-flex items-center justify-center gap-2"
+                >
+                  <svg className="w-5 h-5 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  </svg>
+                  {branchAddress.trim() ? (
+                    <span className="truncate flex-1 text-left">{branchAddress}</span>
+                  ) : (
+                    <span>{t("dashboard.addAddress")}</span>
+                  )}
+                </button>
+                <p className="mt-1 text-xs text-gray-500">{t("profile.branches.addressPickerHint")}</p>
+              </div>
+              <div className="grid gap-1.5">
+                <span className="font-semibold text-[#34324a] text-[0.9rem]">
+                  {t("dashboard.raionLabel")} <span className="text-red-500">*</span>
+                </span>
+                <div className="relative" ref={raionDropdownRef}>
+                  <input
+                    type="text"
+                    value={raionSearch}
+                    onChange={(e) => {
+                      setRaionSearch(e.target.value);
+                      setRaionDropdownOpen(true);
+                    }}
+                    onFocus={() => setRaionDropdownOpen(true)}
+                    placeholder={t("dashboard.raionPlaceholder")}
+                    className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:ring-2 focus:ring-primary focus:border-primary transition-colors bg-white/80"
+                    aria-autocomplete="list"
                     aria-expanded={raionDropdownOpen}
-                  >
-                    <span className={selectedRaionId ? "" : "opacity-60"}>
-                      {selectedRaionId 
-                        ? raioane.find((r) => r.id === selectedRaionId)?.name || "Selectați raionul"
-                        : "Selectează"}
-                    </span>
-                    <svg className="auth-custom-dropdown__chevron" viewBox="0 0 24 24" fill="none" aria-hidden>
-                      <path d="M7 10l5 5 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                    </svg>
-                  </button>
-                  {raionDropdownOpen && (
-                    <ul className="auth-custom-dropdown__menu" role="listbox" aria-label="Raion">
-                      {raioane.map((raion) => (
-                        <li key={raion.id}>
-                          <button
-                            type="button"
-                            className={`auth-custom-dropdown__item ${selectedRaionId === raion.id ? "is-selected" : ""}`}
-                            onClick={(e) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              setSelectedRaionId(raion.id);
-                              setRaionDropdownOpen(false);
-                            }}
-                            role="option"
-                            aria-selected={selectedRaionId === raion.id}
-                          >
-                            {raion.name}
-                          </button>
-                        </li>
+                    aria-controls="register-raion-suggestions"
+                  />
+                  {raionDropdownOpen && filteredRegisterRaioane.length > 0 && (
+                    <div
+                      id="register-raion-suggestions"
+                      className="absolute left-0 right-0 top-full z-50 mt-1.5 max-h-64 overflow-y-auto rounded-xl border border-gray-200 bg-white shadow-lg py-1.5"
+                      role="listbox"
+                      aria-label={t("dashboard.raionLabel")}
+                    >
+                      {filteredRegisterRaioane.map((raion) => (
+                        <button
+                          key={raion.id}
+                          type="button"
+                          role="option"
+                          aria-selected={selectedRaionId === raion.id}
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                            setSelectedRaionId(raion.id);
+                            setRaionSearch(raion.name);
+                            setRaionDropdownOpen(false);
+                          }}
+                          className={`block w-full text-left px-4 py-2.5 text-sm font-medium transition-colors ${
+                            selectedRaionId === raion.id
+                              ? "bg-primary/10 text-primary"
+                              : "text-gray-700 hover:bg-gray-50"
+                          }`}
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <span>{raion.name}</span>
+                            <span className="text-xs text-gray-500 capitalize shrink-0">{raion.type}</span>
+                          </div>
+                        </button>
                       ))}
-                    </ul>
+                    </div>
                   )}
                 </div>
-              </label>
+                {selectedRaionId ? (
+                  <p className="text-xs text-gray-500">
+                    {t("dashboard.selectedRaion")}: {raioane.find((r) => r.id === selectedRaionId)?.name}
+                  </p>
+                ) : null}
+              </div>
               <div className="auth-field-row auth-field-row--address">
                 <label>
                   Oraș
@@ -753,13 +824,17 @@ export default function Register() {
               </div>
               <label>
                 {t("auth.phone")}
-                <input
-                  type="tel"
-                  value={branchPhone}
-                  onChange={(e) => setBranchPhone(e.target.value)}
-                  required
-                  placeholder={t("auth.branchPhonePlaceholder")}
-                />
+                <div className="flex items-center rounded-xl border border-gray-200 bg-white overflow-hidden focus-within:ring-2 focus-within:ring-primary/30 focus-within:border-primary transition-all mt-1">
+                  <span className="px-3 py-2.5 text-sm font-medium text-gray-500 bg-gray-50 border-r border-gray-200 select-none shrink-0">+373</span>
+                  <input
+                    type="tel"
+                    value={branchPhone}
+                    onChange={(e) => setBranchPhone(e.target.value.replace(/[^0-9]/g, ""))}
+                    required
+                    placeholder="69123456"
+                    className="!border-0 !ring-0 !shadow-none !rounded-none flex-1 !mt-0"
+                  />
+                </div>
               </label>
             </>
           )}
@@ -893,6 +968,22 @@ export default function Register() {
         <p className="auth-link">
           <Link to="/">{t("auth.backToSite")}</Link>
         </p>
+
+        {role === "customer" &&
+          createPortal(
+            <AddressPickerModal
+              open={showBranchAddressModal}
+              onClose={() => setShowBranchAddressModal(false)}
+              onConfirm={(address) => {
+                setBranchAddress(address);
+                setShowBranchAddressModal(false);
+              }}
+              initialAddress={branchAddress}
+              defaultRadiusM={200}
+              purpose="branch"
+            />,
+            document.body
+          )}
       </div>
     </div>
   );

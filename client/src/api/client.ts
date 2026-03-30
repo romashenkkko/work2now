@@ -1,39 +1,49 @@
 /**
  * Baza URL pentru API.
  *
- * - Dacă VITE_API_URL este setat (production / hosting custom) → îl folosim ca absolut.
- * - În dev fără VITE_API_URL: chemăm API pe același hostname ca fereastra, port VITE_API_PORT sau 5600
- *   (evită 404 când UI e pe :5500 iar Express pe :5600).
- * - În production: `/api` pe același host ca build-ul (sau VITE_API_URL).
+ * - VITE_API_URL setat → URL absolut (recomandat în producție pe hosting separat).
+ * - Dev: același hostname ca fereastra, port VITE_API_PORT sau 5600 (Vite :5500 → API :5600, inclusiv LAN).
+ * - Prod pe localhost: dacă pagina nu e pe același port ca API → `proto//host:apiPort/api` (evită 404).
+ * - În rest → `/api` (proxy Vite sau Express care servește UI+API pe același port).
  */
-function getApiBase(): string {
+export function getApiBase(): string {
   if (typeof window === "undefined") return "/api";
   const envUrl = import.meta.env.VITE_API_URL;
   if (envUrl && typeof envUrl === "string" && envUrl.trim()) {
     const base = envUrl.trim().replace(/\/+$/, "");
     return base.endsWith("/api") ? base : `${base}/api`;
   }
+  const proto = window.location.protocol;
+  if (proto !== "http:" && proto !== "https:") return "/api";
+  const host = window.location.hostname;
+  const pagePort = window.location.port;
+  const isLocalHost = host === "localhost" || host === "127.0.0.1" || host === "[::1]" || host === "::1";
+  const apiPort = String(import.meta.env.VITE_API_PORT || "5600").trim() || "5600";
+  const samePortAsApi = pagePort === apiPort || (!pagePort && (apiPort === "80" || apiPort === "443"));
+
   if (import.meta.env.DEV) {
-    const port = String(import.meta.env.VITE_API_PORT || "5600").replace(/\/+$/, "");
-    return `http://${window.location.hostname}:${port}/api`;
+    return `${proto}//${host}:${apiPort}/api`;
+  }
+  if (import.meta.env.PROD && isLocalHost && !samePortAsApi) {
+    return `${proto}//${host}:${apiPort}/api`;
   }
   return "/api";
+}
+
+/** URL absolut pentru asset-uri `/api/...` (ex. imagini job, atașamente) când API e pe alt port. */
+export function resolveApiAssetUrl(apiPath: string): string {
+  const p = apiPath.startsWith("/") ? apiPath : `/${apiPath}`;
+  const base = getApiBase();
+  if (base.endsWith("/api")) {
+    const root = base.slice(0, -4);
+    return root ? `${root}${p}` : p;
+  }
+  return `${base}${p}`;
 }
 
 function getToken(): string | null {
   if (typeof window === "undefined") return null;
   return localStorage.getItem("token");
-}
-
-function getApiOrigin(): string {
-  if (typeof window === "undefined") return "";
-  const envUrl = import.meta.env.VITE_API_URL;
-  if (envUrl && typeof envUrl === "string" && envUrl.trim()) return envUrl.trim().replace(/\/+$/, "");
-  if (import.meta.env.DEV) {
-    const port = String(import.meta.env.VITE_API_PORT || "5600").replace(/\/+$/, "");
-    return `http://${window.location.hostname}:${port}`;
-  }
-  return window.location.origin;
 }
 
 export async function api<T>(path: string, options: RequestInit = {}): Promise<T> {
@@ -68,6 +78,33 @@ export async function api<T>(path: string, options: RequestInit = {}): Promise<T
       (data as { error?: string }).error ??
       (data as { message?: string }).message ??
       defaultMsg;
+    throw new Error(msg);
+  }
+  return data as T;
+}
+
+export async function apiFormData<T>(path: string, formData: FormData): Promise<T> {
+  const token = getToken();
+  const headers: HeadersInit = {
+    ...(token && { Authorization: `Bearer ${token}` }),
+  };
+  let res: Response;
+  try {
+    res = await fetch(`${getApiBase()}${path}`, { method: "POST", headers, body: formData });
+  } catch (e) {
+    const err = e as Error;
+    throw new Error(err.message || "Serverul nu raspunde. Verifica ca backend-ul ruleaza (npm run dev).");
+  }
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    let msg =
+      (data as { error?: string }).error ??
+      (data as { message?: string }).message ??
+      res.statusText;
+    if (res.status === 404 && (!msg || msg === "Not Found")) {
+      msg =
+        "API 404: ruta nu există sau cererea nu ajunge la serverul Node. Dacă folosești XAMPP, pornește API-ul (npm run dev din rădăcina proiectului sau npm run start în server) și, la nevoie, setează în client/.env VITE_API_URL=http://localhost:5600 apoi rebuild.";
+    }
     throw new Error(msg);
   }
   return data as T;
@@ -146,15 +183,31 @@ export const authApi = {
       city: string;
       country: string;
       phoneNumber: string;
+      raionId?: number | null;
     };
   }) =>
     api<{ message: string }>("/auth/register", { method: "POST", body: JSON.stringify(body) }),
-  me: () => api<{ id: number; name: string; email: string; role: string; avatar?: string; isActive?: boolean; boosterUntil?: string }>("/auth/me"),
+  me: () => api<{ id: number; name: string; email: string; role: string; avatar?: string; isActive?: boolean; boosterUntil?: string; cvFileUrl?: string; cvOriginalName?: string }>("/auth/me"),
   updateProfile: (data: { name?: string; avatar?: string | null }) =>
     api<{ id: number; name: string; email: string; role: string; avatar?: string }>("/auth/me", {
       method: "PATCH",
       body: JSON.stringify(data),
     }),
+  uploadCv: async (file: File) => {
+    const token = localStorage.getItem("token");
+    const formData = new FormData();
+    formData.append("cv", file);
+    const res = await fetch(`${getApiBase()}/auth/cv/upload`, {
+      method: "POST",
+      headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      body: formData,
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error((data as { error?: string }).error || "CV upload failed.");
+    return data as { ok: boolean; cvFileUrl: string; cvOriginalName: string };
+  },
+  deleteCv: () => api<{ ok: boolean }>("/auth/cv", { method: "DELETE" }),
+  getCvUrl: (userId: string) => `${getApiBase()}/auth/cv/${encodeURIComponent(userId)}`,
   changePassword: (currentPassword: string, newPassword: string) =>
     api<{ message: string }>("/auth/change-password", {
       method: "POST",
@@ -349,6 +402,17 @@ export type JobPayload = {
   raionId?: number;          // ID from raioane table
   localitate?: string;       // City/village name (max 200 chars)
 
+  /** Filială business (opțional; trebuie să aparțină angajatorului) */
+  branchId?: string;
+
+  /** URL imagine copertă (ex. după POST /jobs/upload-image) */
+  imageUrl?: string;
+  /** URL-uri galerie (aceeași sursă ca imageUrl) */
+  galleryImageUrls?: string[];
+
+  /** Documente încărcate cu POST /jobs/upload-attachment (url + nume afișat) */
+  jobAttachments?: { url: string; name: string }[];
+
 };
 
 
@@ -383,6 +447,10 @@ export type JobResponse = {
   checkInLat?: number;
   checkInLng?: number;
   checkInRadiusM?: number;
+  /** Filială asociată jobului (dacă a fost trimisă la creare) */
+  branchId?: string;
+  galleryImageUrls?: string[];
+  jobAttachments?: { url: string; name: string }[];
 };
 
 export type StaffApplicationItem = {
@@ -422,6 +490,16 @@ export type JobCategory = {
 export const jobsApi = {
   list: () => api<{ jobs: JobResponse[] }>("/jobs"),
   getCategories: () => api<{ categories: JobCategory[] }>("/jobs/categories"),
+  uploadJobImage: (file: File) => {
+    const fd = new FormData();
+    fd.append("image", file);
+    return apiFormData<{ url: string }>("/jobs/upload-image", fd);
+  },
+  uploadJobAttachment: (file: File) => {
+    const fd = new FormData();
+    fd.append("file", file);
+    return apiFormData<{ url: string; originalName: string }>("/jobs/upload-attachment", fd);
+  },
   create: (payload: JobPayload) =>
     api<JobResponse>("/jobs", { method: "POST", body: JSON.stringify(payload) }),
   delete: (id: string) => api<{ ok: boolean }>(`/jobs/${id}`, { method: "DELETE" }),
@@ -447,7 +525,7 @@ export const jobsApi = {
       ratingScore?: number;
     }> }>("/jobs/my-applications/list"),
   applications: () =>
-    api<{ applications: Record<string, { id: string; jobId: string; staffId: string; staffName: string; staffEmail?: string; staffAvatar?: string; status: string; checkedInAt?: string; checkedOutAt?: string; businessConfirmedAt?: string; isBusinessConfirmed?: boolean; workSessions?: { workDate: string; checkedInAt?: string; checkedOutAt?: string }[]; ratingScore?: number }[]> }>("/jobs/applications"),
+    api<{ applications: Record<string, { id: string; jobId: string; staffId: string; staffName: string; staffEmail?: string; staffAvatar?: string; staffCvFileUrl?: string; staffCvOriginalName?: string; status: string; checkedInAt?: string; checkedOutAt?: string; businessConfirmedAt?: string; isBusinessConfirmed?: boolean; workSessions?: { workDate: string; checkedInAt?: string; checkedOutAt?: string }[]; ratingScore?: number }[]> }>("/jobs/applications"),
   setApplicationStatus: (applicationId: string, status: "accepted" | "refused") =>
     api<{ ok: boolean }>(`/jobs/applications/${applicationId}`, {
       method: "PATCH",
@@ -554,18 +632,37 @@ export type Branch = {
   city: string;
   country: string;
   phoneNumber: string;
+  raionId: number | null;
   isActive: boolean;
   createdAt: string;
 };
 
 export const branchesApi = {
   list: () => api<{ branches: Branch[] }>("/branches"),
-  create: (data: { name: string; address: string; city: string; country?: string; phoneNumber: string }) =>
+  create: (data: {
+    name: string;
+    address: string;
+    city: string;
+    country?: string;
+    phoneNumber: string;
+    raionId: number;
+  }) =>
     api<Branch>("/branches", {
       method: "POST",
       body: JSON.stringify(data),
     }),
-  update: (id: string, data: { name?: string; address?: string; city?: string; country?: string; phoneNumber?: string; isActive?: boolean }) =>
+  update: (
+    id: string,
+    data: {
+      name?: string;
+      address?: string;
+      city?: string;
+      country?: string;
+      phoneNumber?: string;
+      raionId?: number;
+      isActive?: boolean;
+    }
+  ) =>
     api<Branch>(`/branches/${id}`, {
       method: "PATCH",
       body: JSON.stringify(data),
@@ -585,7 +682,7 @@ export type Experience = {
 
 export const experiencesApi = {
   checkOnboarding: () => api<{ needsOnboarding: boolean }>("/experiences/check-onboarding"),
-  submitOnboarding: (experiences: { jobCategory: number; duration: number }[]) =>
+  submitOnboarding: (experiences: { jobCategory: number; duration: number; description: string }[]) =>
     api<{ ok: boolean; message: string }>("/experiences/onboarding", {
       method: "POST",
       body: JSON.stringify({ experiences }),

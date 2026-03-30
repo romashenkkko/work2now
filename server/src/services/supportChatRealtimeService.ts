@@ -1,7 +1,7 @@
 import type { Response } from "express";
 
 type SupportRealtimeEvent =
-  | { type: "chat_updated"; chatId: string; reason: "request" | "accept" | "message" | "close" | "seen" }
+  | { type: "chat_updated"; chatId: string; reason: "request" | "accept" | "message" | "close" | "seen" | "deleted" }
   | { type: "typing"; chatId: string; userId: string; isTyping: boolean; at: string }
   | { type: "delivered"; chatId: string; messageId: string; deliveredToUserId: string; at: string }
   | { type: "assigned"; chatId: string; assignedToUserId: string; assignedToEmail: string; at: string }

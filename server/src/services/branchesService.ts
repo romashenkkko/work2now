@@ -9,6 +9,7 @@ export type BranchDto = {
   city: string;
   country: string;
   phoneNumber: string;
+  raionId: number | null;
   isActive: boolean;
   createdAt: string;
 };
@@ -19,6 +20,7 @@ type BranchPayload = {
   city?: unknown;
   country?: unknown;
   phoneNumber?: unknown;
+  raionId?: unknown;
   isActive?: unknown;
 };
 
@@ -36,6 +38,7 @@ function mapBranchRow(branch: {
   City: string;
   Country: string;
   PhoneNumber: string;
+  RaionId: number | null;
   IsActive: boolean;
   CreatedAt: Date;
 }): BranchDto {
@@ -46,6 +49,7 @@ function mapBranchRow(branch: {
     city: branch.City,
     country: branch.Country,
     phoneNumber: branch.PhoneNumber,
+    raionId: branch.RaionId ?? null,
     isActive: branch.IsActive,
     createdAt: branch.CreatedAt instanceof Date ? branch.CreatedAt.toISOString() : String(branch.CreatedAt),
   };
@@ -69,7 +73,7 @@ export async function listBranches(userId?: string): Promise<{ branches: BranchD
 
   const branches = await prisma.branches.findMany({
     where: { BusinessProfileId: businessProfileId },
-    orderBy: { CreatedAt: "desc" },
+    orderBy: { CreatedAt: "asc" },
     select: {
       Id: true,
       Name: true,
@@ -77,6 +81,7 @@ export async function listBranches(userId?: string): Promise<{ branches: BranchD
       City: true,
       Country: true,
       PhoneNumber: true,
+      RaionId: true,
       IsActive: true,
       CreatedAt: true,
     },
@@ -87,9 +92,17 @@ export async function listBranches(userId?: string): Promise<{ branches: BranchD
   };
 }
 
+function parseRaionId(value: unknown): number | null {
+  if (value === undefined || value === null || value === "") return null;
+  const n = typeof value === "number" ? value : parseInt(String(value), 10);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return n;
+}
+
 export async function createBranch(userId?: string, payload: BranchPayload = {}): Promise<BranchDto> {
   const resolvedUserId = requireUserId(userId);
-  const { name, address, city, country, phoneNumber } = payload;
+  const { name, address, city, country, phoneNumber, raionId: raionRaw } = payload;
+  const raionId = parseRaionId(raionRaw);
 
   if (!name || typeof name !== "string" || !name.trim()) {
     throw new ServiceError("Numele filialei este obligatoriu.", 400);
@@ -102,6 +115,9 @@ export async function createBranch(userId?: string, payload: BranchPayload = {})
   }
   if (!phoneNumber || typeof phoneNumber !== "string" || !phoneNumber.trim()) {
     throw new ServiceError("Numărul de telefon este obligatoriu.", 400);
+  }
+  if (!raionId) {
+    throw new ServiceError("Raionul / municipiul este obligatoriu.", 400);
   }
 
   const businessProfileId = await getBusinessProfileId(resolvedUserId);
@@ -121,6 +137,7 @@ export async function createBranch(userId?: string, payload: BranchPayload = {})
       City: city.trim(),
       Country: normalizedCountry,
       PhoneNumber: phoneNumber.trim(),
+      RaionId: raionId,
       IsActive: true,
       CreatedAt: new Date(),
       ContactPersonName: "",
@@ -133,6 +150,7 @@ export async function createBranch(userId?: string, payload: BranchPayload = {})
       City: true,
       Country: true,
       PhoneNumber: true,
+      RaionId: true,
       IsActive: true,
       CreatedAt: true,
     },
@@ -143,7 +161,7 @@ export async function createBranch(userId?: string, payload: BranchPayload = {})
 
 export async function updateBranch(userId: string | undefined, branchId: string, payload: BranchPayload = {}): Promise<BranchDto | { message: string }> {
   const resolvedUserId = requireUserId(userId);
-  const { name, address, city, country, phoneNumber, isActive } = payload;
+  const { name, address, city, country, phoneNumber, raionId: raionRaw, isActive } = payload;
   const businessProfileId = await getBusinessProfileId(resolvedUserId);
   if (!businessProfileId) {
     throw new ServiceError("Filiala nu a fost găsită sau nu aveți permisiunea să o modificați.", 404);
@@ -167,6 +185,7 @@ export async function updateBranch(userId: string | undefined, branchId: string,
     City?: string;
     Country?: string;
     PhoneNumber?: string;
+    RaionId?: number | null;
     IsActive?: boolean;
   } = {};
 
@@ -189,6 +208,11 @@ export async function updateBranch(userId: string | undefined, branchId: string,
     if (!phoneNumber.trim()) throw new ServiceError("Numărul de telefon nu poate fi gol.", 400);
     data.PhoneNumber = phoneNumber.trim();
   }
+  if (raionRaw !== undefined) {
+    const rid = parseRaionId(raionRaw);
+    if (!rid) throw new ServiceError("Raionul / municipiul este obligatoriu.", 400);
+    data.RaionId = rid;
+  }
   if (isActive !== undefined) {
     data.IsActive = Boolean(isActive);
   }
@@ -207,6 +231,7 @@ export async function updateBranch(userId: string | undefined, branchId: string,
       City: true,
       Country: true,
       PhoneNumber: true,
+      RaionId: true,
       IsActive: true,
       CreatedAt: true,
     },

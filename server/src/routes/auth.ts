@@ -44,6 +44,9 @@ import {
   postSupportChatMessageController,
   postSupportChatTyping,
   getSupportChatStream,
+  postUploadCv,
+  deleteCv,
+  getCv,
 } from "../controllers/authController";
 import { ensureDefaultAdmin } from "../services/authService";
 
@@ -92,6 +95,10 @@ router.post("/support/chat/:id/escalate", authMiddleware, postSupportChatEscalat
 router.post("/support/chat/:id/csat", authMiddleware, postSupportChatCsat);
 router.get("/support/chat/:id/timeline", authMiddleware, getSupportChatTimelineController);
 router.post("/support/chat/bulk", authMiddleware, postSupportChatBulk);
+
+router.post("/cv/upload", authMiddleware, postUploadCv);
+router.delete("/cv", authMiddleware, deleteCv);
+router.get("/cv/:userId", getCv);
 
 export { ensureDefaultAdmin };
 export default router;

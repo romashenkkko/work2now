@@ -1,6 +1,7 @@
 import { prisma } from "../prismaClient";
 import { ServiceError } from "./ServiceError";
 import { addActivityLog } from "./activityLogService";
+import { foldForSearch } from "../utils/foldForSearch";
 
 // --- Helpers (used by list/create and other endpoints) ---
 export type ResolvedRole = "staff" | "customer" | "admin" | "";
@@ -117,6 +118,104 @@ export function toNumber(v: unknown): number | null {
 
 export type JobListItem = Record<string, unknown>;
 
+const JOB_MEDIA_PREFIX = "/api/jobs/media/";
+const JOB_ATTACHMENTS_PREFIX = "/api/jobs/attachments/";
+const JOB_ATTACHMENT_FILENAME_RE = /^[a-zA-Z0-9._-]+\.(pdf|doc|docx|png|jpe?g|xls|xlsx)$/i;
+
+function sanitizeJobAttachmentDisplayName(raw: unknown): string {
+  const s = typeof raw === "string" ? raw.trim().slice(0, 200) : "";
+  const cleaned = s.replace(/[\u0000-\u001F<>"]/g, "").trim();
+  return cleaned || "document";
+}
+
+export type JobAttachmentItem = { url: string; name: string };
+
+function parseJobAttachmentsJson(raw: string | null | undefined): JobAttachmentItem[] | undefined {
+  if (raw == null || !String(raw).trim()) return undefined;
+  try {
+    const a = JSON.parse(String(raw)) as unknown;
+    if (!Array.isArray(a)) return undefined;
+    const out: JobAttachmentItem[] = [];
+    for (const item of a) {
+      const obj = item && typeof item === "object" ? (item as Record<string, unknown>) : null;
+      const url =
+        typeof obj?.url === "string"
+          ? obj.url.trim()
+          : typeof item === "string"
+            ? item.trim()
+            : "";
+      if (!url || url.includes("..") || !url.startsWith(JOB_ATTACHMENTS_PREFIX)) continue;
+      const rest = url.slice(JOB_ATTACHMENTS_PREFIX.length);
+      if (!JOB_ATTACHMENT_FILENAME_RE.test(rest)) continue;
+      out.push({ url, name: sanitizeJobAttachmentDisplayName(obj?.name ?? obj?.originalName) });
+      if (out.length >= 10) break;
+    }
+    return out.length ? out : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function sanitizeJobAttachmentsJson(input: unknown): string | null {
+  if (!Array.isArray(input)) return null;
+  const out: JobAttachmentItem[] = [];
+  for (const item of input) {
+    const obj = item && typeof item === "object" ? (item as Record<string, unknown>) : null;
+    const url =
+      typeof obj?.url === "string"
+        ? obj.url.trim()
+        : typeof item === "string"
+          ? item.trim()
+          : "";
+    if (!url || url.includes("..") || !url.startsWith(JOB_ATTACHMENTS_PREFIX)) continue;
+    const rest = url.slice(JOB_ATTACHMENTS_PREFIX.length);
+    if (!JOB_ATTACHMENT_FILENAME_RE.test(rest)) continue;
+    out.push({ url, name: sanitizeJobAttachmentDisplayName(obj?.name ?? obj?.originalName) });
+    if (out.length >= 10) break;
+  }
+  return out.length ? JSON.stringify(out) : null;
+}
+
+function parseGalleryImageUrlsJson(raw: string | null | undefined): string[] | undefined {
+  if (raw == null || !String(raw).trim()) return undefined;
+  try {
+    const a = JSON.parse(String(raw)) as unknown;
+    if (!Array.isArray(a)) return undefined;
+    const out = a.filter((x): x is string => typeof x === "string" && x.trim() !== "").map((x) => x.trim());
+    return out.length ? out : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function sanitizeJobImageUrl(raw: unknown): string | null {
+  if (raw == null || typeof raw !== "string") return null;
+  const u = raw.trim();
+  if (!u || u.includes("..")) return null;
+  if (u.startsWith(JOB_MEDIA_PREFIX)) {
+    const rest = u.slice(JOB_MEDIA_PREFIX.length);
+    if (/^[a-zA-Z0-9._-]+\.(jpe?g|png|webp)$/i.test(rest)) return u;
+    return null;
+  }
+  if (/^https?:\/\//i.test(u)) return u.slice(0, 2048);
+  return null;
+}
+
+function sanitizeGalleryImageUrlsJson(input: unknown): string | null {
+  if (!Array.isArray(input)) return null;
+  const allowed: string[] = [];
+  for (const x of input) {
+    const u = typeof x === "string" ? x.trim() : "";
+    if (!u || u.includes("..")) continue;
+    if (!u.startsWith(JOB_MEDIA_PREFIX)) continue;
+    const rest = u.slice(JOB_MEDIA_PREFIX.length);
+    if (!/^[a-zA-Z0-9._-]+\.(jpe?g|png|webp)$/i.test(rest)) continue;
+    if (allowed.length >= 24) break;
+    allowed.push(u);
+  }
+  return allowed.length ? JSON.stringify(allowed) : null;
+}
+
 function buildJobListItem(row: {
   id: number;
   Title: string;
@@ -133,6 +232,8 @@ function buildJobListItem(row: {
   duration: string | null;
   estimated_salary: string | null;
   image_url: string | null;
+  gallery_image_urls?: string | null;
+  attachment_urls?: string | null;
   job_category_code: number | null;
   hourly_rate_base: unknown;
   is_promoted: boolean;
@@ -145,6 +246,7 @@ function buildJobListItem(row: {
   posted_by_role?: unknown;
   posted_by_avatar?: string | null;
   accepted_count?: number;
+  branch_id?: string | null;
 }): JobListItem {
   const startTime = row.start_time ?? undefined;
   const endTime = row.end_time ?? undefined;
@@ -152,6 +254,8 @@ function buildJobListItem(row: {
   const storedDuration = row.duration?.trim() || undefined;
   const duration = storedDuration ?? (computedDuration != null ? String(computedDuration) : undefined);
   const acceptedCount = row.accepted_count ?? 0;
+  const galleryUrls = parseGalleryImageUrlsJson(row.gallery_image_urls ?? null);
+  const jobAttachments = parseJobAttachmentsJson(row.attachment_urls ?? null);
   return {
     id: String(row.id),
     job: row.Title,
@@ -170,6 +274,8 @@ function buildJobListItem(row: {
     duration,
     estimatedSalary: row.estimated_salary ?? undefined,
     imageUrl: row.image_url ?? undefined,
+    ...(galleryUrls?.length ? { galleryImageUrls: galleryUrls } : {}),
+    ...(jobAttachments?.length ? { jobAttachments } : {}),
     postedBy: typeof row.posted_by_name === "string" && row.posted_by_name.trim() ? row.posted_by_name.trim() : undefined,
     isPromoted: row.is_promoted,
     jobCategoryCode: row.job_category_code ?? undefined,
@@ -180,6 +286,7 @@ function buildJobListItem(row: {
     ...(Number.isFinite(row.check_in_lat) && Number.isFinite(row.check_in_lng) && row.check_in_radius_m != null && row.check_in_radius_m > 0
       ? { checkInLat: row.check_in_lat, checkInLng: row.check_in_lng, checkInRadiusM: row.check_in_radius_m }
       : {}),
+    ...(row.branch_id && String(row.branch_id).trim() ? { branchId: String(row.branch_id).trim() } : {}),
   };
 }
 
@@ -213,23 +320,22 @@ export async function getJobCategories() {
 }
 
 export async function getRaioane(search?: string) {
-  const where = search && search.trim()
-    ? {
-        name: {
-          contains: search.trim(),
-        },
-      }
-    : undefined;
-
-  const raioane = await prisma.raioane.findMany({
-    where,
-    orderBy: where ? { name: "asc" } : [{ type: "asc" }, { name: "asc" }],
+  const q = search?.trim() ?? "";
+  const all = await prisma.raioane.findMany({
+    orderBy: [{ type: "asc" }, { name: "asc" }],
     select: {
       id: true,
       name: true,
       type: true,
     },
   });
+
+  let raioane = all;
+  if (q) {
+    const fq = foldForSearch(q);
+    raioane = all.filter((r) => foldForSearch(r.name).includes(fq));
+    raioane = [...raioane].sort((a, b) => a.name.localeCompare(b.name, "ro"));
+  }
 
   return {
     raioane: raioane.map((r) => ({
@@ -306,12 +412,15 @@ export async function listJobs(userId: string): Promise<{ jobs: JobListItem[] }>
       duration: j.duration,
       estimated_salary: j.estimated_salary,
       image_url: j.image_url,
+      gallery_image_urls: j.gallery_image_urls ?? null,
+      attachment_urls: j.attachment_urls ?? null,
       job_category_code: j.job_category_code,
       hourly_rate_base: j.hourly_rate_base,
       is_promoted: j.is_promoted ?? false,
       check_in_lat: j.check_in_lat,
       check_in_lng: j.check_in_lng,
       check_in_radius_m: j.check_in_radius_m,
+      branch_id: j.branch_id ?? null,
       job_category_title: j.job_categories?.Title ?? undefined,
       posted_by_name: postedByName(j) ?? (u?.Id ? undefined : undefined),
       posted_by_user_id: u?.Id ?? undefined,
@@ -362,6 +471,9 @@ export type CreateJobBody = {
   checkInRadiusM?: unknown;
   startTime?: unknown;
   endTime?: unknown;
+  branchId?: unknown;
+  galleryImageUrls?: unknown;
+  jobAttachments?: unknown;
 };
 
 export async function createJob(userId: string, body: CreateJobBody): Promise<JobListItem> {
@@ -373,7 +485,9 @@ export async function createJob(userId: string, body: CreateJobBody): Promise<Jo
   const status = String(b.status ?? "Draft");
   const statusClass = String(b.statusClass ?? "bg-gray-100 text-gray-700");
   const date = String(b.date ?? "");
-  const imageUrl = typeof b.imageUrl === "string" && b.imageUrl.trim() ? b.imageUrl.trim() : null;
+  const imageUrl = sanitizeJobImageUrl(b.imageUrl);
+  const galleryImageUrlsJson = sanitizeGalleryImageUrlsJson(b.galleryImageUrls);
+  const attachmentUrlsJson = sanitizeJobAttachmentsJson(b.jobAttachments);
   const jobCategoryCode = toNumber(b.jobCategoryCode);
   const hourlyRateBase = toNumber(b.hourlyRateBase);
   const raionId = toNumber(b.raionId);
@@ -383,6 +497,20 @@ export async function createJob(userId: string, body: CreateJobBody): Promise<Jo
   if (raionId == null || raionId <= 0) throw new ServiceError("raionId is required and must be a positive number.", 400);
   const raion = await prisma.raioane.findUnique({ where: { id: raionId }, select: { id: true } });
   if (!raion) throw new ServiceError("Invalid raionId (not found in raioane table).", 400);
+
+  let branchIdResolved: string | null = null;
+  const rawBranchId = b.branchId != null ? String(b.branchId).trim() : "";
+  if (rawBranchId) {
+    const bp = await prisma.business_profiles.findUnique({ where: { UserId: userId }, select: { Id: true } });
+    if (!bp) throw new ServiceError("Profil business negăsit.", 403);
+    const ownedBranch = await prisma.branches.findFirst({
+      where: { Id: rawBranchId, BusinessProfileId: bp.Id },
+      select: { Id: true },
+    });
+    if (!ownedBranch) throw new ServiceError("Filiala selectată nu există sau nu vă aparține.", 400);
+    branchIdResolved = ownedBranch.Id;
+  }
+
   if (!jobTitle) throw new ServiceError("Titlul jobului este obligatoriu (maxim 30 caractere).", 400);
   if (!location) throw new ServiceError("location este obligatorie.", 400);
   const category = await prisma.job_categories.findUnique({ where: { Code: jobCategoryCode }, select: { Title: true } });
@@ -414,6 +542,8 @@ export async function createJob(userId: string, body: CreateJobBody): Promise<Jo
       duration: durationValue,
       estimated_salary: b.estimatedSalary != null ? String(b.estimatedSalary) : null,
       image_url: imageUrl,
+      gallery_image_urls: galleryImageUrlsJson,
+      attachment_urls: attachmentUrlsJson,
       job_category_code: jobCategoryCode,
       hourly_rate_base: hourlyRateBase,
       raion_id: raionId,
@@ -421,6 +551,7 @@ export async function createJob(userId: string, body: CreateJobBody): Promise<Jo
       check_in_lat: checkInLat,
       check_in_lng: checkInLng,
       check_in_radius_m: checkInRadiusM,
+      branch_id: branchIdResolved,
     },
     include: {
       job_categories: { select: { Title: true } },
@@ -466,12 +597,15 @@ export async function createJob(userId: string, body: CreateJobBody): Promise<Jo
     duration: job.duration,
     estimated_salary: job.estimated_salary,
     image_url: job.image_url,
+    gallery_image_urls: job.gallery_image_urls ?? null,
+    attachment_urls: job.attachment_urls ?? null,
     job_category_code: job.job_category_code,
     hourly_rate_base: job.hourly_rate_base,
     is_promoted: job.is_promoted ?? false,
     check_in_lat: job.check_in_lat,
     check_in_lng: job.check_in_lng,
     check_in_radius_m: job.check_in_radius_m,
+    branch_id: job.branch_id ?? null,
     job_category_title: job.job_categories?.Title,
     posted_by_name: postedByName,
     posted_by_user_id: u?.Id,
@@ -723,6 +857,7 @@ export async function getApplications(userId: string): Promise<{ applications: A
   });
   const staffIds = [...new Set(list.map((a) => a.staff_id).filter(Boolean))] as string[];
   let avatarByStaffId: Record<string, string> = {};
+  let cvByStaffId: Record<string, { cvFileUrl: string; cvOriginalName: string | null }> = {};
   if (staffIds.length > 0) {
     const users = await prisma.users.findMany({
       where: { Id: { in: staffIds } },
@@ -730,12 +865,15 @@ export async function getApplications(userId: string): Promise<{ applications: A
     });
     const withEp = await prisma.employee_profiles.findMany({
       where: { UserId: { in: staffIds } },
-      select: { UserId: true, ProfilePictureFileId: true },
+      select: { UserId: true, ProfilePictureFileId: true, CvFileUrl: true, CvOriginalName: true },
     });
     const epMap = withEp.reduce((acc, e) => {
       acc[e.UserId] = e.ProfilePictureFileId;
       return acc;
     }, {} as Record<string, string | null>);
+    for (const e of withEp) {
+      if (e.CvFileUrl) cvByStaffId[e.UserId] = { cvFileUrl: e.CvFileUrl, cvOriginalName: e.CvOriginalName };
+    }
     for (const u of users) {
       const av = u.Avatar ?? epMap[u.Id];
       if (typeof av === "string" && av.trim()) avatarByStaffId[u.Id] = av.trim();
@@ -776,6 +914,8 @@ export async function getApplications(userId: string): Promise<{ applications: A
       staffName: a.staff_name,
       staffEmail: a.staff_email ?? undefined,
       staffAvatar: sidStr ? avatarByStaffId[sidStr] : undefined,
+      staffCvFileUrl: sidStr && cvByStaffId[sidStr] ? cvByStaffId[sidStr].cvFileUrl : undefined,
+      staffCvOriginalName: sidStr && cvByStaffId[sidStr] ? cvByStaffId[sidStr].cvOriginalName : undefined,
       status: a.status,
       checkedInAt: toIso(a.checked_in_at),
       checkedOutAt: toIso(a.checked_out_at),
@@ -1228,19 +1368,13 @@ export async function getStatistics(userId: string): Promise<CustomerStatistics>
   if (bp) {
     const branches = await prisma.branches.findMany({
       where: { BusinessProfileId: bp.Id, IsActive: true },
-      select: { Id: true, Name: true, Address: true, City: true },
+      select: { Id: true, Name: true },
     });
-    const jobs = await prisma.jobs.findMany({
-      where: { user_id: userId },
-      select: { id: true, location: true },
-    });
-    for (const b of branches) {
-      const count = jobs.filter(
-        (j) =>
-          (j.location && (j.location.includes(b.Address) || j.location.includes(b.City) || b.Address.includes(j.location) || b.City.includes(j.location))) ||
-          false
-      ).length;
-      branchesByJobCount.push({ branchId: b.Id, branchName: b.Name, count });
+    for (const br of branches) {
+      const count = await prisma.jobs.count({
+        where: { user_id: userId, branch_id: br.Id },
+      });
+      branchesByJobCount.push({ branchId: br.Id, branchName: br.Name, count });
     }
     branchesByJobCount.sort((a, b) => b.count - a.count);
   }

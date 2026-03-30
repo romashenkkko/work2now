@@ -27,7 +27,8 @@ import {
 import { coffeemaker } from "@lucide/lab";
 import { useAuth } from "../hooks/useAuth";
 import { getBusinessTotal, roundMoney } from "../utils/salary";
-import { jobsApi, ratingsApi, experiencesApi, type JobCategory } from "../api/client";
+import { foldForSearch } from "../utils/foldForSearch";
+import { jobsApi, ratingsApi, experiencesApi, branchesApi, type JobCategory, type Branch } from "../api/client";
 import TimePicker from "../components/TimePicker";
 import StarRating from "../components/StarRating";
 import DatePicker from "../components/DatePicker";
@@ -55,6 +56,10 @@ export type JobRow = {
   duration?: string;
   estimatedSalary?: string;
   imageUrl?: string;
+  /** Imagini suplimentare (detalii job) */
+  galleryImageUrls?: string[];
+  /** Documente PDF/Word/Excel etc. atașate la publicare */
+  jobAttachments?: { url: string; name: string }[];
   postedBy?: string;
   jobCategoryCode?: number;
   hourlyRateBase?: number;
@@ -80,10 +85,15 @@ export type JobTemplate = {
   hourlyRateBase: string;
   startTime: string;
   endTime: string;
-  unpaidBreak: "no" | "yes";
   raionId?: number | null;
   localitate?: string | null;
   checkInGeo?: { lat: number; lng: number; radiusM: number } | null;
+  address?: string | null;
+  staffPhone?: string | null;
+  staffPhoneCountry?: string | null;
+  description?: string | null;
+  /** Filială salvată în șablon (pentru dropdown la publicare) */
+  branchId?: string | null;
 };
 
 export type Application = {
@@ -93,6 +103,8 @@ export type Application = {
   staffName: string;
   staffEmail?: string;
   staffAvatar?: string;
+  staffCvFileUrl?: string;
+  staffCvOriginalName?: string;
   status: "pending" | "accepted" | "refused";
   checkedInAt?: string;
   checkedOutAt?: string;
@@ -135,10 +147,12 @@ export function getPublicJobs(): JobRow[] {
   }
 }
 
+export type AddJobResult = { ok: true } | { ok: false; error: string };
+
 export const DashboardContext = createContext<{
   openPostJobModal: () => void;
   jobsAdded: JobRow[];
-  addJob: (job: Omit<JobRow, "id">) => Promise<boolean>;
+  addJob: (job: Omit<JobRow, "id">) => Promise<AddJobResult>;
   removeJob: (id: string) => void;
   refreshJobs: () => void;
   availableToWork: boolean;
@@ -294,6 +308,7 @@ export default function DashboardLayout() {
   const [showPostJob, setShowPostJob] = useState(false);
   const [jobSubmitted, setJobSubmitted] = useState(false);
   const [postJobError, setPostJobError] = useState("");
+  const [postJobBusy, setPostJobBusy] = useState(false);
   const [postJobFieldErrors, setPostJobFieldErrors] = useState<{
     hourlyRateBase?: string;
     jobCategoryCode?: string;
@@ -308,6 +323,8 @@ export default function DashboardLayout() {
   const [postJobStep, setPostJobStep] = useState<"choose-type" | "how-to-post" | "form">("choose-type");
   const [selectedJobType, setSelectedJobType] = useState<"one-day" | "multi-day" | "full-time" | null>(null);
   const [postMethod, setPostMethod] = useState<"scratch" | "template" | null>(null);
+  const [postJobBranches, setPostJobBranches] = useState<Branch[]>([]);
+  const [selectedPostBranchId, setSelectedPostBranchId] = useState<string | null>(null);
   const [formStartTime, setFormStartTime] = useState("00:00");
   const [formEndTime, setFormEndTime] = useState("00:00");
   const [jobAddress, setJobAddress] = useState("");
@@ -320,8 +337,10 @@ export default function DashboardLayout() {
   const [localitate, setLocalitate] = useState("");
   const [jobDate, setJobDate] = useState("");
   const [jobEndDate, setJobEndDate] = useState("");
-  const [jobImage, setJobImage] = useState<string | null>(null);
-  const [, setJobImageName] = useState("");
+  const [jobCoverImageUrl, setJobCoverImageUrl] = useState<string | null>(null);
+  const [jobGalleryUrls, setJobGalleryUrls] = useState<string[]>([]);
+  const [jobImageUploading, setJobImageUploading] = useState(false);
+  const [jobImageUploadError, setJobImageUploadError] = useState("");
   const [jobTitleSelected, setJobTitleSelected] = useState("");
   // Controlled inputs for job title/event name so templates can be applied before the form renders
   const [jobTitleDraft, setJobTitleDraft] = useState("");
@@ -332,11 +351,46 @@ export default function DashboardLayout() {
   const [jobDocuments, setJobDocuments] = useState<DocItem[]>([]);
   const [phoneCountryCode, setPhoneCountryCode] = useState("+373");
   const [phoneCountryOpen, setPhoneCountryOpen] = useState(false);
+  const [staffPhoneNumber, setStaffPhoneNumber] = useState("");
+  const [jobDescription, setJobDescription] = useState("");
+  const [templateSavedFeedback, setTemplateSavedFeedback] = useState(false);
 
   const getLocalizedJobCategory = useCallback(
     (category: Pick<JobCategory, "code" | "title">) =>
       t(JOB_CATEGORY_LABEL_KEYS[category.code] ?? "", category.title),
     [t]
+  );
+
+  const applyBranchToPostForm = useCallback(
+    (branch: Branch) => {
+      setJobAddress((branch.address || "").trim());
+      setLocalitate((branch.city || "").trim());
+      const rid = branch.raionId;
+      if (rid != null && rid > 0) {
+        setSelectedRaionId(rid);
+        const rname = raioane.find((r) => r.id === rid)?.name;
+        setRaionSearch(rname ?? "");
+      } else {
+        setSelectedRaionId(null);
+        setRaionSearch("");
+      }
+      const raw = (branch.phoneNumber || "").replace(/\s/g, "");
+      if (!raw) {
+        setPhoneCountryCode("+373");
+        setStaffPhoneNumber("");
+        return;
+      }
+      const sortedCodes = [...COUNTRY_CODES].sort((a, b) => b.code.length - a.code.length);
+      const found = sortedCodes.find((c) => raw.startsWith(c.code));
+      if (found) {
+        setPhoneCountryCode(found.code);
+        setStaffPhoneNumber(raw.slice(found.code.length));
+      } else {
+        setPhoneCountryCode("+373");
+        setStaffPhoneNumber(raw.replace(/^\+/, ""));
+      }
+    },
+    [raioane]
   );
   const phoneCountryRef = useRef<HTMLDivElement>(null);
   const [staffCountSelect, setStaffCountSelect] = useState("1");
@@ -346,12 +400,10 @@ export default function DashboardLayout() {
   const salaryDropdownRef = useRef<HTMLDivElement>(null);
   const [categoryDropdownOpen, setCategoryDropdownOpen] = useState(false);
   const categoryDropdownRef = useRef<HTMLDivElement>(null);
-  const [unpaidBreak, setUnpaidBreak] = useState<"no" | "yes">("no");
-  const [unpaidBreakOpen, setUnpaidBreakOpen] = useState(false);
-  const unpaidBreakRef = useRef<HTMLDivElement>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [showMyProfileModal, setShowMyProfileModal] = useState(false);
   const [deleteJobConfirmId, setDeleteJobConfirmId] = useState<string | null>(null);
+  const [deleteTemplateConfirmId, setDeleteTemplateConfirmId] = useState<string | null>(null);
   const [userRating, setUserRating] = useState<{ average: number; count: number } | null>(null);
 
   // Job templates (stored locally for the current user)
@@ -360,9 +412,12 @@ export default function DashboardLayout() {
   const [activeTemplateId, setActiveTemplateId] = useState<string | null>(null);
   const [showTemplateSavePanel, setShowTemplateSavePanel] = useState(false);
   const [showTemplateCreateModal, setShowTemplateCreateModal] = useState(false);
-  const [templateAction, setTemplateAction] = useState<"use" | "create">("use");
+  const [, setTemplateAction] = useState<"use" | "create">("use");
   const [templateSaveTitle, setTemplateSaveTitle] = useState("");
   const [templateSaveError, setTemplateSaveError] = useState<string>("");
+
+  const postJobFlowRef = useRef({ postMethod, activeTemplateId, jobTemplates });
+  postJobFlowRef.current = { postMethod, activeTemplateId, jobTemplates };
 
   // (Controlled inputs) - kept without refs so templates can be applied before form mounts.
 
@@ -374,8 +429,6 @@ export default function DashboardLayout() {
   const [tplCreateStaffCount, setTplCreateStaffCount] = useState("1");
   const [tplCreateStartTime, setTplCreateStartTime] = useState("00:00");
   const [tplCreateEndTime, setTplCreateEndTime] = useState("00:00");
-  const [tplCreateUnpaidBreak, setTplCreateUnpaidBreak] = useState<"no" | "yes">("no");
-
   useEffect(() => {
     if (!sidebarOpen) return;
     const previousOverflow = document.body.style.overflow;
@@ -429,6 +482,12 @@ export default function DashboardLayout() {
           duration: j.duration,
           estimatedSalary: j.estimatedSalary,
           imageUrl: j.imageUrl,
+          galleryImageUrls: Array.isArray((j as { galleryImageUrls?: string[] }).galleryImageUrls)
+            ? (j as { galleryImageUrls: string[] }).galleryImageUrls
+            : undefined,
+          jobAttachments: Array.isArray((j as { jobAttachments?: { url: string; name: string }[] }).jobAttachments)
+            ? (j as { jobAttachments: { url: string; name: string }[] }).jobAttachments
+            : undefined,
           postedBy: j.postedBy,
           postedById: j.postedById,
           postedByRole: j.postedByRole,
@@ -553,11 +612,56 @@ export default function DashboardLayout() {
     }
   }, [showPostJob, postJobStep]);
 
-  // Filter raioane based on search
+  useEffect(() => {
+    if (!showPostJob) {
+      setPostJobBranches([]);
+      setSelectedPostBranchId(null);
+    }
+  }, [showPostJob]);
+
+  useEffect(() => {
+    if (!showPostJob || postJobStep !== "form") return;
+    let cancelled = false;
+    branchesApi
+      .list()
+      .then(({ branches }) => {
+        if (cancelled) return;
+        const active = (branches || []).filter((b) => b.isActive !== false);
+        setPostJobBranches(active);
+        if (active.length === 0) {
+          setSelectedPostBranchId(null);
+          return;
+        }
+        const { postMethod: pm, activeTemplateId: tid, jobTemplates: tpls } = postJobFlowRef.current;
+        if (pm === "template" && tid) {
+          const tpl = tpls.find((t) => t.id === tid);
+          const bid =
+            tpl?.branchId && active.some((b) => b.id === tpl.branchId) ? tpl.branchId : active[0].id;
+          setSelectedPostBranchId(bid);
+          const br = active.find((b) => b.id === bid);
+          if (br) applyBranchToPostForm(br);
+        } else {
+          const first = active[0];
+          setSelectedPostBranchId(first.id);
+          applyBranchToPostForm(first);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setPostJobBranches([]);
+          setSelectedPostBranchId(null);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [showPostJob, postJobStep, applyBranchToPostForm]);
+
+  // Filter raioane: căutare fără diacritice obligatorii
   const filteredRaioane = raioane.filter((r) => {
     if (!raionSearch.trim()) return true;
-    const searchLower = raionSearch.toLowerCase();
-    return r.name.toLowerCase().includes(searchLower);
+    const fq = foldForSearch(raionSearch);
+    return foldForSearch(r.name).includes(fq);
   });
 
   // Calculate salary based on hours and hourly rate
@@ -605,8 +709,12 @@ export default function DashboardLayout() {
   };
   const availableToWork = Boolean(user) && availableToWorkState;
 
-  const addJob = async (job: Omit<JobRow, "id"> & { raionId?: number; localitate?: string }): Promise<boolean> => {
-    if (job.jobCategoryCode == null || job.hourlyRateBase == null) return false;
+  const addJob = async (
+    job: Omit<JobRow, "id"> & { raionId?: number; localitate?: string; branchId?: string }
+  ): Promise<AddJobResult> => {
+    if (job.jobCategoryCode == null || job.hourlyRateBase == null) {
+      return { ok: false, error: "Date job incomplete (categorie sau tarif)." };
+    }
     const payload = {
       job: job.job, // Custom title (max 30 chars)
       location: job.location,
@@ -621,12 +729,17 @@ export default function DashboardLayout() {
       duration: job.duration,
       estimatedSalary: job.estimatedSalary,
       imageUrl: job.imageUrl ?? undefined,
+      ...(job.galleryImageUrls != null && job.galleryImageUrls.length > 0 ? { galleryImageUrls: job.galleryImageUrls } : {}),
+      ...(job.jobAttachments != null && job.jobAttachments.length > 0 ? { jobAttachments: job.jobAttachments } : {}),
       jobCategoryCode: job.jobCategoryCode ?? 1,
       hourlyRateBase: job.hourlyRateBase ?? 0,
       ...(job.raionId != null ? { raionId: job.raionId } : {}),
       ...(job.localitate != null && job.localitate.trim() ? { localitate: job.localitate.trim() } : {}),
       ...(job.checkInLat != null && job.checkInLng != null && job.checkInRadiusM != null
         ? { checkInLat: job.checkInLat, checkInLng: job.checkInLng, checkInRadiusM: job.checkInRadiusM }
+        : {}),
+      ...(job.branchId != null && String(job.branchId).trim() !== ""
+        ? { branchId: String(job.branchId).trim() }
         : {}),
     };
     try {
@@ -648,6 +761,10 @@ export default function DashboardLayout() {
           duration: created.duration,
           estimatedSalary: created.estimatedSalary,
           imageUrl: created.imageUrl,
+          galleryImageUrls: Array.isArray(created.galleryImageUrls) ? created.galleryImageUrls : undefined,
+          jobAttachments: Array.isArray(created.jobAttachments)
+            ? (created.jobAttachments as { url: string; name: string }[])
+            : undefined,
           postedBy: created.postedBy,
           jobCategoryCode: created.jobCategoryCode,
           hourlyRateBase: created.hourlyRateBase,
@@ -661,11 +778,12 @@ export default function DashboardLayout() {
         };
         setJobsAdded((prev) => [...prev, newJob]);
       setJobsLoadError(false);
-      return true;
+      return { ok: true };
     } catch (err) {
       console.error("Failed to persist job on server:", err);
       setJobsLoadError(true);
-      return false;
+      const raw = err instanceof Error ? err.message : String(err);
+      return { ok: false, error: raw || "Eroare necunoscută" };
     }
   };
 
@@ -688,7 +806,6 @@ export default function DashboardLayout() {
     setFormStartTime(tpl.startTime);
     setFormEndTime(tpl.endTime);
     setStaffCountSelect(tpl.staffCount);
-    setUnpaidBreak(tpl.unpaidBreak);
     setLocalitate(tpl.localitate ?? "");
 
     setSelectedJobCategory(tpl.categoryCode);
@@ -705,8 +822,17 @@ export default function DashboardLayout() {
     }
 
     setJobCheckInGeo(tpl.checkInGeo ?? null);
+    setJobAddress(tpl.address ?? "");
+    setStaffPhoneNumber(tpl.staffPhone ?? "");
+    setPhoneCountryCode(tpl.staffPhoneCountry ?? "+373");
+    setJobDescription(tpl.description ?? "");
 
     setPostJobFieldErrors({});
+    setSelectedPostBranchId(
+      tpl.branchId && postJobBranches.some((b) => b.id === tpl.branchId)
+        ? tpl.branchId
+        : postJobBranches[0]?.id ?? tpl.branchId ?? null
+    );
   };
 
   const saveCurrentFormAsTemplate = (): boolean => {
@@ -744,10 +870,10 @@ export default function DashboardLayout() {
       hourlyRateBase: tplCreateHourlyRate,
       startTime: tplCreateStartTime,
       endTime: tplCreateEndTime,
-      unpaidBreak: tplCreateUnpaidBreak,
       raionId: selectedRaionId ?? null,
       localitate: localitate.trim() || null,
       checkInGeo: jobCheckInGeo ?? null,
+      branchId: selectedPostBranchId ?? null,
     };
 
     setJobTemplates((prev) => {
@@ -761,6 +887,38 @@ export default function DashboardLayout() {
     // După ce am creat șablonul, nu îl aplicăm în formularul de job.
     // Dacă utilizatorul apasă ulterior "Următorul", va merge pe fluxul "use".
     setTemplateAction("use");
+    return true;
+  };
+
+  const saveFormAsTemplate = (): boolean => {
+    if (!selectedJobCategory || !selectedJobType) return false;
+    const jobTitle = jobTitleDraft.trim();
+    if (!jobTitle) return false;
+
+    const id = generateTemplateId();
+    const template: JobTemplate = {
+      id,
+      categoryCode: selectedJobCategory,
+      title: (templateSaveTitle.trim() || jobTitle).slice(0, 60),
+      jobType: selectedJobType,
+      jobTitle,
+      eventName: eventNameDraft.trim(),
+      staffCount: staffCountSelect,
+      hourlyRateBase: hourlyRate,
+      startTime: formStartTime,
+      endTime: formEndTime,
+      raionId: selectedRaionId ?? null,
+      localitate: localitate.trim() || null,
+      checkInGeo: jobCheckInGeo ?? null,
+      address: jobAddress.trim() || null,
+      staffPhone: staffPhoneNumber.trim() || null,
+      staffPhoneCountry: phoneCountryCode,
+      description: jobDescription.trim() || null,
+      branchId: selectedPostBranchId ?? null,
+    };
+
+    setJobTemplates((prev) => [template, ...prev]);
+    setActiveTemplateId(id);
     return true;
   };
 
@@ -799,15 +957,6 @@ export default function DashboardLayout() {
     document.addEventListener("mousedown", close);
     return () => document.removeEventListener("mousedown", close);
   }, [phoneCountryOpen]);
-
-  useEffect(() => {
-    if (!unpaidBreakOpen) return;
-    const close = (e: MouseEvent) => {
-      if (unpaidBreakRef.current && !unpaidBreakRef.current.contains(e.target as Node)) setUnpaidBreakOpen(false);
-    };
-    document.addEventListener("mousedown", close);
-    return () => document.removeEventListener("mousedown", close);
-  }, [unpaidBreakOpen]);
 
   useEffect(() => {
     if (!staffDropdownOpen) return;
@@ -861,31 +1010,36 @@ export default function DashboardLayout() {
   return (
     <div className="flex min-h-screen bg-gray-100">
       {/* Mobile header – vizibil doar pe ecrane mici */}
-      <header className="md:hidden fixed top-0 left-0 right-0 z-40 h-14 bg-white border-b border-gray-200 flex items-center justify-between px-4 gap-2 shadow-sm">
-        <button
-          type="button"
-          onClick={() => setSidebarOpen(true)}
-          className="p-2 rounded-lg text-gray-600 hover:bg-gray-100"
-          aria-label="Meniu"
-        >
-          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-          </svg>
-        </button>
-        <Link to="/dashboard" className="flex items-center gap-2 min-w-0" onClick={closeSidebar} aria-label="Work2Now – acasă dashboard">
-          <img src="/LogoWork2Now.png" alt="Work2Now" className="h-7 w-auto" />
-          <span className="font-bold text-gray-900 truncate">Work2Now</span>
-        </Link>
-        {isCustomer && (
+      <header
+        className="md:hidden fixed top-0 left-0 right-0 z-40 bg-white border-b border-gray-200 shadow-sm"
+        style={{ paddingTop: "env(safe-area-inset-top, 0px)" }}
+      >
+        <div className="h-14 flex items-center justify-between px-4 gap-2 min-h-[3.5rem]">
           <button
             type="button"
-            onClick={() => { setShowPostJob(true); setPostJobError(""); closeSidebar(); }}
-            className="p-2 rounded-xl bg-primary text-white font-semibold"
-            aria-label={t("dashboard.postJob")}
+            onClick={() => setSidebarOpen(true)}
+            className="p-2 rounded-lg text-gray-600 hover:bg-gray-100"
+            aria-label="Meniu"
           >
-            <span className="text-lg leading-none">+</span>
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+            </svg>
           </button>
-        )}
+          <Link to="/dashboard" className="flex items-center gap-2 min-w-0" onClick={closeSidebar} aria-label="Work2Now – acasă dashboard">
+            <img src="/LogoWork2Now.png" alt="Work2Now" className="h-7 w-auto" />
+            <span className="font-bold text-gray-900 truncate">Work2Now</span>
+          </Link>
+          {isCustomer && (
+            <button
+              type="button"
+              onClick={() => { setShowPostJob(true); setPostJobError(""); closeSidebar(); }}
+              className="p-2 rounded-xl bg-primary text-white font-semibold"
+              aria-label={t("dashboard.postJob")}
+            >
+              <span className="text-lg leading-none">+</span>
+            </button>
+          )}
+        </div>
       </header>
 
       {/* Overlay pentru meniu mobil */}
@@ -1067,7 +1221,10 @@ export default function DashboardLayout() {
         />
       )}
 
-      <main key={location.pathname} className="flex-1 pt-14 md:pt-0 p-4 md:p-8 page-enter min-w-0 overflow-x-hidden">
+      <main
+        key={location.pathname}
+        className="flex-1 pt-[calc(3.5rem+env(safe-area-inset-top,0px))] md:pt-0 p-4 md:p-8 page-enter min-w-0 overflow-x-hidden"
+      >
         <DashboardContext.Provider value={{ openPostJobModal: () => setShowPostJob(true), jobsAdded, addJob, removeJob, refreshJobs: fetchJobsForCustomer, availableToWork, setAvailableToWork, jobsLoadError, userRating: userRating ?? null }}>
           <Outlet />
         </DashboardContext.Provider>
@@ -1097,7 +1254,7 @@ export default function DashboardLayout() {
           }}
         >
           <div
-            className="bg-white rounded-2xl shadow-xl max-w-lg w-full overflow-hidden modal-content-enter"
+            className="bg-white rounded-2xl shadow-xl max-w-2xl w-full overflow-hidden modal-content-enter"
             onClick={(e) => e.stopPropagation()}
           >
             {jobSubmitted ? (
@@ -1256,10 +1413,8 @@ export default function DashboardLayout() {
                   <div className="space-y-3 mb-6">
                     <button
                       type="button"
-                      onClick={() => setPostMethod("scratch")}
-                      className={`w-full flex items-center gap-4 p-4 rounded-xl border-2 text-left transition-all ${
-                        postMethod === "scratch" ? "border-primary bg-primary/5 shadow-sm" : "border-gray-200 hover:border-primary/40 hover:bg-gray-50"
-                      }`}
+                      onClick={() => { setPostMethod("scratch"); setPostJobStep("form"); }}
+                      className="w-full flex items-center gap-4 p-4 rounded-xl border-2 text-left transition-all border-gray-200 hover:border-primary/40 hover:bg-gray-50"
                     >
                       <span className="flex-shrink-0 w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
                         <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
@@ -1268,152 +1423,56 @@ export default function DashboardLayout() {
                         <p className="font-semibold text-gray-900">{t("dashboard.startFromScratch")}</p>
                         <p className="text-sm text-gray-500 mt-0.5">{t("dashboard.startFromScratchDesc")}</p>
                       </div>
-                      {postMethod === "scratch" && (
-                        <span className="flex-shrink-0 w-5 h-5 rounded-full bg-primary flex items-center justify-center">
-                          <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" /></svg>
-                        </span>
-                      )}
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => setPostMethod("template")}
-                      className={`w-full flex items-center gap-4 p-4 rounded-xl border-2 text-left transition-all ${
-                        postMethod === "template" ? "border-primary bg-primary/5 shadow-sm" : "border-gray-200 hover:border-primary/40 hover:bg-gray-50"
-                      }`}
-                    >
-                      <span className="flex-shrink-0 w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
-                        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h10a2 2 0 012 2v14a2 2 0 01-2 2zM9 3v2m6-2v2" /></svg>
-                      </span>
-                      <div className="min-w-0 flex-1">
-                        <p className="font-semibold text-gray-900">{t("dashboard.useTemplateTitle")}</p>
-                        <p className="text-sm text-gray-500 mt-0.5">După ce alegi categoria, poți selecta sau crea un șablon.</p>
-                      </div>
-                      {postMethod === "template" && (
-                        <span className="flex-shrink-0 w-5 h-5 rounded-full bg-primary flex items-center justify-center">
-                          <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" /></svg>
-                        </span>
-                      )}
+                      <svg className="w-5 h-5 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
                     </button>
                   </div>
-                  <h4 className="text-sm font-semibold text-gray-900 mb-2">{t("dashboard.useTemplateTitle")}</h4>
 
-                  <div className="space-y-4">
-                    {postMethod !== "template" ? (
-                      <div className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-600">
-                        Selectează opțiunea <span className="text-primary font-semibold">Folosește un șablon</span> ca să creezi sau să alegi un șablon.
-                      </div>
-                    ) : selectedJobType == null ? (
-                      <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-                        Alege tipul jobului în pasul anterior.
+                  <>
+                    <h4 className="text-sm font-semibold text-gray-900 mb-2">{t("dashboard.yourTemplates")}</h4>
+                    {jobTemplates.length === 0 ? (
+                      <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50 px-4 py-6 text-center">
+                        <p className="text-sm text-gray-400">{t("dashboard.noTemplatesSaved")}</p>
+                        <p className="text-xs text-gray-400 mt-1">{t("dashboard.noTemplatesSavedHint")}</p>
                       </div>
                     ) : (
-                      <>
-                        <div className="rounded-xl border border-primary/15 bg-primary/5 p-4">
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="min-w-0">
-                              <p className="text-sm font-semibold text-gray-900">Categoria jobului</p>
-                              <p className="text-xs text-gray-500 mt-0.5">Șabloanele sunt separate pe categorie.</p>
-                            </div>
-                          </div>
-
-                          <div className="mt-3">
-                            <label className="block">
-                              <span className="text-sm font-medium text-gray-700">Selectează categoria</span>
-                              <select
-                                value={selectedJobCategory ?? ""}
-                                onChange={(e) => {
-                                  const next = e.target.value ? Number(e.target.value) : null;
-                                  setSelectedJobCategory(next);
-                                }}
-                                className="mt-1 block w-full px-4 py-2.5 rounded-xl border border-gray-200 bg-white focus:ring-2 focus:ring-primary"
-                              >
-                                <option value="">{t("dashboard.chooseCategory")}</option>
-                                {jobCategories.map((cat) => (
-                                  <option key={cat.code} value={cat.code}>
-                                    {getLocalizedJobCategory(cat)}
-                                  </option>
-                                ))}
-                              </select>
-                            </label>
-                          </div>
-                        </div>
-
-                        <div>
-                          {selectedJobCategory == null ? (
-                            <p className="text-sm text-gray-500">Alege o categorie ca să vezi sau să creezi șabloane.</p>
-                          ) : (
-                            (() => {
-                              const list = jobTemplates.filter((tpl) => tpl.categoryCode === selectedJobCategory);
-                              return (
-                                <div className="space-y-3">
-                                  <div className="flex items-center justify-between">
-                                    <p className="text-sm font-semibold text-gray-900">Șabloane</p>
-                                    {list.length > 0 && (
-                                      <span className="text-xs text-gray-500">{list.length} înregistrări</span>
-                                    )}
-                                  </div>
-
-                                  {list.length === 0 ? (
-                                    <p className="text-sm text-gray-500">{t("dashboard.noTemplatesYet")}</p>
-                                  ) : (
-                                    <div className="space-y-2">
-                                      {list.map((tpl) => (
-                                        <div
-                                          key={tpl.id}
-                                          className={`flex items-center justify-between gap-3 p-3 rounded-xl border ${
-                                            activeTemplateId === tpl.id ? "border-primary/40 bg-primary/5" : "border-gray-200 bg-white"
-                                          }`}
-                                        >
-                                          <div className="min-w-0">
-                                            <p className="text-sm font-semibold text-gray-900 truncate">{tpl.title}</p>
-                                            <p className="text-xs text-gray-500 mt-0.5 truncate">
-                                              {tpl.jobType} · {tpl.hourlyRateBase} MDL/oră · {tpl.staffCount} persoane
-                                            </p>
-                                          </div>
-                                          <button
-                                            type="button"
-                                            onClick={() => applyTemplateToForm(tpl)}
-                                            className="shrink-0 px-3 py-2 rounded-lg bg-primary text-white text-sm font-medium hover:bg-primary-dark transition-colors"
-                                          >
-                                            {activeTemplateId === tpl.id ? "Aplicat" : "Folosește"}
-                                          </button>
-                                        </div>
-                                      ))}
-                                    </div>
-                                  )}
-                                </div>
-                              );
-                            })()
-                          )}
-                        </div>
-
-                        <div className="rounded-xl border border-primary/15 bg-white p-4">
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="min-w-0">
-                              <p className="text-sm font-semibold text-gray-900">Creează șablon</p>
-                              <p className="text-xs text-gray-500 mt-0.5">
-                                Apasă ca să deschizi formularul în fereastră.
-                              </p>
-                            </div>
+                      <div className="space-y-2">
+                        {jobTemplates.map((tpl) => (
+                          <div
+                            key={tpl.id}
+                            className="flex items-center gap-2 rounded-xl border border-gray-200 bg-white hover:border-primary/40 hover:bg-primary/5 transition-all"
+                          >
                             <button
                               type="button"
-                            onClick={() => {
-                              // Selectează fluxul "Creează șablon". Modalul se deschide la "Următorul".
-                              setTemplateAction("create");
-                              setTemplateSaveTitle("");
-                              setTemplateSaveError("");
-                              setShowTemplateCreateModal(false);
-                            }}
-                              className="shrink-0 px-3 py-2 rounded-lg bg-primary text-white text-sm font-medium hover:bg-primary-dark transition-colors"
+                              onClick={() => {
+                                applyTemplateToForm(tpl);
+                                setPostJobStep("form");
+                              }}
+                              className="flex items-center gap-3 p-3 flex-1 min-w-0 text-left"
                             >
-                              Creează
+                              <span className="flex-shrink-0 w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
+                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h10a2 2 0 012 2v14a2 2 0 01-2 2z" /></svg>
+                              </span>
+                              <div className="min-w-0 flex-1">
+                                <p className="text-sm font-semibold text-gray-900 truncate">{tpl.title}</p>
+                                <p className="text-xs text-gray-500 mt-0.5 truncate">
+                                {tpl.jobType} · {tpl.hourlyRateBase} MDL/oră · {tpl.staffCount} {tpl.staffCount === "1" ? t("dashboard.person") : t("dashboard.persons")}
+                                </p>
+                            </div>
+                            <svg className="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setDeleteTemplateConfirmId(tpl.id)}
+                              className="flex-shrink-0 p-2 mr-2 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors"
+                              aria-label="Șterge șablon"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
                             </button>
                           </div>
-                        </div>
-                      </>
+                        ))}
+                      </div>
                     )}
-                  </div>
+                  </>
                 </div>
                 <div className="flex gap-3 p-4 sm:p-6 pt-0 border-t border-gray-100">
                   <button
@@ -1425,40 +1484,6 @@ export default function DashboardLayout() {
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
                     </span>
                     {t("dashboard.back")}
-                  </button>
-                  <button
-                    type="button"
-                    disabled={!postMethod}
-                    onClick={() => {
-                      if (!postMethod) return;
-                      if (postMethod === "scratch") {
-                        setPostJobStep("form");
-                        return;
-                      }
-                      if (postMethod === "template" && templateAction === "create") {
-                        if (selectedJobCategory == null) {
-                          setTemplateSaveError("Selectează categoria jobului ca să creezi un șablon.");
-                          return;
-                        }
-                        setTemplateSaveError("");
-                        // Resetare câmpuri doar pentru șablon (nu job form)
-                        setTemplateSaveTitle("");
-                        setTplCreateJobTitle("");
-                        setTplCreateEventName("");
-                        setTplCreateHourlyRate("");
-                        setTplCreateStaffCount("1");
-                        setTplCreateStartTime("00:00");
-                        setTplCreateEndTime("00:00");
-                        setTplCreateUnpaidBreak("no");
-                        setShowTemplateCreateModal(true);
-                        return;
-                      }
-                      // postMethod === "template" & templateAction === "use"
-                      setPostJobStep("form");
-                    }}
-                    className="flex-1 py-2.5 rounded-xl bg-primary text-white font-medium hover:bg-primary-dark disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {t("dashboard.next")}
                   </button>
                 </div>
                 </div>
@@ -1536,34 +1561,63 @@ export default function DashboardLayout() {
                     const isYmd = (v?: string) => !!v && /^\d{4}-\d{2}-\d{2}$/.test(v);
                     const normalizedDate = isYmd(dateVal) ? dateVal : toYmdToday();
                     const normalizedEndDate = selectedJobType === "multi-day" && isYmd(endDateVal) ? endDateVal : undefined;
-                    if (jobTitle && address && selectedJobType) {
-                      const ok = await addJob({
-                        job: jobTitle,
-                        location: address,
-                        status: "Draft",
-                        statusClass: "bg-gray-100 text-gray-700",
-                        date: normalizedDate,
-                        endDate: normalizedEndDate,
-                        jobType: selectedJobType,
-                        jobCategoryCode,
-                        hourlyRateBase,
-                        startTime: formStartTime,
-                        endTime: formEndTime,
-                        peopleNeeded: peopleVal || undefined,
-                        estimatedSalary: salaryVal || undefined,
-                        imageUrl: jobImage || undefined,
-                        raionId: selectedRaionId,
-                        localitate: localitate.trim() || undefined,
-                        ...(jobCheckInGeo
-                          ? { checkInLat: jobCheckInGeo.lat, checkInLng: jobCheckInGeo.lng, checkInRadiusM: jobCheckInGeo.radiusM }
-                          : {}),
-                      });
-                      if (!ok) {
-                        setPostJobError(t("dashboard.postJobFailed", "Nu am putut salva jobul. Verifică backend-ul și încearcă din nou."));
-                        return;
-                      }
-                    } else {
+                    if (!jobTitle || !address || !selectedJobType) {
                       setPostJobError(t("dashboard.postJobInvalid", "Completează câmpurile obligatorii."));
+                      return;
+                    }
+                    setPostJobBusy(true);
+                    let uploadedJobAttachments: { url: string; name: string }[] = [];
+                    try {
+                      for (const doc of jobDocuments) {
+                        const up = await jobsApi.uploadJobAttachment(doc.file);
+                        uploadedJobAttachments.push({
+                          url: up.url,
+                          name: (up.originalName && up.originalName.trim()) || doc.file.name,
+                        });
+                      }
+                    } catch (docErr) {
+                      setPostJobError(
+                        docErr instanceof Error ? docErr.message : t("dashboard.jobAttachmentUploadError", "Nu am putut încărca un document.")
+                      );
+                      setPostJobBusy(false);
+                      return;
+                    }
+                    const addResult = await addJob({
+                      job: jobTitle,
+                      location: address,
+                      status: "Draft",
+                      statusClass: "bg-gray-100 text-gray-700",
+                      date: normalizedDate,
+                      endDate: normalizedEndDate,
+                      jobType: selectedJobType,
+                      jobCategoryCode,
+                      hourlyRateBase,
+                      startTime: formStartTime,
+                      endTime: formEndTime,
+                      peopleNeeded: peopleVal || undefined,
+                      estimatedSalary: salaryVal || undefined,
+                      raionId: selectedRaionId,
+                      localitate: localitate.trim() || undefined,
+                      ...(jobCoverImageUrl ? { imageUrl: jobCoverImageUrl } : {}),
+                      ...(jobGalleryUrls.length > 0 ? { galleryImageUrls: jobGalleryUrls } : {}),
+                      ...(uploadedJobAttachments.length > 0 ? { jobAttachments: uploadedJobAttachments } : {}),
+                      ...(jobCheckInGeo
+                        ? { checkInLat: jobCheckInGeo.lat, checkInLng: jobCheckInGeo.lng, checkInRadiusM: jobCheckInGeo.radiusM }
+                        : {}),
+                      ...(selectedPostBranchId != null && selectedPostBranchId.trim() !== ""
+                        ? { branchId: selectedPostBranchId.trim() }
+                        : {}),
+                    });
+                    setPostJobBusy(false);
+                    if (!addResult.ok) {
+                      const detail = addResult.error.trim();
+                      const migrationHint =
+                        /unknown column|attachment_urls|doesn't exist|nu există/i.test(detail)
+                          ? ` ${t("dashboard.postJobDbMigrationHint", "Rulează migrările bazei: în folderul server, npx prisma migrate deploy (sau aplică SQL-ul pentru coloana attachment_urls).")}`
+                          : "";
+                      setPostJobError(
+                        `${t("dashboard.postJobFailed", "Nu am putut salva jobul.")} ${detail ? `— ${detail}` : ""}${migrationHint}`.trim()
+                      );
                       return;
                     }
                     setJobSubmitted(true);
@@ -1576,13 +1630,14 @@ export default function DashboardLayout() {
                     setJobCheckInGeo(null);
                     setJobDate("");
                     setJobEndDate("");
-                    setJobImage(null);
-                    setJobImageName("");
                     setJobDocuments([]);
+                    setJobCoverImageUrl(null);
+                    setJobGalleryUrls([]);
+                    setJobImageUploadError("");
                     setPhoneCountryCode("+373");
+                    setStaffPhoneNumber("");
+                    setJobDescription("");
                     setJobTitleSelected("");
-                    setUnpaidBreak("no");
-                    setUnpaidBreakOpen(false);
                     setPostJobError("");
                     setSelectedJobCategory(null);
                     setHourlyRate("");
@@ -1597,6 +1652,7 @@ export default function DashboardLayout() {
                     setTemplateSaveError("");
                     setJobTitleDraft("");
                     setEventNameDraft("");
+                    setTemplateSavedFeedback(false);
                   }}
                   className="p-4 sm:p-6 overflow-y-auto max-h-[calc(100vh-12rem)]"
                 >
@@ -1616,6 +1672,58 @@ export default function DashboardLayout() {
                     </span>
                     {t("dashboard.back")}
                   </button>
+
+                  {postMethod === "template" && selectedJobCategory != null && (
+                    <div className="p-4 rounded-xl bg-primary/5 border border-primary/20">
+                      <div className="flex items-start justify-between gap-3 mb-3">
+                        <div className="min-w-0">
+                          <h4 className="text-sm font-semibold text-gray-900">{t("dashboard.useTemplateTitle")}</h4>
+                          <p className="text-xs text-gray-500 mt-0.5">
+                            {getLocalizedJobCategory(jobCategories.find((c) => c.code === selectedJobCategory) ?? { code: selectedJobCategory, title: "—" })}
+                          </p>
+                        </div>
+                        {activeTemplateId && (
+                          <span className="inline-flex items-center px-2 py-1 rounded-full bg-primary/10 border border-primary/20 text-xs font-medium text-primary whitespace-nowrap">
+                            {t("dashboard.activeTemplate")}
+                          </span>
+                        )}
+                      </div>
+
+                      {(() => {
+                        const list = jobTemplates.filter((tpl) => tpl.categoryCode === selectedJobCategory);
+                        if (list.length === 0) {
+                          return <p className="text-sm text-gray-500">{t("dashboard.noTemplatesYet")}</p>;
+                        }
+                        return (
+                          <div className="space-y-2">
+                            {list.map((tpl) => (
+                              <div
+                                key={tpl.id}
+                                className={`flex items-start justify-between gap-3 p-3 rounded-xl bg-white border transition-all ${
+                                  activeTemplateId === tpl.id ? "border-primary/40 shadow-sm" : "border-gray-200 hover:border-primary/20"
+                                }`}
+                              >
+                                <div className="min-w-0">
+                                  <p className="text-sm font-semibold text-gray-900 truncate">{tpl.title}</p>
+                                  <p className="text-xs text-gray-500 mt-0.5 truncate">
+                                  {tpl.jobType} · {tpl.hourlyRateBase} MDL/oră · {tpl.staffCount} {tpl.staffCount === "1" ? t("dashboard.person") : t("dashboard.persons")}
+                                </p>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => applyTemplateToForm(tpl)}
+                                  className="shrink-0 px-3 py-2 rounded-lg bg-primary text-white text-sm font-medium hover:bg-primary-dark transition-colors"
+                                >
+                                  {activeTemplateId === tpl.id ? t("dashboard.templateApplied") : t("dashboard.templateUse")}
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        );
+                      })()}
+
+                    </div>
+                  )}
 
                   <section>
                     <h4 className="text-sm font-semibold text-gray-900 mb-3">{t("dashboard.jobDetails")}</h4>
@@ -1746,125 +1854,6 @@ export default function DashboardLayout() {
                           )}
                         </label>
 
-                        {postMethod === "template" && selectedJobCategory != null && (
-                          <div className="sm:col-span-2 col-span-1 p-4 rounded-xl bg-primary/5 border border-primary/20">
-                            <div className="flex items-start justify-between gap-3 mb-3">
-                              <div className="min-w-0">
-                                <h4 className="text-sm font-semibold text-gray-900">{t("dashboard.useTemplateTitle")}</h4>
-                                <p className="text-xs text-gray-500 mt-0.5">
-                                  {getLocalizedJobCategory(jobCategories.find((c) => c.code === selectedJobCategory) ?? { code: selectedJobCategory, title: "—" })}
-                                </p>
-                              </div>
-                              {activeTemplateId && (
-                                <span className="inline-flex items-center px-2 py-1 rounded-full bg-primary/10 border border-primary/20 text-xs font-medium text-primary whitespace-nowrap">
-                                  Șablon activ
-                                </span>
-                              )}
-                            </div>
-
-                            {(() => {
-                              const list = jobTemplates.filter((tpl) => tpl.categoryCode === selectedJobCategory);
-                              if (list.length === 0) {
-                                return (
-                                  <div className="space-y-3">
-                                    <p className="text-sm text-gray-500">{t("dashboard.noTemplatesYet")}</p>
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        setShowTemplateSavePanel(true);
-                                        setTemplateSaveTitle("");
-                                        setTemplateSaveError("");
-                                      }}
-                                      className="w-full px-4 py-2.5 rounded-xl bg-primary text-white font-medium hover:bg-primary-dark transition-colors"
-                                    >
-                                      Creează un șablon
-                                    </button>
-                                  </div>
-                                );
-                              }
-
-                              return (
-                                <div className="space-y-3">
-                                  {list.map((tpl) => (
-                                    <div
-                                      key={tpl.id}
-                                      className={`flex items-start justify-between gap-3 p-3 rounded-xl bg-white border transition-all ${
-                                        activeTemplateId === tpl.id ? "border-primary/40 shadow-sm" : "border-gray-200 hover:border-primary/20"
-                                      }`}
-                                    >
-                                      <div className="min-w-0">
-                                        <p className="text-sm font-semibold text-gray-900 truncate">{tpl.title}</p>
-                                        <p className="text-xs text-gray-500 mt-0.5 truncate">
-                                          {tpl.jobType} · {tpl.hourlyRateBase} MDL/oră · {tpl.staffCount} persoane
-                                        </p>
-                                      </div>
-                                      <button
-                                        type="button"
-                                        onClick={() => applyTemplateToForm(tpl)}
-                                        className="shrink-0 px-3 py-2 rounded-lg bg-primary text-white text-sm font-medium hover:bg-primary-dark transition-colors"
-                                      >
-                                        {activeTemplateId === tpl.id ? "Aplicat" : "Folosește"}
-                                      </button>
-                                    </div>
-                                  ))}
-                                </div>
-                              );
-                            })()}
-
-                            <div className="mt-4">
-                              {!showTemplateSavePanel ? (
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setShowTemplateSavePanel(true);
-                                    setTemplateSaveTitle("");
-                                    setTemplateSaveError("");
-                                  }}
-                                  className="w-full px-4 py-2.5 rounded-xl border border-primary/15 bg-primary/5 font-medium text-primary hover:bg-primary/10 hover:border-primary/25 transition-colors"
-                                >
-                                  Salvează formularul ca șablon
-                                </button>
-                              ) : (
-                                <div className="space-y-3">
-                                  <label className="block">
-                                    <span className="text-sm font-medium text-gray-700">Nume șablon</span>
-                                    <input
-                                      type="text"
-                                      value={templateSaveTitle}
-                                      onChange={(e) => setTemplateSaveTitle(e.target.value)}
-                                      placeholder="Ex: Barista - 8 ore"
-                                      maxLength={60}
-                                      className="mt-1 block w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:ring-2 focus:ring-primary"
-                                    />
-                                  </label>
-
-                                  {templateSaveError && <p className="text-sm text-red-600">{templateSaveError}</p>}
-
-                                  <div className="flex gap-3">
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        setShowTemplateSavePanel(false);
-                                        setTemplateSaveError("");
-                                      }}
-                                      className="flex-1 py-2.5 rounded-xl border border-gray-300 font-medium text-gray-700 hover:bg-gray-50 transition-colors"
-                                    >
-                                      Anulează
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={saveCurrentFormAsTemplate}
-                                      className="flex-1 py-2.5 rounded-xl bg-primary text-white font-medium hover:bg-primary-dark transition-colors"
-                                    >
-                                      Salvează
-                                    </button>
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        )}
-
                         <label className="block min-w-0">
                           <span className="text-sm font-medium text-gray-700">{t("dashboard.hourlyRateLabel")} <span className="text-red-500">*</span></span>
                           <input
@@ -1935,51 +1924,32 @@ export default function DashboardLayout() {
                           />
                         )}
                       </div>
-                      <label className="block">
-                        <span className="text-sm font-medium text-gray-700 mb-1 block">{t("dashboard.unpaidBreak")}</span>
-                        <input type="hidden" name="unpaidBreak" value={unpaidBreak} />
-                        <div ref={unpaidBreakRef} className="relative">
-                          <button
-                            type="button"
-                            onClick={() => setUnpaidBreakOpen((v) => !v)}
-                            className="w-full px-4 py-2.5 rounded-xl border border-gray-200 bg-white text-left text-sm font-medium text-gray-800 shadow-sm hover:border-primary/40 focus:outline-none focus:ring-2 focus:ring-primary/30 transition-colors inline-flex items-center justify-between"
-                            aria-haspopup="listbox"
-                            aria-expanded={unpaidBreakOpen}
+
+                      {postJobBranches.length > 0 && (
+                        <label className="block">
+                          <span className="text-sm font-medium text-gray-700 mb-1 block">
+                            {t("dashboard.postJobBranchLabel")}
+                          </span>
+                          <select
+                            value={selectedPostBranchId ?? postJobBranches[0]?.id ?? ""}
+                            onChange={(e) => {
+                              const id = e.target.value;
+                              setSelectedPostBranchId(id || null);
+                              const br = postJobBranches.find((x) => x.id === id);
+                              if (br) applyBranchToPostForm(br);
+                            }}
+                            className="mt-1 block w-full px-4 py-2.5 rounded-xl border border-gray-200 bg-white text-gray-900 focus:ring-2 focus:ring-primary focus:border-primary transition-colors"
                           >
-                            <span>{unpaidBreak === "yes" ? t("dashboard.unpaidBreakYes") : t("dashboard.unpaidBreakNo")}</span>
-                            <svg className={`w-4 h-4 text-gray-500 transition-transform ${unpaidBreakOpen ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                            </svg>
-                          </button>
-                          {unpaidBreakOpen && (
-                            <div className="absolute left-0 right-0 top-full mt-1 z-50 rounded-xl border border-gray-200 bg-white shadow-lg p-1">
-                              {[
-                                { value: "no" as const, label: t("dashboard.unpaidBreakNo") },
-                                { value: "yes" as const, label: t("dashboard.unpaidBreakYes") },
-                              ].map((opt) => (
-                                <button
-                                  key={opt.value}
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.preventDefault();
-                                    e.stopPropagation();
-                                    setUnpaidBreak(opt.value);
-                                    setUnpaidBreakOpen(false);
-                                  }}
-                                  className={`w-full px-3 py-2 rounded-lg text-left text-sm transition-colors ${
-                                    unpaidBreak === opt.value ? "bg-primary text-white" : "text-gray-700 hover:bg-primary/10"
-                                  }`}
-                                  role="option"
-                                  aria-selected={unpaidBreak === opt.value}
-                                >
-                                  {opt.label}
-                                </button>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      </label>
-                      
+                            {postJobBranches.map((b) => (
+                              <option key={b.id} value={b.id}>
+                                {b.name}
+                              </option>
+                            ))}
+                          </select>
+                          <p className="mt-1 text-xs text-gray-500">{t("dashboard.postJobBranchHint")}</p>
+                        </label>
+                      )}
+
                       {/* Raion Selection */}
                       <label className="block">
                         <span className="text-sm font-medium text-gray-700 mb-1 block">
@@ -2126,6 +2096,8 @@ export default function DashboardLayout() {
                               name="staffPhone"
                               type="tel"
                               placeholder="(79) 14-37-02"
+                              value={staffPhoneNumber}
+                              onChange={(e) => setStaffPhoneNumber(e.target.value)}
                               className="flex-1 min-w-[16rem] sm:min-w-[20rem] w-full px-4 py-2.5 border-0 bg-transparent focus:ring-0 rounded-r-xl text-gray-900 placeholder:text-gray-400"
                             />
                           </div>
@@ -2136,10 +2108,110 @@ export default function DashboardLayout() {
                           name="description"
                           rows={3}
                           placeholder={t("dashboard.descriptionPlaceholder")}
+                          value={jobDescription}
+                          onChange={(e) => setJobDescription(e.target.value)}
                           className="mt-1 block w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:ring-2 focus:ring-primary resize-none"
                         />
                       </label>
                     </div>
+                  </section>
+
+                  <section>
+                    <h4 className="text-sm font-semibold text-gray-900 mb-2">{t("dashboard.jobImagesSection")}</h4>
+                    <p className="text-sm text-gray-500 mb-3">{t("dashboard.jobImagesHint")}</p>
+                    <div className="space-y-4 rounded-xl border border-gray-100 bg-gray-50/80 p-4">
+                      <div>
+                        <span className="text-sm font-medium text-gray-800">{t("dashboard.jobCoverImage")}</span>
+                        <p className="text-xs text-gray-500 mt-0.5">{t("dashboard.jobCoverHint")}</p>
+                        {jobCoverImageUrl && (
+                          <div className="mt-2 relative rounded-xl overflow-hidden border border-gray-200 bg-white max-h-40">
+                            <img src={jobCoverImageUrl} alt="" className="w-full h-36 object-cover" />
+                            <button
+                              type="button"
+                              onClick={() => setJobCoverImageUrl(null)}
+                              className="absolute top-2 right-2 p-1.5 rounded-lg bg-black/50 text-white hover:bg-black/70"
+                              aria-label={t("dashboard.remove")}
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                            </button>
+                          </div>
+                        )}
+                        <label className="mt-2 inline-block">
+                          <input
+                            type="file"
+                            accept="image/jpeg,image/png,image/webp"
+                            className="sr-only"
+                            disabled={jobImageUploading}
+                            onChange={async (e) => {
+                              const f = e.target.files?.[0];
+                              e.target.value = "";
+                              if (!f) return;
+                              setJobImageUploadError("");
+                              setJobImageUploading(true);
+                              try {
+                                const { url } = await jobsApi.uploadJobImage(f);
+                                setJobCoverImageUrl(url);
+                              } catch (err) {
+                                setJobImageUploadError(err instanceof Error ? err.message : t("dashboard.jobImageUploadError"));
+                              } finally {
+                                setJobImageUploading(false);
+                              }
+                            }}
+                          />
+                          <span className="inline-flex px-4 py-2.5 rounded-xl border border-gray-300 font-medium text-gray-700 hover:bg-white cursor-pointer">
+                            {jobImageUploading ? t("dashboard.jobImageUploading") : t("dashboard.chooseCoverImage")}
+                          </span>
+                        </label>
+                      </div>
+                      <div>
+                        <span className="text-sm font-medium text-gray-800">{t("dashboard.jobGallery")}</span>
+                        <p className="text-xs text-gray-500 mt-0.5">{t("dashboard.jobGalleryHint")}</p>
+                        {jobGalleryUrls.length > 0 && (
+                          <ul className="mt-2 flex flex-wrap gap-2">
+                            {jobGalleryUrls.map((u) => (
+                              <li key={u} className="relative w-20 h-20 rounded-lg overflow-hidden border border-gray-200 bg-white shrink-0">
+                                <img src={u} alt="" className="w-full h-full object-cover" />
+                                <button
+                                  type="button"
+                                  onClick={() => setJobGalleryUrls((prev) => prev.filter((x) => x !== u))}
+                                  className="absolute top-1 right-1 p-1 rounded bg-black/50 text-white hover:bg-black/70"
+                                  aria-label={t("dashboard.remove")}
+                                >
+                                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                                </button>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                        <label className="mt-2 inline-block">
+                          <input
+                            type="file"
+                            accept="image/jpeg,image/png,image/webp"
+                            className="sr-only"
+                            disabled={jobImageUploading || jobGalleryUrls.length >= 24}
+                            onChange={async (e) => {
+                              const f = e.target.files?.[0];
+                              e.target.value = "";
+                              if (!f) return;
+                              setJobImageUploadError("");
+                              setJobImageUploading(true);
+                              try {
+                                const { url } = await jobsApi.uploadJobImage(f);
+                                setJobGalleryUrls((prev) => (prev.includes(url) ? prev : [...prev, url]));
+                              } catch (err) {
+                                setJobImageUploadError(err instanceof Error ? err.message : t("dashboard.jobImageUploadError"));
+                              } finally {
+                                setJobImageUploading(false);
+                              }
+                            }}
+                          />
+                          <span className={`inline-flex px-4 py-2.5 rounded-xl border border-gray-300 font-medium text-gray-700 hover:bg-white ${jobGalleryUrls.length >= 24 ? "opacity-40 pointer-events-none" : "cursor-pointer"}`}>
+                            {jobImageUploading ? t("dashboard.jobImageUploading") : t("dashboard.addGalleryImage")}
+                          </span>
+                        </label>
+                      </div>
+                    </div>
+                    {jobImageUploadError ? <p className="text-sm text-red-600 mt-2">{jobImageUploadError}</p> : null}
                   </section>
 
                   <section>
@@ -2174,29 +2246,98 @@ export default function DashboardLayout() {
                     )}
                   </section>
 
-                  <div className="flex gap-3 pt-2 border-t border-gray-100">
-                    <button
-                      type="button"
-                      onClick={() => { 
-                        setShowPostJob(false); 
-                        setPostJobStep("choose-type"); 
-                        setSelectedJobType(null); 
-                        setPostMethod(null);
-                        setSelectedRaionId(null);
-                        setRaionSearch("");
-                        setLocalitate("");
-                      }}
-                      className="flex-1 py-2.5 rounded-xl border border-gray-300 font-medium text-gray-700 hover:bg-gray-50"
-                    >
-                      {t("dashboard.cancel")}
-                    </button>
-                    <button
-                      type="submit"
-                      disabled={!jobAddress.trim()}
-                      className="flex-1 py-2.5 rounded-xl bg-primary text-white font-medium hover:bg-primary-dark disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      {t("dashboard.postJob")}
-                    </button>
+                  <div className="flex flex-col gap-2 pt-2 border-t border-gray-100">
+                    {showTemplateSavePanel ? (
+                      <div className="space-y-3 p-4 rounded-xl bg-primary/5 border border-primary/20">
+                        <p className="text-sm font-semibold text-gray-900">{t("dashboard.saveTemplateTitle")}</p>
+                        <label className="block">
+                          <span className="text-sm font-medium text-gray-700">{t("dashboard.templateNameLabel")}</span>
+                          <input
+                            type="text"
+                            value={templateSaveTitle}
+                            onChange={(e) => setTemplateSaveTitle(e.target.value)}
+                            placeholder={t("dashboard.templateNamePlaceholder")}
+                            maxLength={60}
+                            autoFocus
+                            className="mt-1 block w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:ring-2 focus:ring-primary"
+                          />
+                        </label>
+                        {templateSaveError && <p className="text-sm text-red-600">{templateSaveError}</p>}
+                        <div className="flex gap-3">
+                          <button
+                            type="button"
+                            onClick={() => { setShowTemplateSavePanel(false); setTemplateSaveTitle(""); setTemplateSaveError(""); }}
+                            className="flex-1 py-2.5 rounded-xl border border-gray-300 font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+                          >
+                            {t("dashboard.cancel")}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (!templateSaveTitle.trim()) {
+                                setTemplateSaveError(t("dashboard.templateNameRequired"));
+                                return;
+                              }
+                              const ok = saveFormAsTemplate();
+                              if (ok) {
+                                setShowTemplateSavePanel(false);
+                                setTemplateSaveTitle("");
+                                setTemplateSaveError("");
+                                setTemplateSavedFeedback(true);
+                                setTimeout(() => setTemplateSavedFeedback(false), 2500);
+                              }
+                            }}
+                              className="flex-1 py-2.5 rounded-xl bg-primary text-white font-medium hover:bg-primary-dark transition-colors"
+                          >
+                            {t("dashboard.saveTemplate")}
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => { setShowTemplateSavePanel(true); setTemplateSaveTitle(jobTitleDraft.trim()); setTemplateSaveError(""); }}
+                        disabled={!jobTitleDraft.trim() || !selectedJobCategory || !selectedJobType}
+                        className="w-full py-2.5 rounded-xl border-2 border-primary text-primary font-semibold hover:bg-primary/5 disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" /></svg>
+                        {templateSavedFeedback ? t("dashboard.templateSaved") : t("dashboard.saveTemplate")}
+                      </button>
+                    )}
+                    <div className="flex gap-3">
+                      <button
+                        type="button"
+                        onClick={() => { 
+                          setShowPostJob(false); 
+                          setPostJobStep("choose-type"); 
+                          setSelectedJobType(null); 
+                          setPostMethod(null);
+                          setSelectedRaionId(null);
+                          setRaionSearch("");
+                          setLocalitate("");
+                          setStaffPhoneNumber("");
+                          setJobDescription("");
+                          setJobCoverImageUrl(null);
+                          setJobGalleryUrls([]);
+                          setJobDocuments([]);
+                          setJobImageUploadError("");
+                          setTemplateSavedFeedback(false);
+                          setShowTemplateSavePanel(false);
+                          setTemplateSaveTitle("");
+                          setTemplateSaveError("");
+                        }}
+                        className="flex-1 py-2.5 rounded-xl border border-gray-300 font-medium text-gray-700 hover:bg-gray-50"
+                      >
+                        {t("dashboard.cancel")}
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={!jobAddress.trim() || postJobBusy}
+                        className="flex-1 py-2.5 rounded-xl bg-primary text-white font-medium hover:bg-primary-dark disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {postJobBusy ? t("dashboard.postJobUploading", "Se încarcă…") : t("dashboard.postJob")}
+                      </button>
+                    </div>
                   </div>
                   </div>
                 </form>
@@ -2244,6 +2385,55 @@ export default function DashboardLayout() {
                   className="px-5 py-2.5 rounded-xl bg-red-600 text-white font-medium hover:bg-red-700 transition-colors shadow-sm"
                 >
                   {t("dashboard.delete", "Șterge")}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Modal confirmare ștergere șablon */}
+      {deleteTemplateConfirmId && createPortal(
+        <div
+          className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
+          onClick={() => setDeleteTemplateConfirmId(null)}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="delete-template-title"
+        >
+          <div
+            className="bg-white rounded-2xl shadow-xl max-w-sm w-full overflow-hidden border border-gray-100"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-6 text-center">
+              <div className="mx-auto w-14 h-14 rounded-full bg-red-50 flex items-center justify-center mb-4">
+                <Trash2 className="w-7 h-7 text-red-500" />
+              </div>
+              <h3 id="delete-template-title" className="text-lg font-semibold text-gray-900 mb-2">
+                Șterge șablon
+              </h3>
+              <p className="text-gray-600 text-sm mb-1">
+                Șablonul <span className="font-semibold text-gray-900">"{jobTemplates.find((t) => t.id === deleteTemplateConfirmId)?.title}"</span>
+              </p>
+              <p className="text-gray-500 text-sm mb-6">va fi șters definitiv.</p>
+              <div className="flex gap-3 justify-center">
+                <button
+                  type="button"
+                  onClick={() => setDeleteTemplateConfirmId(null)}
+                  className="flex-1 px-5 py-2.5 rounded-xl border border-gray-200 text-gray-700 font-medium hover:bg-gray-50 transition-colors"
+                >
+                  Anulează
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setJobTemplates((prev) => prev.filter((t) => t.id !== deleteTemplateConfirmId));
+                    setDeleteTemplateConfirmId(null);
+                  }}
+                  className="flex-1 px-5 py-2.5 rounded-xl bg-red-600 text-white font-medium hover:bg-red-700 transition-colors shadow-sm"
+                >
+                  Șterge
                 </button>
               </div>
             </div>
@@ -2396,30 +2586,6 @@ export default function DashboardLayout() {
                   />
                 </div>
 
-                <div className="rounded-xl border border-gray-200 bg-white p-3">
-                  <p className="text-sm font-medium text-gray-700 mb-2">Pauză neplătită</p>
-                  <div className="flex gap-2">
-                    <button
-                      type="button"
-                        onClick={() => setTplCreateUnpaidBreak("no")}
-                      className={`flex-1 px-3 py-2 rounded-xl border transition-colors ${
-                          tplCreateUnpaidBreak === "no" ? "border-primary bg-primary/5 text-primary" : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50"
-                      }`}
-                    >
-                      Nu
-                    </button>
-                    <button
-                      type="button"
-                        onClick={() => setTplCreateUnpaidBreak("yes")}
-                      className={`flex-1 px-3 py-2 rounded-xl border transition-colors ${
-                          tplCreateUnpaidBreak === "yes" ? "border-primary bg-primary/5 text-primary" : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50"
-                      }`}
-                    >
-                      Da
-                    </button>
-                  </div>
-                </div>
-
                 {templateSaveError && <p className="text-sm text-red-600">{templateSaveError}</p>}
 
                 <div className="flex gap-3 pt-2">
@@ -2434,7 +2600,6 @@ export default function DashboardLayout() {
                       setTplCreateStaffCount("1");
                       setTplCreateStartTime("00:00");
                       setTplCreateEndTime("00:00");
-                      setTplCreateUnpaidBreak("no");
                     }}
                     className="flex-1 py-2.5 rounded-xl border border-gray-300 font-medium text-gray-700 hover:bg-gray-50 transition-colors"
                   >

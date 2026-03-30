@@ -11,6 +11,8 @@ type Props = {
   disableFutureDates?: boolean;
   /** Dezactivează zilele din trecut (înainte de azi) – implicit true */
   disablePastDates?: boolean;
+  /** Ascunde footer-ul (Șterge / Astăzi) – util pentru data nașterii */
+  hideFooter?: boolean;
 };
 
 const MONTHS_EN = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
@@ -40,13 +42,16 @@ export default function DatePicker({
   openUpward = false,
   disableFutureDates = false,
   disablePastDates = true,
+  hideFooter = false,
 }: Props) {
   const { t, i18n } = useTranslation();
   const [open, setOpen] = useState(false);
   const [yearOpen, setYearOpen] = useState(false);
+  const [monthOpen, setMonthOpen] = useState(false);
   const [viewDate, setViewDate] = useState(() => parseYMD(value) || new Date());
   const ref = useRef<HTMLDivElement>(null);
   const yearRef = useRef<HTMLDivElement>(null);
+  const monthRef = useRef<HTMLDivElement>(null);
 
   const lang = (i18n.language || "ro").toLowerCase().split("-")[0];
   const months = lang === "ro" ? ["Ianuarie", "Februarie", "Martie", "Aprilie", "Mai", "Iunie", "Iulie", "August", "Septembrie", "Octombrie", "Noiembrie", "Decembrie"]
@@ -68,18 +73,25 @@ export default function DatePicker({
       if (ref.current && !ref.current.contains(target)) {
         setOpen(false);
         setYearOpen(false);
+        setMonthOpen(false);
         return;
       }
       if (yearOpen && yearRef.current && !yearRef.current.contains(target)) {
         setYearOpen(false);
       }
+      if (monthOpen && monthRef.current && !monthRef.current.contains(target)) {
+        setMonthOpen(false);
+      }
     };
     document.addEventListener("mousedown", close);
     return () => document.removeEventListener("mousedown", close);
-  }, [open, yearOpen]);
+  }, [open, yearOpen, monthOpen]);
 
   useEffect(() => {
-    if (!open) setYearOpen(false);
+    if (!open) {
+      setYearOpen(false);
+      setMonthOpen(false);
+    }
   }, [open]);
 
   const year = viewDate.getFullYear();
@@ -133,61 +145,84 @@ export default function DatePicker({
             openUpward ? "bottom-full mb-1" : "top-full mt-1"
           }`}
         >
-          <div className="p-3 border-b border-gray-100 bg-gray-50/80 flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2" ref={yearRef}>
-              <span className="font-semibold text-gray-900">{months[month]}</span>
-              <div className="date-picker-year-dropdown relative">
-                <button
-                  type="button"
-                  onClick={() => setYearOpen((v) => !v)}
-                  className="date-picker-year-trigger text-sm font-semibold rounded-lg border border-gray-200 bg-white px-2.5 py-1 text-gray-800 inline-flex items-center gap-1.5"
-                  aria-label="Year"
-                  aria-expanded={yearOpen}
-                >
-                  <span>{year}</span>
-                  <svg className={`h-4 w-4 transition-transform ${yearOpen ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                  </svg>
-                </button>
-                {yearOpen && (
-                  <ul className="date-picker-year-list absolute top-full mt-1 left-0 right-0 z-20 max-h-52 overflow-y-auto rounded-lg border border-gray-200 bg-white py-1 shadow-lg">
-                    {years.map((y) => (
-                      <li key={y}>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setViewDate(new Date(y, month, 1));
-                            setYearOpen(false);
-                          }}
-                          className={`date-picker-year-option w-full px-3 py-1.5 text-left text-sm ${
-                            y === year ? "date-picker-year-option--active" : ""
-                          }`}
-                        >
-                          {y}
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
+          <div className="p-3 border-b border-gray-100 bg-gray-50/80 flex flex-wrap items-center justify-center gap-2">
+            <div className="date-picker-month-dropdown relative" ref={monthRef}>
+              <button
+                type="button"
+                onClick={() => {
+                  setMonthOpen((v) => !v);
+                  setYearOpen(false);
+                }}
+                className="date-picker-month-trigger text-sm font-semibold rounded-lg border border-gray-200 bg-white px-2.5 py-1 text-gray-800 inline-flex items-center gap-1.5 min-w-[9.5rem] justify-between"
+                aria-label={t("dashboard.selectMonth")}
+                aria-expanded={monthOpen}
+              >
+                <span className="truncate">{months[month]}</span>
+                <svg className={`h-4 w-4 shrink-0 transition-transform ${monthOpen ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+              {monthOpen && (
+                <ul className="absolute top-full left-0 right-0 z-20 mt-1 max-h-52 overflow-y-auto rounded-lg border border-gray-200 bg-white py-1 shadow-lg">
+                  {months.map((label, idx) => (
+                    <li key={label}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setViewDate(new Date(year, idx, 1));
+                          setMonthOpen(false);
+                        }}
+                        className={`date-picker-month-option w-full px-3 py-1.5 text-left text-sm ${
+                          idx === month
+                            ? "date-picker-month-option--active bg-primary/10 font-semibold text-primary"
+                            : "text-gray-800 hover:bg-gray-50"
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
-            <div className="flex items-center gap-0.5">
+            <div className="date-picker-year-dropdown relative" ref={yearRef}>
               <button
                 type="button"
-                onClick={() => setViewDate(new Date(year, month - 1, 1))}
-                className="p-1.5 rounded-lg text-gray-600 hover:bg-gray-200 hover:text-gray-900"
-                aria-label={t("dashboard.prevMonth")}
+                onClick={() => {
+                  setYearOpen((v) => !v);
+                  setMonthOpen(false);
+                }}
+                className="date-picker-year-trigger text-sm font-semibold rounded-lg border border-gray-200 bg-white px-2.5 py-1 text-gray-800 inline-flex items-center gap-1.5 min-w-[5.5rem] justify-between"
+                aria-label={t("dashboard.selectYear")}
+                aria-expanded={yearOpen}
               >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
+                <span>{year}</span>
+                <svg className={`h-4 w-4 shrink-0 transition-transform ${yearOpen ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
               </button>
-              <button
-                type="button"
-                onClick={() => setViewDate(new Date(year, month + 1, 1))}
-                className="p-1.5 rounded-lg text-gray-600 hover:bg-gray-200 hover:text-gray-900"
-                aria-label={t("dashboard.nextMonth")}
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
-              </button>
+              {yearOpen && (
+                <ul className="date-picker-year-list absolute top-full left-0 right-0 z-20 mt-1 max-h-52 overflow-y-auto rounded-lg border border-gray-200 bg-white py-1 shadow-lg">
+                  {years.map((y) => (
+                    <li key={y}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setViewDate(new Date(y, month, 1));
+                          setYearOpen(false);
+                        }}
+                        className={`date-picker-year-option w-full px-3 py-1.5 text-left text-sm ${
+                          y === year
+                            ? "date-picker-year-option--active bg-primary/10 font-semibold text-primary"
+                            : "text-gray-800 hover:bg-gray-50"
+                        }`}
+                      >
+                        {y}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
           </div>
           <div className="p-3">
@@ -224,22 +259,24 @@ export default function DatePicker({
               )}
             </div>
           </div>
-          <div className="flex items-center justify-between px-3 py-2 border-t border-gray-100 bg-gray-50/80">
-            <button
-              type="button"
-              onClick={() => { onChange(""); setOpen(false); }}
-              className="text-sm font-medium text-gray-600 hover:text-gray-900"
-            >
-              {t("dashboard.clear")}
-            </button>
-            <button
-              type="button"
-              onClick={() => { onChange(formatYMD(today)); setOpen(false); }}
-              className="text-sm font-medium text-primary hover:underline"
-            >
-              {t("dashboard.today")}
-            </button>
-          </div>
+          {!hideFooter && (
+            <div className="flex items-center justify-between px-3 py-2 border-t border-gray-100 bg-gray-50/80">
+              <button
+                type="button"
+                onClick={() => { onChange(""); setOpen(false); }}
+                className="text-sm font-medium text-gray-600 hover:text-gray-900"
+              >
+                {t("dashboard.clear")}
+              </button>
+              <button
+                type="button"
+                onClick={() => { onChange(formatYMD(today)); setOpen(false); }}
+                className="text-sm font-medium text-primary hover:underline"
+              >
+                {t("dashboard.today")}
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>

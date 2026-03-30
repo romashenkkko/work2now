@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "../hooks/useAuth";
 import { DashboardContext, type JobRow } from "./DashboardLayout";
-import { jobsApi } from "../api/client";
+import { jobsApi, authApi } from "../api/client";
 import { getBusinessTotal, roundMoney, BUSINESS_TAX_RATE, BUSINESS_MAINTENANCE_RATE } from "../utils/salary";
 
 function hoursBetween(start: string, end: string): number {
@@ -57,6 +57,8 @@ type AppWithSessions = {
   staffName?: string; 
   staffEmail?: string;
   staffAvatar?: string;
+  staffCvFileUrl?: string;
+  staffCvOriginalName?: string;
   workSessions?: { workDate: string; checkedInAt?: string; checkedOutAt?: string }[]; 
   checkedInAt?: string; 
   checkedOutAt?: string;
@@ -89,6 +91,8 @@ export default function DashboardHomeCustomer() {
             staffName: a.staffName ?? "",
             staffEmail: a.staffEmail,
             staffAvatar: a.staffAvatar,
+            staffCvFileUrl: (a as any).staffCvFileUrl,
+            staffCvOriginalName: (a as any).staffCvOriginalName,
             workSessions: a.workSessions ?? [],
             checkedInAt: a.checkedInAt,
             checkedOutAt: a.checkedOutAt,
@@ -226,7 +230,7 @@ export default function DashboardHomeCustomer() {
   return (
     <>
       {toast && (
-        <div className="fixed bottom-6 left-4 right-4 sm:left-auto sm:right-6 sm:max-w-sm z-50 px-4 py-3 rounded-xl bg-gray-900 text-white text-sm font-medium shadow-lg">
+        <div className="fixed dashboard-toast-top left-4 right-4 sm:left-auto sm:right-6 sm:max-w-sm z-[60] px-4 py-3 rounded-xl bg-gray-900 text-white text-sm font-medium shadow-lg break-words">
           {toast}
         </div>
       )}
@@ -437,7 +441,7 @@ export default function DashboardHomeCustomer() {
                     <th className="p-3 sm:p-4 font-medium">{t("dashboard.location")}</th>
                     <th className="p-3 sm:p-4 font-medium">{t("dashboard.jobTitle")}</th>
                     {/* Column showing how many people are applied vs needed (e.g. 2/3, 0/1) */}
-                    <th className="p-3 sm:p-4 font-medium">Oameni</th>
+                    <th className="p-3 sm:p-4 font-medium">{t("dashboard.people")}</th>
                     <th className="p-3 sm:p-4 font-medium">{t("dashboard.date")}</th>
                     <th className="p-3 sm:p-4 font-medium">{t("dashboard.time")}</th>
                     <th className="p-3 sm:p-4 font-medium">{t("dashboard.actions")}</th>
@@ -1000,7 +1004,7 @@ function ApplicationDetailsModal({
               Work2Now
             </p>
             <h2 id="application-details-title" className="text-xl sm:text-2xl font-bold text-white">
-              Detalii Aplicație
+              {t("dashboard.applicationDetails")}
             </h2>
             <p className="text-sm text-white/80 mt-1">
               {job.job || "—"} {application.staffName ? `• ${application.staffName}` : ""}
@@ -1038,7 +1042,7 @@ function ApplicationDetailsModal({
 
           <div className="rounded-[24px] border border-primary/10 bg-white/92 shadow-[0_12px_30px_rgba(122,99,241,0.08)] p-5 sm:p-6 space-y-4">
             <h3 className="text-base font-semibold text-[#1e1c2f] border-b border-gray-200/80 pb-2">
-              Informații Job
+              {t("dashboard.jobInfo")}
             </h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
@@ -1076,7 +1080,7 @@ function ApplicationDetailsModal({
 
           <div className="rounded-[24px] border border-primary/10 bg-white/92 shadow-[0_12px_30px_rgba(122,99,241,0.08)] p-5 sm:p-6 space-y-4">
             <h3 className="text-base font-semibold text-[#1e1c2f] border-b border-gray-200/80 pb-2">
-              Informații Angajat
+              {t("dashboard.staffInfoTitle")}
             </h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-start">
               <div className="rounded-2xl border border-gray-100 bg-[#faf8ff] p-4">
@@ -1087,6 +1091,25 @@ function ApplicationDetailsModal({
                 <div className="rounded-2xl border border-gray-100 bg-[#faf8ff] p-4">
                   <p className="text-xs text-gray-500 mb-1">{t("dashboard.email") || "Email"}</p>
                   <p className="text-sm font-medium text-gray-900">{application.staffEmail}</p>
+                </div>
+              )}
+              {application.staffCvFileUrl && application.staffId && (
+                <div className="rounded-2xl border border-primary/20 bg-primary/5 p-4 sm:col-span-2">
+                  <div className="flex items-center gap-3">
+                    <svg className="w-6 h-6 text-primary flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-900">{application.staffCvOriginalName || "CV"}</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => window.open(authApi.getCvUrl(application.staffId!), "_blank")}
+                      className="px-4 py-1.5 text-xs font-semibold rounded-lg bg-primary text-white hover:opacity-90 transition-colors"
+                    >
+                      {t("dashboard.viewCv")}
+                    </button>
+                  </div>
                 </div>
               )}
               <div className="rounded-2xl border border-gray-100 bg-[#faf8ff] p-4 sm:col-span-2">
@@ -1100,7 +1123,7 @@ function ApplicationDetailsModal({
 
           <div className="rounded-[24px] border border-primary/10 bg-white/92 shadow-[0_12px_30px_rgba(122,99,241,0.08)] p-5 sm:p-6 space-y-4">
             <h3 className="text-base font-semibold text-[#1e1c2f] border-b border-gray-200/80 pb-2">
-              Informații Prezență
+              {t("dashboard.attendanceInfo")}
             </h3>
             {workSessionsDetails.length > 0 ? (
               <div className="space-y-3">
@@ -1154,7 +1177,7 @@ function ApplicationDetailsModal({
                   </svg>
                 </div>
                 <p className="text-sm font-medium text-gray-800">{t("dashboard.noCheckInOut", { defaultValue: "Nu există informații de check-in/check-out" })}</p>
-                <p className="text-xs text-gray-500 mt-1">Datele vor apărea aici imediat ce angajatul face check-in sau check-out.</p>
+                <p className="text-xs text-gray-500 mt-1">{t("dashboard.checkInOutDataHint")}</p>
               </div>
             )}
           </div>
@@ -1162,20 +1185,20 @@ function ApplicationDetailsModal({
           {hasRate && (
             <div className="rounded-[24px] border border-primary/10 bg-white/92 shadow-[0_12px_30px_rgba(122,99,241,0.08)] p-5 sm:p-6 space-y-4">
               <h3 className="text-base font-semibold text-[#1e1c2f] border-b border-gray-200/80 pb-2">
-                Informații Salariu
+                {t("dashboard.salaryInfo")}
               </h3>
               <div className="bg-gradient-to-br from-primary/5 to-primary/10 rounded-xl p-4 sm:p-6 space-y-4 border border-primary/20">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pb-4 border-b border-primary/20">
                   {job.estimatedSalary && (
                     <div>
-                      <p className="text-xs text-gray-600 mb-1">Salariu estimat inițial</p>
+                      <p className="text-xs text-gray-600 mb-1">{t("dashboard.estimatedSalaryInitial")}</p>
                       <p className="text-lg font-bold text-gray-900">{job.estimatedSalary}</p>
                     </div>
                   )}
                   <div>
-                    <p className="text-xs text-gray-600 mb-1">Timp efectiv lucrat</p>
+                    <p className="text-xs text-gray-600 mb-1">{t("dashboard.effectiveTimeWorked")}</p>
                     <p className="text-lg font-bold text-gray-900">
-                      {totalHours > 0 ? `${totalHours.toFixed(2)} ore` : "Nu au fost înregistrate ore"}
+                      {totalHours > 0 ? `${totalHours.toFixed(2)} ore` : t("dashboard.noHoursRecorded")}
                     </p>
                   </div>
                 </div>
@@ -1189,7 +1212,7 @@ function ApplicationDetailsModal({
                     <div>
                       <p className="text-xs text-gray-600 mb-1">{t("dashboard.taxPerHour") || "Taxă pe oră"}</p>
                       <p className="text-lg font-bold text-gray-900">{taxPerHour.toFixed(2)} MDL/ora</p>
-                      <p className="text-xs text-gray-500 mt-0.5">({(BUSINESS_TAX_RATE * 100).toFixed(0)}% din rată)</p>
+                      <p className="text-xs text-gray-500 mt-0.5">({(BUSINESS_TAX_RATE * 100).toFixed(0)}{t("dashboard.percentOfRate")})</p>
                     </div>
                   )}
                 </div>
@@ -1227,7 +1250,7 @@ function ApplicationDetailsModal({
           {application.businessConfirmedAt && (
             <div className="rounded-[24px] border border-primary/10 bg-white/92 shadow-[0_12px_30px_rgba(122,99,241,0.08)] p-5 sm:p-6 space-y-2">
               <h3 className="text-base font-semibold text-[#1e1c2f] border-b border-gray-200/80 pb-2">
-                Confirmare
+                {t("dashboard.confirmation")}
               </h3>
               <p className="text-sm text-gray-600">
                 {t("dashboard.confirmedOn") || "Confirmat la"}: <span className="font-medium text-gray-900">{formatDateTime(application.businessConfirmedAt)}</span>

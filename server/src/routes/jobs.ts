@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { authMiddleware } from "../middleware/auth";
+import { uploadJobImage, uploadJobAttachment } from "../middleware/upload";
 import {
   getJobCategoriesController,
   getRaioaneController,
@@ -17,6 +18,10 @@ import {
   getStatisticsController,
   setApplicationStatusController,
   getAdminStatisticsController,
+  postUploadJobImageController,
+  getJobMediaController,
+  postUploadJobAttachmentController,
+  getJobAttachmentController,
 } from "../controllers/jobsController";
 
 const router = Router();
@@ -26,6 +31,36 @@ router.get("/categories", getJobCategoriesController);
 
 /** GET /api/jobs/raioane - list/search raioane (districts/municipalities) */
 router.get("/raioane", getRaioaneController);
+
+/** Public job image files (UUID filenames; no auth — <img> must load without token) */
+router.get("/media/:filename", getJobMediaController);
+
+/** Public job attachment files (same pattern as images; link from job card) */
+router.get("/attachments/:filename", getJobAttachmentController);
+
+/** POST /api/jobs/upload-image - customer/business: upload one image for job cover or gallery */
+router.post("/upload-image", authMiddleware, (req, res, next) => {
+  uploadJobImage(req, res, (err: unknown) => {
+    if (err) {
+      const msg = err instanceof Error ? err.message : "Upload failed";
+      res.status(400).json({ error: msg });
+      return;
+    }
+    next();
+  });
+}, postUploadJobImageController);
+
+/** POST /api/jobs/upload-attachment - customer/business: PDF/Word/Excel/image for job details */
+router.post("/upload-attachment", authMiddleware, (req, res, next) => {
+  uploadJobAttachment(req, res, (err: unknown) => {
+    if (err) {
+      const msg = err instanceof Error ? err.message : "Upload failed";
+      res.status(400).json({ error: msg });
+      return;
+    }
+    next();
+  });
+}, postUploadJobAttachmentController);
 
 /** GET /api/jobs - customer: own jobs; staff/admin: all jobs */
 router.get("/", authMiddleware, listJobsController);

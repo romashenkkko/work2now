@@ -10,6 +10,7 @@ import StaffProfileModal from "../components/StaffProfileModal";
 import { MapPin, Clock, Users, Banknote, Calendar, Briefcase, Map, Search, Archive } from "lucide-react";
 import { addStaffArchivedJob, getArchivedApplicationIds } from "../utils/staffJobArchive";
 import { getBusinessTotal, roundMoney } from "../utils/salary";
+import { foldForSearch } from "../utils/foldForSearch";
 
 /** Minutes from "HH:mm". Returns NaN if invalid. */
 function timeToMinutes(s: string | undefined): number {
@@ -91,6 +92,8 @@ export default function DashboardJoburi() {
             staffName: String(a.staffName ?? ""),
             staffEmail: a.staffEmail != null ? String(a.staffEmail) : undefined,
             staffAvatar: a.staffAvatar != null ? String(a.staffAvatar) : undefined,
+            staffCvFileUrl: a.staffCvFileUrl != null ? String(a.staffCvFileUrl) : undefined,
+            staffCvOriginalName: a.staffCvOriginalName != null ? String(a.staffCvOriginalName) : undefined,
             status: (a.status ?? "pending") as "pending" | "accepted" | "refused",
             checkedInAt: a.checkedInAt != null ? String(a.checkedInAt) : undefined,
             checkedOutAt: a.checkedOutAt != null ? String(a.checkedOutAt) : undefined,
@@ -200,6 +203,12 @@ export default function DashboardJoburi() {
           duration: j.duration,
           estimatedSalary: j.estimatedSalary,
           imageUrl: j.imageUrl,
+          galleryImageUrls: Array.isArray((j as { galleryImageUrls?: string[] }).galleryImageUrls)
+            ? (j as { galleryImageUrls: string[] }).galleryImageUrls
+            : undefined,
+          jobAttachments: Array.isArray((j as { jobAttachments?: { url: string; name: string }[] }).jobAttachments)
+            ? (j as { jobAttachments: { url: string; name: string }[] }).jobAttachments
+            : undefined,
           postedBy: j.postedBy ?? (j.posted_by_name as string),
           jobCategoryCode: (j as any).jobCategoryCode,
           hourlyRateBase: (j as any).hourlyRateBase,
@@ -277,8 +286,8 @@ export default function DashboardJoburi() {
     jobsApi
       .getRaioane()
       .then((r) => {
-        // Include: 32 raioane (districts) + UTA Gagauzia cities (Comrat, Ceadir-Lunga, Vulcanesti)
-        const gagauziaCities = ["Comrat", "Ceadir-Lunga", "Vulcanesti"];
+        // Include: 32 raioane + municipiile UTA Găgăuzia (denumiri cu diacritice ca în API)
+        const gagauziaCities = ["Comrat", "Ceadîr-Lunga", "Vulcănești"];
         const raioaneOnly = (r.raioane || []).filter((raion) => 
           raion.type === "raion" || 
           (raion.type === "municipiu" && gagauziaCities.includes(raion.name))
@@ -600,25 +609,215 @@ export default function DashboardJoburi() {
     const isAcceptedToJob = (row: JobRow) => myApp(normJobId(row.id))?.status === "accepted";
     const showJobForStaff = (row: JobRow) => !isJobFull(row) || isAcceptedToJob(row);
     const staffJobsForMap = publicJobs.filter((j) => showJobForStaff(j) && ((j.location?.trim()) || (j.checkInLat != null && j.checkInLng != null)));
-    const q = searchQuery.trim().toLowerCase();
+    const qFold = foldForSearch(searchQuery);
     const filteredJobs = publicJobs.filter((row) => {
       if (!showJobForStaff(row)) return false;
       const acc = myApp(normJobId(row.id));
       if (acc?.applicationId && staffArchivedAppIds.has(acc.applicationId)) return false;
-      const matchSearch = !q || (row.job?.toLowerCase().includes(q) || (row.location ?? "").toLowerCase().includes(q));
+      const matchSearch =
+        !searchQuery.trim() ||
+        foldForSearch(row.job ?? "").includes(qFold) ||
+        foldForSearch(row.location ?? "").includes(qFold);
       const matchCategory = categoryFilter === "all" || (row.jobType ?? "") === categoryFilter;
-      // Match location by raion name: check if job location contains the selected raion name
+      // Locație job vs raion: potrivire fără diacritice (ex. Chisinau vs Chișinău)
       const matchLocation = locationFilter === "all" || (() => {
         const selectedRaion = raioane.find((r) => r.name === locationFilter);
         if (!selectedRaion) return false;
-        const jobLocation = (row.location?.trim() ?? "").toLowerCase();
-        const raionName = selectedRaion.name.toLowerCase();
-        // Check if job location contains the raion name
-        return jobLocation.includes(raionName);
+        return foldForSearch(row.location ?? "").includes(foldForSearch(selectedRaion.name));
       })();
       const matchProfession = professionFilter === "all" || (row.job?.trim() ?? "") === professionFilter;
       return matchSearch && matchCategory && matchLocation && matchProfession;
     });
+
+    type StaffJobBucket = "current" | "apply" | "finished";
+    const staffJobBucket = (row: JobRow): StaffJobBucket => {
+      const acc = myApp(normJobId(row.id));
+      const accepted = acc?.status === "accepted";
+      if (accepted && acc && staffCheckoutDone(acc, normJobId(row.id))) return "finished";
+      if (accepted && acc) return "current";
+      return "apply";
+    };
+    const staffJobsCurrent = filteredJobs.filter((row) => staffJobBucket(row) === "current");
+    const staffJobsApply = filteredJobs.filter((row) => staffJobBucket(row) === "apply");
+    const staffJobsFinished = filteredJobs.filter((row) => staffJobBucket(row) === "finished");
+
+    const renderStaffJobCard = (row: JobRow) => {
+      const app = myApp(normJobId(row.id));
+      const status = app?.status;
+      const isAccepted = status === "accepted";
+      const todaySession = app ? getTodaySessionWithOptimistic(app, normJobId(row.id)) : null;
+      return (
+        <article
+          key={`job-${normJobId(row.id)}-${todaySession?.checkedInAt ?? ""}-${todaySession?.checkedOutAt ?? ""}`}
+          className="job-card-enter bg-white rounded-2xl border border-gray-100 shadow-md overflow-hidden hover:shadow-lg transition-shadow flex flex-col cursor-pointer opacity-0"
+          onClick={() => setScheduleJob(row)}
+        >
+          <div className="relative h-24 sm:h-28 bg-primary flex items-center justify-center overflow-hidden">
+            {row.imageUrl ? (
+              <img src={row.imageUrl} alt="" className="absolute inset-0 w-full h-full object-cover" />
+            ) : (
+              <>
+                <div className="absolute inset-0 bg-gradient-to-b from-black/10 to-transparent" />
+                <div className="relative flex items-center gap-2.5">
+                  <div className="w-11 h-11 rounded-full bg-white/95 shadow flex items-center justify-center overflow-hidden ring-2 ring-white/50">
+                    <img src="/LogoWork2Now.png" alt="" className="w-7 h-7 object-contain" />
+                  </div>
+                  <span className="text-white font-semibold text-base">Work2Now</span>
+                </div>
+              </>
+            )}
+            <span className="absolute top-3 right-3 px-3 py-1 rounded-full text-xs font-medium bg-white/25 text-white backdrop-blur-sm">
+              {getJobSlotBadge(row)}
+            </span>
+          </div>
+          <div className="p-4 sm:p-5 flex-1 flex flex-col min-h-0">
+            <h2 className="text-lg font-bold text-gray-900 mb-1">{row.job}</h2>
+            <ul className="space-y-2 text-sm text-gray-600 flex-1">
+              <li className="flex items-center gap-2">
+                <Briefcase className="w-4 h-4 text-primary shrink-0" />
+                <span>{row.jobCategoryTitle || "—"}</span>
+              </li>
+              {(row.startTime || row.endTime) && (
+                <li className="flex items-center gap-2">
+                  <Clock className="w-4 h-4 text-primary shrink-0" />
+                  <span>{row.startTime ?? "—"} – {row.endTime ?? "—"}</span>
+                </li>
+              )}
+              {row.location && (
+                <li className="flex items-center gap-2 min-w-0">
+                  <MapPin className="w-4 h-4 text-primary shrink-0" />
+                  <span className="truncate">{row.location}</span>
+                </li>
+              )}
+              {(() => {
+                const total = getCardDisplayTotal(row, isStaff);
+                return (total != null || row.estimatedSalary) ? (
+                  <li className="flex items-center gap-2">
+                    <Banknote className="w-4 h-4 text-primary shrink-0" />
+                    <span>{total != null ? total.toFixed(2) : row.estimatedSalary}</span>
+                  </li>
+                ) : null;
+              })()}
+            </ul>
+            {(row.postedBy || row.postedByAvatar) && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (!row.postedById) return;
+                  const appForReview = applicationsByJob[normJobId(row.id)];
+                  const applicationIdForReview =
+                    appForReview?.checkedOutAt && appForReview?.applicationId ? appForReview.applicationId : undefined;
+                  setCustomerProfileModal({
+                    customerId: row.postedById,
+                    customerName: row.postedBy,
+                    customerAvatar: row.postedByAvatar,
+                    applicationIdForReview,
+                  });
+                }}
+                className="w-full flex items-center gap-3 mt-3 pt-3 border-t border-gray-100 text-left rounded-xl px-3 py-2.5 -mx-0.5 bg-primary/5 border border-primary/10 hover:bg-primary/10 hover:border-primary/20 transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:ring-inset disabled:opacity-60 disabled:pointer-events-none"
+                aria-label={t("dashboard.viewCustomerReviews", "Deschide recenziile clientului")}
+                disabled={!row.postedById}
+              >
+                <div className="relative flex-shrink-0 w-10 h-10 rounded-full bg-white border-2 border-primary/20 flex items-center justify-center overflow-hidden shadow-sm">
+                  <span className="text-primary font-semibold text-sm">{(row.postedBy || "?").charAt(0).toUpperCase()}</span>
+                  {row.postedByAvatar && (
+                    <img src={row.postedByAvatar} alt="" className="absolute inset-0 w-full h-full object-cover" onError={(e) => { e.currentTarget.style.display = "none"; }} />
+                  )}
+                </div>
+                <div className="min-w-0 flex-1 flex flex-col gap-1">
+                  <p className="text-sm font-semibold text-gray-900 truncate">{row.postedBy || "—"}</p>
+                  <span className="inline-flex w-fit px-2 py-0.5 rounded-full text-xs font-medium bg-primary/15 text-primary border border-primary/25">
+                    {t("dashboard.roleCustomer")}
+                  </span>
+                </div>
+              </button>
+            )}
+            <div className="mt-4 pt-4 border-t border-gray-100 space-y-2">
+              {!app ? (
+                <button
+                  type="button"
+                  disabled={isJobFull(row)}
+                  onClick={(e) => { e.stopPropagation(); handleApply(row); }}
+                  className="w-full py-2.5 rounded-xl bg-primary text-white font-medium hover:bg-primary-dark transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isJobFull(row) ? t("dashboard.jobFull") : t("dashboard.apply")}
+                </button>
+              ) : !isAccepted ? (
+                <span className={`inline-block w-full py-2.5 rounded-xl text-center text-sm font-medium ${
+                  status === "refused" ? "bg-red-100 text-red-800" : "bg-gray-100 text-gray-700"
+                }`}>
+                  {status === "refused" ? t("dashboard.refused") : t("dashboard.pending")}
+                </span>
+              ) : (() => {
+                const loadingKey = `${app.applicationId}-${todayYMD}`;
+                const loading = checkInOutLoading === app.applicationId || checkInOutLoading === loadingKey;
+                return (
+                  <>
+                    {!todaySession?.checkedInAt ? (
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); setConfirmCheckIn({ applicationId: app.applicationId, workDate: todayYMD, jobId: String(row.id ?? "") }); }}
+                        disabled={!!checkInOutLoading}
+                        className="w-full py-2.5 rounded-xl bg-green-600 text-white font-medium hover:bg-green-700 transition-colors disabled:opacity-50"
+                      >
+                        {loading ? "..." : t("dashboard.checkIn")}
+                      </button>
+                    ) : !todaySession?.checkedOutAt ? (
+                      <>
+                        <p className="text-xs text-gray-500">{t("dashboard.checkedInAt")} {formatTime(todaySession.checkedInAt)}</p>
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); setConfirmCheckOut({ applicationId: app.applicationId, workDate: todayYMD, jobId: String(row.id ?? "") }); }}
+                          disabled={!!checkInOutLoading}
+                          className="w-full py-2.5 rounded-xl bg-amber-600 text-white font-medium hover:bg-amber-700 transition-colors disabled:opacity-50"
+                        >
+                          {loading ? "..." : t("dashboard.checkOut")}
+                        </button>
+                      </>
+                    ) : (
+                      <p className="text-sm text-gray-600 py-1">
+                        {t("dashboard.checkedInAt")} {formatTime(todaySession.checkedInAt)} · {t("dashboard.checkedOutAt")} {formatTime(todaySession.checkedOutAt)}
+                      </p>
+                    )}
+                    {staffCheckoutDone(app, normJobId(row.id)) && !staffArchivedAppIds.has(app.applicationId) && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const ws = app.workSessions ?? [];
+                          let checkedOutAt = app.checkedOutAt;
+                          for (const s of ws) {
+                            if (!s.checkedOutAt) continue;
+                            if (!checkedOutAt || new Date(s.checkedOutAt) > new Date(checkedOutAt)) checkedOutAt = s.checkedOutAt;
+                          }
+                          addStaffArchivedJob(String(user?.id ?? ""), {
+                            applicationId: app.applicationId,
+                            jobId: normJobId(row.id),
+                            jobTitle: row.job,
+                            jobLocation: row.location,
+                            customerName: row.postedBy,
+                            checkedOutAt,
+                          });
+                          setStaffArchiveTick((n) => n + 1);
+                        }}
+                        className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl border border-gray-200 bg-gray-50 py-2.5 text-sm font-medium text-gray-700 transition-colors hover:border-primary/30 hover:bg-primary/5 hover:text-primary"
+                      >
+                        <Archive className="h-4 w-4 shrink-0" strokeWidth={2} />
+                        {t("dashboard.archiveJob", "Arhivează jobul")}
+                      </button>
+                    )}
+                  </>
+                );
+              })()}
+            </div>
+          </div>
+        </article>
+      );
+    };
+
+    const staffJobGridClass = "grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5 md:gap-6";
+
     const professionLabelKeys = [
       "dashboard.jobTitleBarista",
       "dashboard.jobTitleBartender",
@@ -645,13 +844,12 @@ export default function DashboardJoburi() {
       { value: "all", label: t("findJobs.allCategories") },
       { value: "one-day", label: t("dashboard.oneDayJob") },
       { value: "multi-day", label: t("dashboard.multiDayJob") },
-      { value: "full-time", label: t("dashboard.fullTimeRecruitment") },
     ];
     return (
       <>
         {checkInOutConfirm && (
-          <div className="fixed top-4 left-4 right-4 sm:left-auto sm:right-6 sm:max-w-sm z-[70]">
-            <div className={`rounded-2xl shadow-lg border-2 p-4 flex items-center gap-3 ${
+          <div className="fixed dashboard-toast-top left-4 right-4 sm:left-auto sm:right-6 sm:max-w-sm z-[60]">
+            <div className={`rounded-2xl shadow-lg border-2 p-4 flex items-start gap-3 break-words ${
               checkInOutConfirm.type === "checkin"
                 ? "bg-green-50 border-green-200 text-green-900"
                 : "bg-amber-50 border-amber-200 text-amber-900"
@@ -663,11 +861,11 @@ export default function DashboardJoburi() {
                   {checkInOutConfirm.type === "checkin" ? "✓" : "✓"}
                 </span>
               </div>
-              <div>
-                <p className="font-semibold">
+              <div className="min-w-0 flex-1 overflow-hidden">
+                <p className="font-semibold break-words">
                   {checkInOutConfirm.type === "checkin" ? t("dashboard.checkInConfirm") : t("dashboard.checkOutConfirm")}
                 </p>
-                <p className="text-sm opacity-90">
+                <p className="text-sm opacity-90 break-words">
                   {checkInOutConfirm.type === "checkin"
                     ? t("dashboard.checkInAtTime", { time: checkInOutConfirm.time })
                     : t("dashboard.checkOutAtTime", { time: checkInOutConfirm.time })}
@@ -677,7 +875,7 @@ export default function DashboardJoburi() {
           </div>
         )}
         {checkInOutError && (
-          <div className="fixed bottom-4 left-4 right-4 sm:left-auto sm:right-6 sm:max-w-sm z-[70] px-4 py-3 rounded-xl bg-red-600 text-white text-sm font-medium shadow-lg">
+          <div className="fixed dashboard-toast-top left-4 right-4 sm:left-auto sm:right-6 sm:max-w-sm z-[60] px-4 py-3 rounded-xl bg-red-50 border border-red-200 text-red-800 text-sm font-medium shadow-lg break-words">
             {checkInOutError}
           </div>
         )}
@@ -867,224 +1065,40 @@ export default function DashboardJoburi() {
             </div>
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5 md:gap-6">
-            {filteredJobs.map((row) => {
-              const app = myApp(normJobId(row.id));
-              const status = app?.status;
-              const isAccepted = status === "accepted";
-              const todaySession = app ? getTodaySessionWithOptimistic(app, normJobId(row.id)) : null;
-              return (
-                <article
-                  key={`job-${normJobId(row.id)}-${todaySession?.checkedInAt ?? ""}-${todaySession?.checkedOutAt ?? ""}`}
-                  className="job-card-enter bg-white rounded-2xl border border-gray-100 shadow-md overflow-hidden hover:shadow-lg transition-shadow flex flex-col cursor-pointer opacity-0"
-                  onClick={() => setScheduleJob(row)}
-                >
-                  <div className="relative h-24 sm:h-28 bg-primary flex items-center justify-center overflow-hidden">
-                    {row.imageUrl ? (
-                      <img src={row.imageUrl} alt="" className="absolute inset-0 w-full h-full object-cover" />
-                    ) : (
-                      <>
-                        <div className="absolute inset-0 bg-gradient-to-b from-black/10 to-transparent" />
-                        <div className="relative flex items-center gap-2.5">
-                          <div className="w-11 h-11 rounded-full bg-white/95 shadow flex items-center justify-center overflow-hidden ring-2 ring-white/50">
-                            <img src="/LogoWork2Now.png" alt="" className="w-7 h-7 object-contain" />
-                          </div>
-                          <span className="text-white font-semibold text-base">Work2Now</span>
-                        </div>
-                      </>
-                    )}
-                    <span className="absolute top-3 right-3 px-3 py-1 rounded-full text-xs font-medium bg-white/25 text-white backdrop-blur-sm">
-                      {getJobSlotBadge(row)}
-                    </span>
-                  </div>
-                  <div className="p-4 sm:p-5 flex-1 flex flex-col min-h-0">
-                    <h2 className="text-lg font-bold text-gray-900 mb-1">{row.job}</h2>
-                    <ul className="space-y-2 text-sm text-gray-600 flex-1">
-                      <li className="flex items-center gap-2">
-                        <Briefcase className="w-4 h-4 text-primary shrink-0" />
-                        <span>{row.jobCategoryTitle || "—"}</span>
-                      </li>
-                      {(row.startTime || row.endTime) && (
-                        <li className="flex items-center gap-2">
-                          <Clock className="w-4 h-4 text-primary shrink-0" />
-                          <span>{row.startTime ?? "—"} – {row.endTime ?? "—"}</span>
-                        </li>
-                      )}
-                      {row.location && (
-                        <li className="flex items-center gap-2 min-w-0">
-                          <MapPin className="w-4 h-4 text-primary shrink-0" />
-                          <span className="truncate">{row.location}</span>
-                        </li>
-                      )}
-                      {(() => {
-                        const total = getCardDisplayTotal(row, isStaff);
-                        return (total != null || row.estimatedSalary) ? (
-                          <li className="flex items-center gap-2">
-                            <Banknote className="w-4 h-4 text-primary shrink-0" />
-                            <span>{total != null ? total.toFixed(2) : row.estimatedSalary}</span>
-                          </li>
-                        ) : null;
-                      })()}
-                    </ul>
-                    {isStaff && (row.postedBy || row.postedByAvatar) && (
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (!row.postedById) return;
-                          const myApp = applicationsByJob[normJobId(row.id)];
-                          const applicationIdForReview =
-                            myApp?.checkedOutAt && myApp?.applicationId ? myApp.applicationId : undefined;
-                          setCustomerProfileModal({
-                            customerId: row.postedById,
-                            customerName: row.postedBy,
-                            customerAvatar: row.postedByAvatar,
-                            applicationIdForReview,
-                          });
-                        }}
-                        className="w-full flex items-center gap-3 mt-3 pt-3 border-t border-gray-100 text-left rounded-xl px-3 py-2.5 -mx-0.5 bg-primary/5 border border-primary/10 hover:bg-primary/10 hover:border-primary/20 transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:ring-inset disabled:opacity-60 disabled:pointer-events-none"
-                        aria-label={t("dashboard.viewCustomerReviews", "Deschide recenziile clientului")}
-                        disabled={!row.postedById}
-                      >
-                        <div className="relative flex-shrink-0 w-10 h-10 rounded-full bg-white border-2 border-primary/20 flex items-center justify-center overflow-hidden shadow-sm">
-                          <span className="text-primary font-semibold text-sm">{(row.postedBy || "?").charAt(0).toUpperCase()}</span>
-                          {row.postedByAvatar && (
-                            <img src={row.postedByAvatar} alt="" className="absolute inset-0 w-full h-full object-cover" onError={(e) => { e.currentTarget.style.display = "none"; }} />
-                          )}
-                        </div>
-                        <div className="min-w-0 flex-1 flex flex-col gap-1">
-                          <p className="text-sm font-semibold text-gray-900 truncate">{row.postedBy || "—"}</p>
-                          <span className="inline-flex w-fit px-2 py-0.5 rounded-full text-xs font-medium bg-primary/15 text-primary border border-primary/25">
-                            {t("dashboard.roleCustomer")}
-                          </span>
-                        </div>
-                      </button>
-                    )}
-                    {isCustomer && row.id && (() => {
-                      const staff = getFirstAcceptedStaff(row.id);
-                      if (!staff) {
-                        return (
-                          <div className="mt-3 pt-3 border-t border-gray-100 px-3 py-2.5 -mx-0.5 rounded-xl bg-gray-50/80 border border-gray-100">
-                            <p className="text-sm text-gray-500">{t("dashboard.noStaffAccepted", "Niciun angajat acceptat")}</p>
-                          </div>
-                        );
-                      }
-                      const name = staff.staffName || t("dashboard.staff", "Staff");
-                      return staff.staffId ? (
-                        <button
-                          type="button"
-                          onClick={(e) => { e.stopPropagation(); setStaffProfileModal({ staffId: staff.staffId, staffName: staff.staffName, staffEmail: staff.staffEmail, staffAvatar: staff.staffAvatar, applicationId: staff.checkedOutAt && staff.ratingScore == null ? staff.id : undefined }); }}
-                          className="w-full flex items-center gap-3 mt-3 pt-3 border-t border-gray-100 text-left rounded-xl px-3 py-2.5 -mx-0.5 bg-primary/5 border border-primary/10 hover:bg-primary/10 hover:border-primary/20 transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:ring-inset"
-                          aria-label={t("dashboard.viewProfile", "Vezi profil")}
-                        >
-                          <div className="relative flex-shrink-0 w-10 h-10 rounded-full bg-white border-2 border-primary/20 flex items-center justify-center overflow-hidden shadow-sm">
-                            <span className="text-primary font-semibold text-sm">{(name || "S").charAt(0).toUpperCase()}</span>
-                            {staff.staffAvatar && (
-                              <img src={staff.staffAvatar} alt="" className="absolute inset-0 w-full h-full object-cover" onError={(e) => { e.currentTarget.style.display = "none"; }} />
-                            )}
-                          </div>
-                          <div className="min-w-0 flex-1 flex flex-col gap-1">
-                            <p className="text-sm font-semibold text-gray-900 truncate">{name}</p>
-                            <span className="inline-flex w-fit px-2 py-0.5 rounded-full text-xs font-medium bg-primary/15 text-primary border border-primary/25">{t("dashboard.roleStaff")}</span>
-                          </div>
-                        </button>
-                      ) : (
-                        <div className="flex items-center gap-3 mt-3 pt-3 border-t border-gray-100 px-3 py-2.5 -mx-0.5 rounded-xl bg-gray-50/80 border border-gray-100">
-                          <div className="relative flex-shrink-0 w-10 h-10 rounded-full bg-white border border-gray-200 flex items-center justify-center overflow-hidden">
-                            <span className="text-primary font-semibold text-sm">{(name || "S").charAt(0).toUpperCase()}</span>
-                            {staff.staffAvatar && (
-                              <img src={staff.staffAvatar} alt="" className="absolute inset-0 w-full h-full object-cover" onError={(e) => { e.currentTarget.style.display = "none"; }} />
-                            )}
-                          </div>
-                          <div className="min-w-0 flex-1 flex flex-col gap-1">
-                            <p className="text-sm font-semibold text-gray-900 truncate">{name}</p>
-                            <span className="inline-flex w-fit px-2 py-0.5 rounded-full text-xs font-medium bg-primary/15 text-primary border border-primary/25">{t("dashboard.roleStaff")}</span>
-                          </div>
-                        </div>
-                      );
-                    })()}
-                    <div className="mt-4 pt-4 border-t border-gray-100 space-y-2">
-                      {!app ? (
-                        <button
-                          type="button"
-                          disabled={isJobFull(row)}
-                          onClick={(e) => { e.stopPropagation(); handleApply(row); }}
-                          className="w-full py-2.5 rounded-xl bg-primary text-white font-medium hover:bg-primary-dark transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                          {isJobFull(row) ? t("dashboard.jobFull") : t("dashboard.apply")}
-                        </button>
-                      ) : !isAccepted ? (
-                        <span className={`inline-block w-full py-2.5 rounded-xl text-center text-sm font-medium ${
-                          status === "refused" ? "bg-red-100 text-red-800" : "bg-gray-100 text-gray-700"
-                        }`}>
-                          {status === "refused" ? t("dashboard.refused") : t("dashboard.pending")}
-                        </span>
-                      ) : (() => {
-                        const loadingKey = `${app.applicationId}-${todayYMD}`;
-                        const loading = checkInOutLoading === app.applicationId || checkInOutLoading === loadingKey;
-                        return (
-                          <>
-                            {!todaySession?.checkedInAt ? (
-                              <button
-                                type="button"
-                                onClick={(e) => { e.stopPropagation(); setConfirmCheckIn({ applicationId: app.applicationId, workDate: todayYMD, jobId: String(row.id ?? "") }); }}
-                                disabled={!!checkInOutLoading}
-                                className="w-full py-2.5 rounded-xl bg-green-600 text-white font-medium hover:bg-green-700 transition-colors disabled:opacity-50"
-                              >
-                                {loading ? "..." : t("dashboard.checkIn")}
-                              </button>
-                            ) : !todaySession?.checkedOutAt ? (
-                              <>
-                                <p className="text-xs text-gray-500">{t("dashboard.checkedInAt")} {formatTime(todaySession.checkedInAt)}</p>
-                                <button
-                                  type="button"
-                                  onClick={(e) => { e.stopPropagation(); setConfirmCheckOut({ applicationId: app.applicationId, workDate: todayYMD, jobId: String(row.id ?? "") }); }}
-                                  disabled={!!checkInOutLoading}
-                                  className="w-full py-2.5 rounded-xl bg-amber-600 text-white font-medium hover:bg-amber-700 transition-colors disabled:opacity-50"
-                                >
-                                  {loading ? "..." : t("dashboard.checkOut")}
-                                </button>
-                              </>
-                            ) : (
-                              <p className="text-sm text-gray-600 py-1">
-                                {t("dashboard.checkedInAt")} {formatTime(todaySession.checkedInAt)} · {t("dashboard.checkedOutAt")} {formatTime(todaySession.checkedOutAt)}
-                              </p>
-                            )}
-                            {staffCheckoutDone(app, normJobId(row.id)) && !staffArchivedAppIds.has(app.applicationId) && (
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  const ws = app.workSessions ?? [];
-                                  let checkedOutAt = app.checkedOutAt;
-                                  for (const s of ws) {
-                                    if (!s.checkedOutAt) continue;
-                                    if (!checkedOutAt || new Date(s.checkedOutAt) > new Date(checkedOutAt)) checkedOutAt = s.checkedOutAt;
-                                  }
-                                  addStaffArchivedJob(String(user?.id ?? ""), {
-                                    applicationId: app.applicationId,
-                                    jobId: normJobId(row.id),
-                                    jobTitle: row.job,
-                                    jobLocation: row.location,
-                                    customerName: row.postedBy,
-                                    checkedOutAt,
-                                  });
-                                  setStaffArchiveTick((n) => n + 1);
-                                }}
-                                className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl border border-gray-200 bg-gray-50 py-2.5 text-sm font-medium text-gray-700 transition-colors hover:border-primary/30 hover:bg-primary/5 hover:text-primary"
-                              >
-                                <Archive className="h-4 w-4 shrink-0" strokeWidth={2} />
-                                {t("dashboard.archiveJob", "Arhivează jobul")}
-                              </button>
-                            )}
-                          </>
-                        );
-                      })()}
-                    </div>
-                  </div>
-                </article>
-              );
-            })}
+          <div className="space-y-10 md:space-y-14">
+            {staffJobsCurrent.length > 0 && (
+              <section aria-labelledby="staff-jobs-section-current">
+                <div className="mb-4 md:mb-5">
+                  <h2 id="staff-jobs-section-current" className="text-lg md:text-xl font-bold text-[#1e1c2f]">
+                    {t("dashboard.staffJobsSectionCurrent")}
+                  </h2>
+                  <p className="text-sm text-gray-500 mt-1">{t("dashboard.staffJobsSectionCurrentHint")}</p>
+                </div>
+                <div className={staffJobGridClass}>{staffJobsCurrent.map((row) => renderStaffJobCard(row))}</div>
+              </section>
+            )}
+            {staffJobsApply.length > 0 && (
+              <section aria-labelledby="staff-jobs-section-apply">
+                <div className="mb-4 md:mb-5">
+                  <h2 id="staff-jobs-section-apply" className="text-lg md:text-xl font-bold text-[#1e1c2f]">
+                    {t("dashboard.staffJobsSectionApply")}
+                  </h2>
+                  <p className="text-sm text-gray-500 mt-1">{t("dashboard.staffJobsSectionApplyHint")}</p>
+                </div>
+                <div className={staffJobGridClass}>{staffJobsApply.map((row) => renderStaffJobCard(row))}</div>
+              </section>
+            )}
+            {staffJobsFinished.length > 0 && (
+              <section aria-labelledby="staff-jobs-section-finished">
+                <div className="mb-4 md:mb-5">
+                  <h2 id="staff-jobs-section-finished" className="text-lg md:text-xl font-bold text-[#1e1c2f]">
+                    {t("dashboard.staffJobsSectionFinished")}
+                  </h2>
+                  <p className="text-sm text-gray-500 mt-1">{t("dashboard.staffJobsSectionFinishedHint")}</p>
+                </div>
+                <div className={staffJobGridClass}>{staffJobsFinished.map((row) => renderStaffJobCard(row))}</div>
+              </section>
+            )}
           </div>
         )}
         <JobsMapModal
@@ -1154,7 +1168,7 @@ export default function DashboardJoburi() {
           <p className="text-gray-600">{t("dashboard.staffSubtitle")}</p>
         </header>
         <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-8 text-center">
-          <p className="text-gray-500">Aici vor apărea joburile tale.</p>
+          <p className="text-gray-500">{t("dashboard.jobsWillAppearHere")}</p>
         </div>
       </>
     );
@@ -1165,7 +1179,7 @@ export default function DashboardJoburi() {
       <header className="mb-6 md:mb-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 p-5 md:p-6 rounded-2xl bg-gradient-to-br from-white via-[#faf8ff] to-[#f3efff] border border-[rgba(122,99,241,0.12)] shadow-[0_4px_20px_rgba(122,99,241,0.08)]">
         <div className="min-w-0">
           <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-[#1e1c2f]">{t("dashboard.joburi")}</h1>
-          <p className="text-gray-500 text-sm mt-1.5 max-w-md">Gestionează anunțurile de joburi publicate.</p>
+          <p className="text-gray-500 text-sm mt-1.5 max-w-md">{t("dashboard.customerJoburiDesc")}</p>
         </div>
         {/* Harta (joburi + locația mea) – doar pentru staff; customer nu o vede */}
       </header>
@@ -1183,7 +1197,7 @@ export default function DashboardJoburi() {
           return (
             <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-8 md:p-12 text-center">
               <p className="text-gray-500 mb-6">
-                Aici vor apărea joburile tale. Folosește „Posteaza un job” din meniu pentru a adăuga un anunț nou.
+                {t("dashboard.customerNoJobsHint")}
               </p>
               <button
                 type="button"

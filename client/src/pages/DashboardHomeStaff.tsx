@@ -252,9 +252,11 @@ export default function DashboardHomeStaff() {
     if (!workDate) return null;
     const d = parseYMD(workDate);
     if (!d) return workDate;
-    const weekdays = ["Dum", "Lun", "Mar", "Mie", "Joi", "Vin", "Sâm"];
-    const months = ["ian", "feb", "mar", "apr", "mai", "iun", "iul", "aug", "sep", "oct", "nov", "dec"];
-    return `${weekdays[d.getDay()]}, ${d.getDate()} ${months[d.getMonth()]}`;
+    const weekdayKeys = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"] as const;
+    const monthKeys = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"] as const;
+    const weekday = t(`dashboard.weekdayShort.${weekdayKeys[d.getDay()]}`);
+    const month = t(`dashboard.monthShort.${monthKeys[d.getMonth()]}`);
+    return `${weekday}, ${d.getDate()} ${month}`;
   };
 
   const parseYMD = (str: string): Date | null => {
@@ -463,12 +465,12 @@ export default function DashboardHomeStaff() {
   return (
     <>
       {toast && (
-        <div className="fixed bottom-6 left-4 right-4 sm:left-auto sm:right-6 sm:max-w-sm z-50 px-4 py-3 rounded-xl bg-gray-900 text-white text-sm font-medium shadow-lg">
+        <div className="fixed dashboard-toast-top left-4 right-4 sm:left-auto sm:right-6 sm:max-w-sm z-[60] px-4 py-3 rounded-xl bg-gray-900 text-white text-sm font-medium shadow-lg break-words">
           {toast}
         </div>
       )}
       {checkInOutConfirm && (
-        <div className="fixed bottom-6 left-4 right-4 sm:left-auto sm:right-6 sm:max-w-sm z-50 px-4 py-3 rounded-xl shadow-lg flex items-center gap-3 animate-in fade-in slide-in-from-bottom-4">
+        <div className="fixed dashboard-toast-top left-4 right-4 sm:left-auto sm:right-6 sm:max-w-sm z-[60] px-4 py-3 rounded-xl shadow-lg flex items-start gap-3 animate-in fade-in slide-in-from-top-4 break-words">
           <div className={`flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center ${checkInOutConfirm.type === "checkin" ? "bg-green-200" : "bg-amber-200"}`}>
             <span className={`text-xl ${checkInOutConfirm.type === "checkin" ? "text-green-700" : "text-amber-700"}`}>
               ✓
@@ -487,7 +489,7 @@ export default function DashboardHomeStaff() {
         </div>
       )}
       {checkInOutError && (
-        <div className="fixed bottom-6 left-4 right-4 sm:left-auto sm:right-6 sm:max-w-sm z-50 px-4 py-3 rounded-xl bg-red-50 border border-red-200 text-red-800 text-sm font-medium shadow-lg">
+        <div className="fixed dashboard-toast-top left-4 right-4 sm:left-auto sm:right-6 sm:max-w-sm z-[60] px-4 py-3 rounded-xl bg-red-50 border border-red-200 text-red-800 text-sm font-medium shadow-lg break-words">
           {checkInOutError}
         </div>
       )}
