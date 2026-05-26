@@ -12,10 +12,13 @@ import ratingsRoutes from "./routes/ratings";
 import branchesRoutes from "./routes/branches";
 import experiencesRoutes from "./routes/experiences";
 import adminPayoutsRoutes from "./routes/adminPayouts";
+import staffPayoutAccountsRoutes from "./routes/staffPayoutAccounts";
+import payoutsRoutes from "./routes/payouts";
 import { getPaynetConfigReport, isPaynetMockMode, logPaynetConfigAtStartup } from "./config/paynetConfig";
 import devPaynetRoutes from "./routes/devPaynet";
 import db, { initDatabase } from "./db";
 import { sendTestEmail } from "./email";
+import { startPayoutWorkerIfEnabled } from "./services/payoutAutomationService";
 
 const app = express();
 const PORT = process.env.PORT || 5600;
@@ -69,6 +72,8 @@ app.use("/api/auth", authRoutes);
 app.use("/api/admin", adminPayoutsRoutes);
 app.use("/api/jobs", jobsRoutes);
 app.use("/api/payments", paymentsRoutes);
+app.use("/api/payouts", payoutsRoutes);
+app.use("/api/payout-accounts", staffPayoutAccountsRoutes);
 app.use("/api/ratings", ratingsRoutes);
 app.use("/api/branches", branchesRoutes);
 app.use("/api/experiences", experiencesRoutes);
@@ -137,6 +142,7 @@ async function start() {
   logPaynetConfigAtStartup();
   app.listen(Number(PORT), HOST, () => {
     console.log(`Work2Now API: http://localhost:${PORT}`);
+    startPayoutWorkerIfEnabled();
     if (HOST === "0.0.0.0") {
       const nets = os.networkInterfaces();
       for (const name of Object.keys(nets)) {

@@ -22,6 +22,7 @@ import {
   UtensilsCrossed,
   CreditCard,
   Trash2,
+  Wallet,
 } from "lucide-react";
 import { coffeemaker } from "@lucide/lab";
 import { useAuth } from "../hooks/useAuth";
@@ -173,6 +174,7 @@ const NAV_ICONS: Record<string, ComponentType<{ className?: string; size?: numbe
   review: Star as ComponentType<{ className?: string; size?: number }>,
   settings: Settings as ComponentType<{ className?: string; size?: number }>,
   creditCard: CreditCard as ComponentType<{ className?: string; size?: number }>,
+  wallet: Wallet as ComponentType<{ className?: string; size?: number }>,
 };
 
 const NAV_CUSTOMER = [
@@ -186,6 +188,7 @@ const NAV_STAFF = [
   { to: "/dashboard", labelKey: "dashboard.home", end: true, icon: "home" },
   { to: "/dashboard/joburi", labelKey: "dashboard.joburi", end: false, icon: "briefcase" },
   { to: "/dashboard/aplicatii", labelKey: "dashboard.myApplications", end: false, icon: "fileText" },
+  { to: "/dashboard/payout-settings", labelKey: "dashboard.staffPayoutSettingsNav", end: false, icon: "wallet" },
 ];
 
 const NAV_ADMIN = [

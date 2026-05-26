@@ -4,6 +4,7 @@ import { ServiceError } from "./ServiceError";
 import { calculatePaymentAmountSnapshot } from "./paymentAmountService";
 import { assertPayoutTransition } from "./paymentStateMachine";
 import { logPaymentAudit, PaymentActionType } from "./paymentFlowDiagnostics";
+import { getDefaultVerifiedPayoutAccountId } from "./staffPayoutAccountService";
 
 const PAYOUT_DUE_HOURS = 72;
 
@@ -212,7 +213,13 @@ export async function ensureApplicationPayoutOnCheckIn(
 
   if (existing) {
     const st = norm(existing.status);
-    if (st === "paid" || st === "payout_pending") {
+    if (
+      st === "paid" ||
+      st === "payout_pending" ||
+      st === "payout_queued" ||
+      st === "payout_processing" ||
+      st === "retry_pending"
+    ) {
       throw new ServiceError("Plata pentru această aplicație este deja în curs de procesare.", 409);
     }
     if (st === "cancelled" || st === "disputed") {
@@ -411,6 +418,7 @@ export async function finalizeApplicationPayoutOnCustomerConfirmation(
 
   const now = new Date();
   const payoutDueAt = new Date(now.getTime() + PAYOUT_DUE_HOURS * 60 * 60 * 1000);
+  const defaultPayoutAccountId = await getDefaultVerifiedPayoutAccountId(app.staff_id!);
 
   const payout = await prisma.$transaction(async (tx) => {
     const fresh = await tx.applications.findUnique({
@@ -447,6 +455,7 @@ export async function finalizeApplicationPayoutOnCustomerConfirmation(
       status: "payout_pending" as const,
       payout_due_at: payoutDueAt,
       payout_pending_at: now,
+      payout_account_id: defaultPayoutAccountId ?? null,
       last_error: null,
       updated_at: now,
     };

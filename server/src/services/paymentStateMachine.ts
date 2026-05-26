@@ -25,9 +25,17 @@ const PAYOUT_TRANSITIONS: Record<string, ReadonlySet<string>> = {
   awaiting_work: new Set(["in_progress", "cancelled"]),
   in_progress: new Set(["awaiting_customer_confirmation", "cancelled"]),
   awaiting_customer_confirmation: new Set(["payout_pending", "cancelled"]),
-  payout_pending: new Set(["paid", "failed", "disputed"]),
-  failed: new Set(["paid", "disputed", "payout_pending"]),
-  paid: new Set([]),
+  /** Customer confirmed; automation or admin may advance. */
+  payout_pending: new Set(["payout_queued", "payout_processing", "paid", "failed", "disputed", "cancelled"]),
+  /** Worker claimed row before calling provider. */
+  payout_queued: new Set(["payout_processing", "paid", "failed", "disputed"]),
+  /** Provider call in flight; webhook or sync completion updates. */
+  payout_processing: new Set(["paid", "failed", "retry_pending", "disputed", "reversed"]),
+  /** Retry scheduled after failure or admin action. */
+  retry_pending: new Set(["payout_queued", "payout_processing", "paid", "failed", "disputed"]),
+  failed: new Set(["retry_pending", "paid", "disputed"]),
+  paid: new Set(["reversed", "disputed"]),
+  reversed: new Set([]),
   cancelled: new Set([]),
   disputed: new Set([]),
 };
@@ -102,4 +110,23 @@ export function assertPayoutTransition(
     ...context,
   });
   throw new ServiceError(`Tranziție plată invalidă (${fromStatus} → ${toStatus}).`, 409);
+}
+
+/**
+ * Webhook-safe: do not throw when the payout is already terminal or the transition is disallowed.
+ * Caller should still mark the provider event processed so retries stop.
+ */
+export function shouldApplyPayoutWebhookStatusUpdate(
+  currentStatus: string,
+  nextStatus: string,
+  context?: { payoutId?: number; applicationId?: number }
+): boolean {
+  if (canTransitionPayout(currentStatus, nextStatus)) return true;
+  logPaymentDiagnostic("warn", "Stale or invalid payout webhook update skipped", {
+    from: norm(currentStatus),
+    to: norm(nextStatus),
+    source: "payout_webhook",
+    ...context,
+  });
+  return false;
 }

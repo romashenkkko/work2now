@@ -11,6 +11,7 @@ export type ApplicationPayoutSummary = {
 export type ApplicationPayoutUiPhase =
   | "awaiting_customer_confirmation"
   | "payout_pending"
+  | "payout_automation"
   | "paid"
   | "failed"
   | "disputed"
@@ -26,6 +27,9 @@ export function payoutUiPhase(status?: string | null): ApplicationPayoutUiPhase 
   const s = normalizePayoutStatus(status);
   if (s === "awaiting_customer_confirmation") return "awaiting_customer_confirmation";
   if (s === "payout_pending") return "payout_pending";
+  if (s === "payout_queued" || s === "payout_processing" || s === "retry_pending" || s === "reversed") {
+    return "payout_automation";
+  }
   if (s === "paid") return "paid";
   if (s === "failed") return "failed";
   if (s === "disputed") return "disputed";
@@ -40,6 +44,8 @@ export function payoutStatusLabel(status: string | null | undefined, t: TFunctio
       return t("dashboard.payoutAwaitingCustomer", "Awaiting customer confirmation");
     case "payout_pending":
       return t("dashboard.payoutPendingBadge", "Payout pending");
+    case "payout_automation":
+      return t("dashboard.payoutAutomationBadge", "Payout processing");
     case "paid":
       return t("dashboard.payoutPaid", "Paid");
     case "failed":
@@ -61,6 +67,8 @@ export function payoutStatusClassName(status: string | null | undefined): string
       return "bg-amber-100 text-amber-800 border-amber-200";
     case "payout_pending":
       return "bg-blue-100 text-blue-800 border-blue-200";
+    case "payout_automation":
+      return "bg-indigo-100 text-indigo-800 border-indigo-200";
     case "paid":
       return "bg-green-100 text-green-800 border-green-200";
     case "failed":
@@ -89,6 +97,9 @@ export function staffPayoutPipelineLabel(
   if (phase === "paid") return t("dashboard.staffPayoutPaid", "Paid");
   if (phase === "payout_pending") {
     return t("dashboard.staffPayoutPending72h", "Payout pending — up to 72h");
+  }
+  if (phase === "payout_automation") {
+    return t("dashboard.staffPayoutAutomation", "Payout in progress (automation)");
   }
   if (phase === "awaiting_customer_confirmation" || (params.checkedOutAt && phase === "in_progress")) {
     return t("dashboard.staffWaitingCustomerConfirm", "Waiting for customer confirmation");

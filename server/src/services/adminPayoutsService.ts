@@ -2,6 +2,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "../prismaClient";
 import { ServiceError } from "./ServiceError";
 import { UserRole } from "../enums";
+import { assertPayoutTransition } from "./paymentStateMachine";
 import { logPaymentAudit, PaymentActionType } from "./paymentFlowDiagnostics";
 
 export type AdminPayoutListItemDto = Readonly<{
@@ -29,6 +30,14 @@ export type AdminPayoutDetailDto = Readonly<
     paidAt: string | null;
     failedAt: string | null;
     disputed: boolean;
+    payoutProvider: string | null;
+    providerPayoutId: string | null;
+    providerReference: string | null;
+    retryCount: number;
+    nextRetryAt: string | null;
+    manualOverride: boolean;
+    queuedAt: string | null;
+    processingStartedAt: string | null;
   }
 >;
 
@@ -70,8 +79,12 @@ async function requireAdmin(actorUserId: string): Promise<void> {
 
 const allowedStatuses = new Set([
   "payout_pending",
+  "payout_queued",
+  "payout_processing",
+  "retry_pending",
   "paid",
   "failed",
+  "reversed",
   "cancelled",
   "disputed",
   "not_started",
@@ -118,6 +131,14 @@ function mapPayoutRow(row: any): AdminPayoutDetailDto {
     paidAt: toIso(row.paid_at),
     failedAt: toIso(row.failed_at),
     disputed: norm(row.status) === "disputed",
+    payoutProvider: row.payout_provider ?? null,
+    providerPayoutId: row.provider_payout_id ?? null,
+    providerReference: row.provider_reference ?? null,
+    retryCount: Number(row.retry_count) || 0,
+    nextRetryAt: toIso(row.next_retry_at),
+    manualOverride: Boolean(row.manual_override),
+    queuedAt: toIso(row.queued_at),
+    processingStartedAt: toIso(row.processing_started_at),
   });
 }
 
@@ -147,6 +168,14 @@ async function loadPayoutForAdmin(actorUserId: string, payoutId: number) {
       paid_at: true,
       failed_at: true,
       last_error: true,
+      payout_provider: true,
+      provider_payout_id: true,
+      provider_reference: true,
+      retry_count: true,
+      next_retry_at: true,
+      manual_override: true,
+      queued_at: true,
+      processing_started_at: true,
       jobs: { select: { Title: true } },
       applications: { select: { staff_name: true } },
       users_application_payouts_customer_users: {
@@ -184,6 +213,14 @@ export async function listAdminPayouts(actorUserId: string, status?: string): Pr
       paid_at: true,
       failed_at: true,
       last_error: true,
+      payout_provider: true,
+      provider_payout_id: true,
+      provider_reference: true,
+      retry_count: true,
+      next_retry_at: true,
+      manual_override: true,
+      queued_at: true,
+      processing_started_at: true,
       jobs: { select: { Title: true } },
       applications: { select: { staff_name: true } },
       users_application_payouts_customer_users: {
@@ -266,7 +303,7 @@ export async function markPayoutPaid(actorUserId: string, payoutIdRaw: string, a
   const row = await updatePayoutStatusIdempotent({
     actorUserId,
     payoutId,
-    allowedFrom: ["payout_pending", "failed"],
+    allowedFrom: ["payout_pending", "payout_queued", "payout_processing", "failed", "retry_pending"],
     desiredStatus: "paid",
     idempotentIfAlreadyDesired: true,
     updates: {
@@ -275,6 +312,7 @@ export async function markPayoutPaid(actorUserId: string, payoutIdRaw: string, a
       failed_at: null,
       last_error: note,
       marked_paid_by_user_id: actorUserId,
+      manual_override: true,
     } as Prisma.application_payoutsUpdateInput,
   });
   const dto = mapPayoutRow(row);
@@ -295,7 +333,7 @@ export async function markPayoutFailed(actorUserId: string, payoutIdRaw: string,
   const row = await updatePayoutStatusIdempotent({
     actorUserId,
     payoutId,
-    allowedFrom: ["payout_pending"],
+    allowedFrom: ["payout_pending", "payout_queued", "payout_processing", "retry_pending"],
     desiredStatus: "failed",
     idempotentIfAlreadyDesired: true,
     updates: {
@@ -303,6 +341,7 @@ export async function markPayoutFailed(actorUserId: string, payoutIdRaw: string,
       failed_at: new Date(),
       paid_at: null,
       last_error: note,
+      manual_override: true,
     },
   });
   const dtoFailed = mapPayoutRow(row);
@@ -323,12 +362,13 @@ export async function markPayoutDisputed(actorUserId: string, payoutIdRaw: strin
   const row = await updatePayoutStatusIdempotent({
     actorUserId,
     payoutId,
-    allowedFrom: ["payout_pending", "failed"],
+    allowedFrom: ["payout_pending", "payout_queued", "payout_processing", "failed", "retry_pending", "paid"],
     desiredStatus: "disputed",
     idempotentIfAlreadyDesired: true,
     updates: {
       status: "disputed" as any,
       last_error: note,
+      manual_override: true,
     },
   });
   const dtoDisputed = mapPayoutRow(row);
@@ -339,5 +379,51 @@ export async function markPayoutDisputed(actorUserId: string, payoutIdRaw: strin
     metadata: { payoutId: String(dtoDisputed.id) },
   });
   return dtoDisputed;
+}
+
+/** Admin: queue payout for automation retry (clears next retry gate). */
+export async function markPayoutRetryPending(actorUserId: string, payoutIdRaw: string, adminNote?: unknown): Promise<AdminPayoutDetailDto> {
+  const payoutId = Number.parseInt(payoutIdRaw, 10);
+  if (!Number.isInteger(payoutId) || payoutId < 1) throw new ServiceError("Payout negăsit.", 404);
+
+  await requireAdmin(actorUserId);
+  const existing = await prisma.application_payouts.findUnique({
+    where: { id: payoutId },
+    select: { id: true, status: true, application_id: true },
+  });
+  if (!existing) throw new ServiceError("Payout negăsit.", 404);
+
+  const current = norm(existing.status);
+  assertPayoutTransition(existing.status, "retry_pending", { payoutId, applicationId: existing.application_id });
+
+  const allowedFrom = ["failed", "payout_processing", "retry_pending"];
+  if (!allowedFrom.includes(current)) {
+    throw new ServiceError(`Retry nu este permis din status-ul curent (${existing.status}).`, 400);
+  }
+
+  const note = normalizeAdminNote(adminNote);
+  const res = await prisma.application_payouts.updateMany({
+    where: { id: payoutId, status: { in: allowedFrom as any } },
+    data: {
+      status: "retry_pending" as any,
+      next_retry_at: null,
+      last_error: note ?? null,
+      updated_at: new Date(),
+    },
+  });
+
+  if (res.count === 0) {
+    throw new ServiceError("Payout status nu a putut fi actualizat (concurență).", 409);
+  }
+
+  const row = await loadPayoutForAdmin(actorUserId, payoutId);
+  const dto = mapPayoutRow(row);
+  await logPaymentAudit(PaymentActionType.PAYOUT_RETRY_QUEUED, {
+    actorUserId,
+    targetApplicationId: row.application_id,
+    summary: note ?? "Admin queued payout retry",
+    metadata: { payoutId: String(row.id) },
+  });
+  return dto;
 }
 

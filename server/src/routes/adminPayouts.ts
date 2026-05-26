@@ -6,6 +6,9 @@ import {
   markDisputedController,
   markFailedController,
   markPaidController,
+  markPayoutRetryController,
+  verifyStaffPayoutAccountController,
+  rejectStaffPayoutAccountController,
 } from "../controllers/adminPayoutsController";
 import {
   expireStaleReservationsController,
@@ -50,6 +53,15 @@ router.post("/payouts/:payoutId/mark-failed", authMiddleware, markFailedControll
 
 /** POST /api/admin/payouts/:payoutId/mark-disputed */
 router.post("/payouts/:payoutId/mark-disputed", authMiddleware, markDisputedController);
+
+/** POST /api/admin/payouts/:payoutId/retry — queue automation retry */
+router.post("/payouts/:payoutId/retry", authMiddleware, markPayoutRetryController);
+
+/** POST /api/admin/payout-accounts/:accountId/verify */
+router.post("/payout-accounts/:accountId/verify", authMiddleware, verifyStaffPayoutAccountController);
+
+/** POST /api/admin/payout-accounts/:accountId/reject */
+router.post("/payout-accounts/:accountId/reject", authMiddleware, rejectStaffPayoutAccountController);
 
 export default router;
 

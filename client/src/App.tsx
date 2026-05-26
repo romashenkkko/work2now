@@ -15,6 +15,7 @@ import DashboardRapoarte from "./pages/DashboardRapoarte";
 import DashboardMesaje from "./pages/DashboardMesaje";
 import DashboardSettings from "./pages/DashboardSettings";
 import DashboardSubscription from "./pages/DashboardSubscription";
+import DashboardStaffPayoutSettings from "./pages/DashboardStaffPayoutSettings";
 import EmployeeOnboarding from "./pages/EmployeeOnboarding";
 import About from "./pages/About";
 import HowItWorks from "./pages/HowItWorks";
@@ -30,6 +31,7 @@ export default function App() {
         <Route index element={<DashboardHome />} />
         <Route path="joburi" element={<DashboardJoburi />} />
         <Route path="aplicatii" element={<DashboardAplicatii />} />
+        <Route path="payout-settings" element={<DashboardStaffPayoutSettings />} />
         <Route path="rapoarte" element={<DashboardRapoarte />} />
         <Route path="calendar" element={<Navigate to="/dashboard" replace />} />
         <Route path="mesaje" element={<DashboardMesaje />} />

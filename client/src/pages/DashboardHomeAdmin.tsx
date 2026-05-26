@@ -55,6 +55,7 @@ export default function DashboardHomeAdmin() {
   const [payoutsError, setPayoutsError] = useState<string | null>(null);
   const [payoutActionId, setPayoutActionId] = useState<string | null>(null);
   const [payoutsSectionOpen, setPayoutsSectionOpen] = useState(true);
+  const [payoutQueueFilter, setPayoutQueueFilter] = useState("payout_pending");
   const [orphans, setOrphans] = useState<Array<{
     reservationId: string;
     jobId: string;
@@ -179,7 +180,7 @@ export default function DashboardHomeAdmin() {
     if (user?.role !== "admin") return;
     setPayoutsLoading(true);
     adminApi
-      .listPayouts("payout_pending")
+      .listPayouts(payoutQueueFilter)
       .then((data) => {
         setPayouts(data.payouts ?? []);
         setPayoutsError(null);
@@ -190,13 +191,14 @@ export default function DashboardHomeAdmin() {
 
   const runPayoutAction = async (
     payoutId: string,
-    action: "paid" | "failed" | "disputed"
+    action: "paid" | "failed" | "disputed" | "retry"
   ) => {
     setPayoutActionId(payoutId);
     setPayoutsError(null);
     try {
       if (action === "paid") await adminApi.markPayoutPaid(payoutId);
       else if (action === "failed") await adminApi.markPayoutFailed(payoutId);
+      else if (action === "retry") await adminApi.markPayoutRetry(payoutId);
       else await adminApi.markPayoutDisputed(payoutId);
       fetchPayouts();
     } catch (e) {
@@ -218,9 +220,13 @@ export default function DashboardHomeAdmin() {
   useEffect(() => {
     if (user?.role !== "admin") return;
     fetchUsers();
-    fetchPayouts();
     fetchOrphans();
   }, [user?.role]);
+
+  useEffect(() => {
+    if (user?.role !== "admin") return;
+    fetchPayouts();
+  }, [user?.role, payoutQueueFilter]);
 
   useEffect(() => {
     if (user?.role !== "admin") return;
@@ -1016,7 +1022,7 @@ export default function DashboardHomeAdmin() {
             aria-expanded={payoutsSectionOpen}
           >
             <h2 className="font-bold text-gray-900 text-sm sm:text-base">
-              {t("dashboard.adminPayoutQueue", "Coadă plăți (payout pending)")}
+              {t("dashboard.adminPayoutQueue", "Coadă plăți (admin)")}
             </h2>
             <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-gray-500" aria-hidden>
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={payoutsSectionOpen ? "rotate-180" : ""}>
@@ -1026,6 +1032,24 @@ export default function DashboardHomeAdmin() {
           </button>
           {payoutsSectionOpen && (
             <div className="px-4 sm:px-6 pb-4 sm:pb-6 border-t border-gray-100">
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <label className="text-xs font-medium text-gray-600" htmlFor="payout-status-filter">
+                  {t("dashboard.payoutStatusFilter", "Filtru status")}
+                </label>
+                <select
+                  id="payout-status-filter"
+                  className="text-sm border border-gray-300 rounded-lg px-2 py-1.5 bg-white"
+                  value={payoutQueueFilter}
+                  onChange={(e) => setPayoutQueueFilter(e.target.value)}
+                >
+                  <option value="payout_pending">payout_pending</option>
+                  <option value="payout_processing">payout_processing</option>
+                  <option value="payout_queued">payout_queued</option>
+                  <option value="retry_pending">retry_pending</option>
+                  <option value="failed">failed</option>
+                  <option value="paid">paid</option>
+                </select>
+              </div>
               {payoutsError && (
                 <p className="mt-3 text-sm text-red-600">{payoutsError}</p>
               )}
@@ -1035,7 +1059,7 @@ export default function DashboardHomeAdmin() {
                 <p className="mt-3 text-sm text-gray-500">{t("dashboard.adminNoPayouts", "Nicio plată în așteptare.")}</p>
               ) : (
                 <div className="mt-3 overflow-x-auto">
-                  <table className="w-full text-sm min-w-[720px]">
+                  <table className="w-full text-sm min-w-[900px]">
                     <thead>
                       <tr className="border-b border-gray-200 text-left text-gray-500 font-medium">
                         <th className="py-2 pr-3">{t("dashboard.job")}</th>
@@ -1044,12 +1068,16 @@ export default function DashboardHomeAdmin() {
                         <th className="py-2 pr-3">{t("dashboard.amount", "Sumă")}</th>
                         <th className="py-2 pr-3">{t("dashboard.payoutDueAt", "Scadență")}</th>
                         <th className="py-2 pr-3">{t("dashboard.status")}</th>
+                        <th className="py-2 pr-3">{t("dashboard.payoutProviderId", "Provider ID")}</th>
+                        <th className="py-2 pr-3">{t("dashboard.payoutRetryCount", "Retry")}</th>
                         <th className="py-2 text-right">{t("dashboard.actions", "Acțiuni")}</th>
                       </tr>
                     </thead>
                     <tbody>
                       {payouts.map((p) => {
                         const busy = payoutActionId === p.id;
+                        const prov = p.providerPayoutId?.trim();
+                        const provShort = prov && prov.length > 14 ? `${prov.slice(0, 10)}…` : prov || "—";
                         return (
                           <tr key={p.id} className="border-b border-gray-100 last:border-0">
                             <td className="py-3 pr-3 font-medium text-gray-900">{p.jobTitle}</td>
@@ -1063,7 +1091,14 @@ export default function DashboardHomeAdmin() {
                               <span className={`inline-flex px-2 py-0.5 rounded text-xs font-medium border ${payoutStatusClassName(p.status)}`}>
                                 {payoutStatusLabel(p.status, t)}
                               </span>
+                              {p.manualOverride ? (
+                                <span className="ml-1 text-[10px] uppercase text-amber-700 font-semibold">manual</span>
+                              ) : null}
                             </td>
+                            <td className="py-3 pr-3 text-gray-600 text-xs font-mono max-w-[140px] truncate" title={p.providerPayoutId ?? ""}>
+                              {provShort}
+                            </td>
+                            <td className="py-3 pr-3 text-gray-700 tabular-nums">{p.retryCount ?? 0}</td>
                             <td className="py-3 text-right">
                               <div className="flex flex-wrap justify-end gap-2">
                                 <button
@@ -1089,6 +1124,14 @@ export default function DashboardHomeAdmin() {
                                   className="text-xs font-medium text-purple-700 hover:underline disabled:opacity-50"
                                 >
                                   {t("dashboard.markDisputed", "Disputat")}
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={busy}
+                                  onClick={() => void runPayoutAction(p.id, "retry")}
+                                  className="text-xs font-medium text-sky-700 hover:underline disabled:opacity-50"
+                                >
+                                  {t("dashboard.payoutRetry", "Retry")}
                                 </button>
                               </div>
                             </td>

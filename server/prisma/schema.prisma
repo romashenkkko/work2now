@@ -487,8 +487,17 @@ model application_payouts {
   status                                         application_payout_status @default(not_started)
   payout_due_at                                  DateTime?                 @db.Timestamp(0)
   payout_pending_at                              DateTime?                 @db.Timestamp(0)
+  queued_at                                      DateTime?                 @db.Timestamp(0)
+  processing_started_at                          DateTime?                 @db.Timestamp(0)
   paid_at                                        DateTime?                 @db.Timestamp(0)
   failed_at                                      DateTime?                 @db.Timestamp(0)
+  next_retry_at                                  DateTime?                 @db.Timestamp(0)
+  retry_count                                    Int                       @default(0) @db.UnsignedInt
+  payout_provider                                String?                   @db.VarChar(30)
+  provider_payout_id                             String?                   @unique(map: "uq_application_payouts_provider_payout_id") @db.VarChar(100)
+  provider_reference                             String?                   @unique(map: "uq_application_payouts_provider_reference") @db.VarChar(100)
+  payout_account_id                              Int?                      @db.UnsignedInt
+  manual_override                                Boolean                   @default(false)
   last_error                                     String?                   @db.Text
   created_at                                     DateTime                  @default(now()) @db.Timestamp(0)
   updated_at                                     DateTime                  @default(now()) @db.Timestamp(0)
@@ -498,12 +507,66 @@ model application_payouts {
   users_application_payouts_customer_users       users                     @relation("application_payouts_customer_user_idTousers", fields: [customer_user_id], references: [Id], onDelete: Restrict, onUpdate: Restrict, map: "fk_application_payouts_customer_user_id_users_id")
   users_application_payouts_staff_users          users                     @relation("application_payouts_staff_user_idTousers", fields: [staff_user_id], references: [Id], onDelete: Restrict, onUpdate: Restrict, map: "fk_application_payouts_staff_user_id_users_id")
   users_application_payouts_marked_paid_by_users users?                    @relation("application_payouts_marked_paid_by_user_idTousers", fields: [marked_paid_by_user_id], references: [Id], onDelete: SetNull, onUpdate: Restrict, map: "fk_application_payouts_marked_paid_by_user_id_users_id")
+  staff_payout_accounts                          staff_payout_accounts?    @relation(fields: [payout_account_id], references: [id], onDelete: SetNull, onUpdate: Restrict, map: "fk_application_payouts_payout_account_id")
+  payout_provider_events                         payout_provider_events[]
 
   @@index([job_payment_reservation_id], map: "idx_application_payouts_job_payment_reservation_id")
   @@index([job_id], map: "idx_application_payouts_job_id")
   @@index([customer_user_id], map: "idx_application_payouts_customer_user_id")
   @@index([staff_user_id], map: "idx_application_payouts_staff_user_id")
   @@index([status], map: "idx_application_payouts_status")
+  @@index([next_retry_at], map: "idx_application_payouts_next_retry_at")
+}
+
+model staff_payout_accounts {
+  id                      Int                       @id @default(autoincrement()) @db.UnsignedInt
+  staff_user_id           String                    @db.Char(36)
+  is_default              Boolean                   @default(false)
+  status                  staff_payout_account_status @default(draft)
+  type                    staff_payout_account_type
+  beneficiary_name        String                    @db.VarChar(200)
+  beneficiary_country     String?                   @db.VarChar(2)
+  iban                    String?                   @db.VarChar(34)
+  bank_name               String?                   @db.VarChar(200)
+  card_token              String?                   @db.VarChar(200)
+  card_last4              String?                   @db.VarChar(4)
+  card_brand              String?                   @db.VarChar(50)
+  phone_e164              String?                   @db.VarChar(20)
+  wallet_provider         String?                   @db.VarChar(50)
+  verification_provider   String?                   @db.VarChar(50)
+  verification_reference  String?                   @db.VarChar(100)
+  verified_at             DateTime?                 @db.Timestamp(0)
+  rejected_at             DateTime?                 @db.Timestamp(0)
+  rejection_reason        String?                   @db.Text
+  created_at              DateTime                  @default(now()) @db.Timestamp(0)
+  updated_at              DateTime                  @default(now()) @db.Timestamp(0)
+  users                   users                     @relation("staff_payout_accounts_staff_user", fields: [staff_user_id], references: [Id], onDelete: Cascade, onUpdate: Restrict, map: "fk_staff_payout_accounts_staff_user_id")
+  application_payouts     application_payouts[]
+
+  @@index([staff_user_id], map: "idx_staff_payout_accounts_staff_user_id")
+  @@index([status], map: "idx_staff_payout_accounts_status")
+}
+
+model payout_provider_events {
+  id                    Int                 @id @default(autoincrement()) @db.UnsignedInt
+  provider              String              @default("mock") @db.VarChar(30)
+  provider_event_id     String              @unique(map: "uq_payout_provider_events_provider_event_id") @db.VarChar(150)
+  provider_payout_id    String?             @db.VarChar(100)
+  application_payout_id Int                 @db.UnsignedInt
+  event_type            String              @db.VarChar(100)
+  status                String              @db.VarChar(50)
+  signature_valid       Boolean             @default(false)
+  processing_status     String              @default("received") @db.VarChar(30)
+  raw_payload           String              @db.MediumText
+  error_message         String?             @db.Text
+  created_at            DateTime            @default(now()) @db.Timestamp(0)
+  updated_at            DateTime            @default(now()) @db.Timestamp(0)
+  processed_at          DateTime?           @db.Timestamp(0)
+  application_payouts   application_payouts @relation(fields: [application_payout_id], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "fk_ppe_application_payout_id")
+
+  @@index([application_payout_id], map: "idx_ppe_application_payout_id")
+  @@index([provider_payout_id], map: "idx_ppe_provider_payout_id")
+  @@index([created_at], map: "idx_ppe_created_at")
 }
 
 model payment_webhook_events {
@@ -603,6 +666,7 @@ model users {
   application_payouts_as_staff                application_payouts[]      @relation("application_payouts_staff_user_idTousers")
   application_payouts_as_marked_paid_by_users application_payouts[]      @relation("application_payouts_marked_paid_by_user_idTousers")
   payment_idempotency_keys                    payment_idempotency_keys[]
+  staff_payout_accounts                       staff_payout_accounts[]      @relation("staff_payout_accounts_staff_user")
 
   @@index([Email], map: "idx_users_email")
   @@index([Role], map: "idx_users_role")
@@ -682,10 +746,28 @@ enum application_payout_status {
   in_progress
   awaiting_customer_confirmation
   payout_pending
+  payout_queued
+  payout_processing
+  retry_pending
   paid
   failed
+  reversed
   cancelled
   disputed
+}
+
+enum staff_payout_account_status {
+  draft
+  submitted
+  verified
+  rejected
+  disabled
+}
+
+enum staff_payout_account_type {
+  iban
+  card
+  phone
 }
 
 enum payment_provider {

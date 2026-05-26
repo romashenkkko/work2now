@@ -450,6 +450,12 @@ export type AdminPayoutListItem = {
   currency: string;
   payoutDueAt: string | null;
   status: string;
+  payoutProvider?: string | null;
+  providerPayoutId?: string | null;
+  providerReference?: string | null;
+  retryCount?: number;
+  nextRetryAt?: string | null;
+  manualOverride?: boolean;
 };
 
 export type AdminPayoutDetail = AdminPayoutListItem & {
@@ -464,6 +470,44 @@ export type AdminPayoutDetail = AdminPayoutListItem & {
   paidAt: string | null;
   failedAt: string | null;
   disputed: boolean;
+  queuedAt?: string | null;
+  processingStartedAt?: string | null;
+};
+
+export type StaffPayoutAccountDto = {
+  id: string;
+  staffUserId: string;
+  isDefault: boolean;
+  status: string;
+  type: string;
+  beneficiaryName: string;
+  beneficiaryCountry: string | null;
+  iban: string | null;
+  bankName: string | null;
+  phoneE164: string | null;
+  walletProvider: string | null;
+  verifiedAt: string | null;
+  rejectedAt: string | null;
+  rejectionReason: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export const payoutAccountsApi = {
+  list: () => api<{ accounts: StaffPayoutAccountDto[] }>("/payout-accounts"),
+  upsert: (body: {
+    type: "iban" | "phone";
+    beneficiaryName: string;
+    beneficiaryCountry?: string;
+    iban?: string;
+    bankName?: string;
+    phoneE164?: string;
+    walletProvider?: string;
+  }) =>
+    api<{ ok: true; account: StaffPayoutAccountDto }>("/payout-accounts", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
 };
 
 export type JobCategory = {
@@ -652,6 +696,18 @@ export const adminApi = {
     api<{ ok: true; payout: AdminPayoutDetail }>(`/admin/payouts/${payoutId}/mark-disputed`, {
       method: "POST",
       body: JSON.stringify(note != null && note.trim() ? { note: note.trim() } : {}),
+    }),
+  markPayoutRetry: (payoutId: string, note?: string) =>
+    api<{ ok: true; payout: AdminPayoutDetail }>(`/admin/payouts/${payoutId}/retry`, {
+      method: "POST",
+      body: JSON.stringify(note != null && note.trim() ? { note: note.trim() } : {}),
+    }),
+  verifyStaffPayoutAccount: (accountId: string) =>
+    api<{ ok: true; account: StaffPayoutAccountDto }>(`/admin/payout-accounts/${accountId}/verify`, { method: "POST" }),
+  rejectStaffPayoutAccount: (accountId: string, reason?: string) =>
+    api<{ ok: true; account: StaffPayoutAccountDto }>(`/admin/payout-accounts/${accountId}/reject`, {
+      method: "POST",
+      body: JSON.stringify(reason?.trim() ? { note: reason.trim() } : {}),
     }),
 };
 
