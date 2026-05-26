@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "../hooks/useAuth";
-import { authApi, jobsApi } from "../api/client";
+import { adminApi, authApi, jobsApi, type AdminPayoutListItem } from "../api/client";
+import { payoutStatusClassName, payoutStatusLabel } from "../utils/applicationPayouts";
 
 type UserRow = { id: number; name: string; email: string; role: string; isActive?: boolean; phone?: string; boosterUntil?: string };
 type RoleFilter = "" | "staff" | "customer" | "admin";
@@ -49,6 +50,21 @@ export default function DashboardHomeAdmin() {
   const [salaryRegionOpen, setSalaryRegionOpen] = useState(true);
   const [companyRankingOpen, setCompanyRankingOpen] = useState(true);
   const [salaryByDomainAndRegionOpen, setSalaryByDomainAndRegionOpen] = useState(true);
+  const [payouts, setPayouts] = useState<AdminPayoutListItem[]>([]);
+  const [payoutsLoading, setPayoutsLoading] = useState(true);
+  const [payoutsError, setPayoutsError] = useState<string | null>(null);
+  const [payoutActionId, setPayoutActionId] = useState<string | null>(null);
+  const [payoutsSectionOpen, setPayoutsSectionOpen] = useState(true);
+  const [orphans, setOrphans] = useState<Array<{
+    reservationId: string;
+    jobId: string;
+    jobStatus: string;
+    reservationStatus: string;
+    paynetOrderId: string | null;
+    issue: string;
+  }>>([]);
+  const [orphansLoading, setOrphansLoading] = useState(false);
+  const [maintenanceBusy, setMaintenanceBusy] = useState(false);
 
   const [supportCreateForm, setSupportCreateForm] = useState({
     name: "",
@@ -146,9 +162,64 @@ export default function DashboardHomeAdmin() {
       .catch((e) => setStatsError(e instanceof Error ? e.message : "Eroare statistici"));
   };
 
+  const fetchOrphans = () => {
+    if (user?.role !== "admin") return;
+    setOrphansLoading(true);
+    adminApi
+      .listOrphanReservations()
+      .then((data) => {
+        setOrphans(data.orphans ?? []);
+        setPayoutsError(null);
+      })
+      .catch((e) => setPayoutsError(e instanceof Error ? e.message : "Eroare la diagnostic"))
+      .finally(() => setOrphansLoading(false));
+  };
+
+  const fetchPayouts = () => {
+    if (user?.role !== "admin") return;
+    setPayoutsLoading(true);
+    adminApi
+      .listPayouts("payout_pending")
+      .then((data) => {
+        setPayouts(data.payouts ?? []);
+        setPayoutsError(null);
+      })
+      .catch((e) => setPayoutsError(e instanceof Error ? e.message : "Eroare la încărcarea plăților"))
+      .finally(() => setPayoutsLoading(false));
+  };
+
+  const runPayoutAction = async (
+    payoutId: string,
+    action: "paid" | "failed" | "disputed"
+  ) => {
+    setPayoutActionId(payoutId);
+    setPayoutsError(null);
+    try {
+      if (action === "paid") await adminApi.markPayoutPaid(payoutId);
+      else if (action === "failed") await adminApi.markPayoutFailed(payoutId);
+      else await adminApi.markPayoutDisputed(payoutId);
+      fetchPayouts();
+    } catch (e) {
+      setPayoutsError(e instanceof Error ? e.message : "Eroare la actualizare");
+    } finally {
+      setPayoutActionId(null);
+    }
+  };
+
+  const formatPayoutDue = (iso: string | null) => {
+    if (!iso) return "—";
+    try {
+      return new Date(iso).toLocaleString("ro-RO");
+    } catch {
+      return iso;
+    }
+  };
+
   useEffect(() => {
     if (user?.role !== "admin") return;
     fetchUsers();
+    fetchPayouts();
+    fetchOrphans();
   }, [user?.role]);
 
   useEffect(() => {
@@ -867,6 +938,177 @@ export default function DashboardHomeAdmin() {
           )}
           </div>
           </div>
+        </section>
+
+        <section className="mb-6 rounded-xl border border-amber-200 bg-amber-50/50 p-4 sm:p-5">
+          <h2 className="text-sm font-bold text-gray-900 mb-2">
+            {t("dashboard.adminPaymentDiagnostics", "Diagnostic plăți")}
+          </h2>
+          <div className="flex flex-wrap gap-2 mb-3">
+            <button
+              type="button"
+              disabled={maintenanceBusy}
+              onClick={() => {
+                setMaintenanceBusy(true);
+                adminApi
+                  .expireStaleReservations()
+                  .then(() => {
+                    fetchOrphans();
+                    fetchPayouts();
+                  })
+                  .catch((e) => setPayoutsError(e instanceof Error ? e.message : "Eroare"))
+                  .finally(() => setMaintenanceBusy(false));
+              }}
+              className="text-xs font-medium px-3 py-1.5 rounded-lg border border-amber-300 bg-white hover:bg-amber-50 disabled:opacity-50"
+            >
+              {t("dashboard.expireStaleReservations", "Expire rezervări expirate")}
+            </button>
+            <button
+              type="button"
+              disabled={orphansLoading}
+              onClick={fetchOrphans}
+              className="text-xs font-medium px-3 py-1.5 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 disabled:opacity-50"
+            >
+              {t("dashboard.refresh", "Reîmprospătează")}
+            </button>
+          </div>
+          {orphansLoading ? (
+            <p className="text-xs text-gray-600">{t("dashboard.loading", "Se încarcă...")}</p>
+          ) : orphans.length === 0 ? (
+            <p className="text-xs text-gray-600">{t("dashboard.adminNoOrphans", "Nicio rezervare problematică detectată.")}</p>
+          ) : (
+            <ul className="space-y-2 text-xs">
+              {orphans.map((o) => (
+                <li key={o.reservationId} className="rounded-lg border border-amber-200 bg-white px-3 py-2 flex flex-wrap items-center justify-between gap-2">
+                  <span>
+                    Job #{o.jobId} · {o.reservationStatus} · {o.issue}
+                    {o.paynetOrderId ? ` · ${o.paynetOrderId}` : ""}
+                  </span>
+                  <button
+                    type="button"
+                    disabled={maintenanceBusy}
+                    onClick={() => {
+                      setMaintenanceBusy(true);
+                      adminApi
+                        .reconcileJobReservation(o.jobId)
+                        .then(() => {
+                          fetchOrphans();
+                          fetchPayouts();
+                        })
+                        .catch((e) => setPayoutsError(e instanceof Error ? e.message : "Eroare"))
+                        .finally(() => setMaintenanceBusy(false));
+                    }}
+                    className="font-medium text-primary hover:underline disabled:opacity-50"
+                  >
+                    {t("dashboard.reconcile", "Reconciliază")}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+
+        <section className="mb-6 md:mb-8 bg-white rounded-xl sm:rounded-2xl border border-gray-200 shadow-sm overflow-hidden min-w-0">
+          <button
+            type="button"
+            onClick={() => setPayoutsSectionOpen((o) => !o)}
+            className="flex w-full items-center justify-between gap-3 p-4 sm:p-6 text-left hover:bg-gray-50/80 transition-colors"
+            aria-expanded={payoutsSectionOpen}
+          >
+            <h2 className="font-bold text-gray-900 text-sm sm:text-base">
+              {t("dashboard.adminPayoutQueue", "Coadă plăți (payout pending)")}
+            </h2>
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-gray-500" aria-hidden>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={payoutsSectionOpen ? "rotate-180" : ""}>
+                <path d="M6 9l6 6 6-6" />
+              </svg>
+            </span>
+          </button>
+          {payoutsSectionOpen && (
+            <div className="px-4 sm:px-6 pb-4 sm:pb-6 border-t border-gray-100">
+              {payoutsError && (
+                <p className="mt-3 text-sm text-red-600">{payoutsError}</p>
+              )}
+              {payoutsLoading ? (
+                <p className="mt-3 text-sm text-gray-500">{t("dashboard.loading", "Se încarcă...")}</p>
+              ) : payouts.length === 0 ? (
+                <p className="mt-3 text-sm text-gray-500">{t("dashboard.adminNoPayouts", "Nicio plată în așteptare.")}</p>
+              ) : (
+                <div className="mt-3 overflow-x-auto">
+                  <table className="w-full text-sm min-w-[720px]">
+                    <thead>
+                      <tr className="border-b border-gray-200 text-left text-gray-500 font-medium">
+                        <th className="py-2 pr-3">{t("dashboard.job")}</th>
+                        <th className="py-2 pr-3">{t("dashboard.roleStaff")}</th>
+                        <th className="py-2 pr-3">{t("dashboard.roleCustomer")}</th>
+                        <th className="py-2 pr-3">{t("dashboard.amount", "Sumă")}</th>
+                        <th className="py-2 pr-3">{t("dashboard.payoutDueAt", "Scadență")}</th>
+                        <th className="py-2 pr-3">{t("dashboard.status")}</th>
+                        <th className="py-2 text-right">{t("dashboard.actions", "Acțiuni")}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {payouts.map((p) => {
+                        const busy = payoutActionId === p.id;
+                        return (
+                          <tr key={p.id} className="border-b border-gray-100 last:border-0">
+                            <td className="py-3 pr-3 font-medium text-gray-900">{p.jobTitle}</td>
+                            <td className="py-3 pr-3 text-gray-700">{p.staffName}</td>
+                            <td className="py-3 pr-3 text-gray-700">{p.customerName}</td>
+                            <td className="py-3 pr-3 text-gray-700 tabular-nums">
+                              {p.amount} {p.currency}
+                            </td>
+                            <td className="py-3 pr-3 text-gray-600 text-xs">{formatPayoutDue(p.payoutDueAt)}</td>
+                            <td className="py-3 pr-3">
+                              <span className={`inline-flex px-2 py-0.5 rounded text-xs font-medium border ${payoutStatusClassName(p.status)}`}>
+                                {payoutStatusLabel(p.status, t)}
+                              </span>
+                            </td>
+                            <td className="py-3 text-right">
+                              <div className="flex flex-wrap justify-end gap-2">
+                                <button
+                                  type="button"
+                                  disabled={busy}
+                                  onClick={() => void runPayoutAction(p.id, "paid")}
+                                  className="text-xs font-medium text-green-700 hover:underline disabled:opacity-50"
+                                >
+                                  {busy ? "..." : t("dashboard.markPaid", "Marchează plătit")}
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={busy}
+                                  onClick={() => void runPayoutAction(p.id, "failed")}
+                                  className="text-xs font-medium text-red-700 hover:underline disabled:opacity-50"
+                                >
+                                  {t("dashboard.markFailed", "Eșuat")}
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={busy}
+                                  onClick={() => void runPayoutAction(p.id, "disputed")}
+                                  className="text-xs font-medium text-purple-700 hover:underline disabled:opacity-50"
+                                >
+                                  {t("dashboard.markDisputed", "Disputat")}
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+              <button
+                type="button"
+                onClick={fetchPayouts}
+                disabled={payoutsLoading}
+                className="mt-4 text-sm font-medium text-primary hover:underline disabled:opacity-50"
+              >
+                {t("dashboard.refresh", "Reîmprospătează")}
+              </button>
+            </div>
+          )}
         </section>
 
       </div>

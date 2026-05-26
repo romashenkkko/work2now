@@ -23,6 +23,8 @@ import {
   getResolvedRoleAndCustomerLike,
 } from "../services/jobsService";
 import { notifyCustomerNewApplication, notifyStaffAccepted, notifyStaffRefused } from "../email";
+import { getJobPaymentReservationStatus, publishJobAndReservePayment } from "../services/jobPublishReservationService";
+import { retryJobReservationPaynetSubmit } from "../services/reservationMaintenanceService";
 
 type ReqWithUser = Request & { user?: JwtPayload };
 
@@ -66,6 +68,65 @@ export async function listJobsController(req: ReqWithUser, res: Response): Promi
     res.json(await listJobs(userId));
   } catch (error) {
     handleError(res, error, "GET /api/jobs error:", "Eroare la încărcarea joburilor.");
+  }
+}
+
+export async function publishAndReserveController(req: ReqWithUser, res: Response): Promise<void> {
+  const userId = getUserId(req);
+  const jobId = req.params.id;
+  if (!userId || !jobId) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+  try {
+    const { debugPublishReserve } = await import("../utils/publishReserveDebug");
+    debugPublishReserve("route entry POST /api/jobs/:id/publish-and-reserve", { userId, jobId });
+    const result = await publishJobAndReservePayment(userId, jobId);
+    debugPublishReserve("route success", {
+      jobId,
+      state: result.state,
+      reservationId: result.reservation?.id ?? null,
+      reservationStatus: result.reservation?.status ?? null,
+    });
+    res.status(200).json(result);
+  } catch (error) {
+    const { debugPublishReserve } = await import("../utils/publishReserveDebug");
+    debugPublishReserve("route error", {
+      jobId,
+      message: error instanceof Error ? error.message : String(error),
+      name: error instanceof Error ? error.name : undefined,
+    });
+    handleError(res, error, "POST /api/jobs/:id/publish-and-reserve error:", "Eroare la publicare / rezervare plată.");
+  }
+}
+
+export async function retryJobPaymentReservationController(req: ReqWithUser, res: Response): Promise<void> {
+  const userId = getUserId(req);
+  const jobId = req.params.id;
+  if (!userId || !jobId) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+  try {
+    const result = await retryJobReservationPaynetSubmit(userId, jobId);
+    res.status(200).json(result);
+  } catch (error) {
+    handleError(res, error, "POST /api/jobs/:id/payment-reservation/retry error:", "Eroare la reîncercarea plății.");
+  }
+}
+
+export async function getJobPaymentReservationController(req: ReqWithUser, res: Response): Promise<void> {
+  const userId = getUserId(req);
+  const jobId = req.params.id;
+  if (!userId || !jobId) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+  try {
+    const result = await getJobPaymentReservationStatus(userId, jobId);
+    res.status(200).json(result);
+  } catch (error) {
+    handleError(res, error, "GET /api/jobs/:id/payment-reservation error:", "Eroare la citirea rezervării.");
   }
 }
 
@@ -193,8 +254,23 @@ export async function confirmCompletionController(req: ReqWithUser, res: Respons
     return;
   }
   try {
-    await confirmCompletion(userId, appId);
-    res.json({ ok: true });
+    const body = req.body ?? {};
+    const confirmed = body.confirmed !== false && body.refused !== true;
+    const approvedOvertimeMinutes =
+      body.approvedOvertimeMinutes != null
+        ? Number(body.approvedOvertimeMinutes)
+        : body.approved_overtime_minutes != null
+          ? Number(body.approved_overtime_minutes)
+          : undefined;
+
+    const result = await confirmCompletion(userId, appId, {
+      confirmed,
+      approvedOvertimeMinutes:
+        approvedOvertimeMinutes != null && Number.isFinite(approvedOvertimeMinutes)
+          ? Math.max(0, Math.round(approvedOvertimeMinutes))
+          : undefined,
+    });
+    res.status(200).json(result);
   } catch (error) {
     handleError(res, error, "PATCH /api/jobs/applications/:id/confirm-completion error:", "Eroare la confirmare.");
   }

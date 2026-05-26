@@ -22,6 +22,9 @@ import {
   getJobMediaController,
   postUploadJobAttachmentController,
   getJobAttachmentController,
+  publishAndReserveController,
+  getJobPaymentReservationController,
+  retryJobPaymentReservationController,
 } from "../controllers/jobsController";
 
 const router = Router();
@@ -67,6 +70,15 @@ router.get("/", authMiddleware, listJobsController);
 
 /** POST /api/jobs - create job (customer only) */
 router.post("/", authMiddleware, createJobController);
+
+/** POST /api/jobs/:id/publish-and-reserve - customer: Draft job → Paynet reservation (job stays Draft until webhook confirms reserved → Open) */
+router.post("/:id/publish-and-reserve", authMiddleware, publishAndReserveController);
+
+/** GET /api/jobs/:id/payment-reservation - customer: reservation + publish status for polling */
+router.get("/:id/payment-reservation", authMiddleware, getJobPaymentReservationController);
+
+/** POST /api/jobs/:id/payment-reservation/retry - customer: retry Paynet submit for reserve_pending */
+router.post("/:id/payment-reservation/retry", authMiddleware, retryJobPaymentReservationController);
 
 /** DELETE /api/jobs/:id - delete job (customer, own jobs only) */
 router.delete("/:id", authMiddleware, deleteJobController);

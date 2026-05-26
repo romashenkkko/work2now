@@ -7,9 +7,13 @@ import os from "os";
 import path from "path";
 import authRoutes, { ensureDefaultAdmin } from "./routes/auth";
 import jobsRoutes from "./routes/jobs";
+import paymentsRoutes from "./routes/payments";
 import ratingsRoutes from "./routes/ratings";
 import branchesRoutes from "./routes/branches";
 import experiencesRoutes from "./routes/experiences";
+import adminPayoutsRoutes from "./routes/adminPayouts";
+import { getPaynetConfigReport, isPaynetMockMode, logPaynetConfigAtStartup } from "./config/paynetConfig";
+import devPaynetRoutes from "./routes/devPaynet";
 import db, { initDatabase } from "./db";
 import { sendTestEmail } from "./email";
 
@@ -17,7 +21,13 @@ const app = express();
 const PORT = process.env.PORT || 5600;
 
 app.use(cors({ origin: true, credentials: true }));
-app.use(express.json());
+app.use(
+  express.json({
+    verify: (req, _res, buf) => {
+      (req as express.Request & { rawBody?: string }).rawBody = buf.toString("utf8");
+    },
+  })
+);
 
 app.post("/api/test-email", async (req, res) => {
   const to = typeof req.body?.to === "string" ? req.body.to.trim() : "";
@@ -26,10 +36,24 @@ app.post("/api/test-email", async (req, res) => {
   else res.status(400).json({ ok: false, error: result.error });
 });
 
+app.get("/api/health/paynet", (_req, res) => {
+  const report = getPaynetConfigReport();
+  res.status(report.orderCreationReady ? 200 : 503).json(report);
+});
+
 app.get("/api/health", async (_req, res) => {
   try {
     await db.query("SELECT 1");
-    res.json({ ok: true });
+    const paynet = getPaynetConfigReport();
+    res.json({
+      ok: true,
+      paynet: {
+        orderCreationReady: paynet.orderCreationReady,
+        webhookReady: paynet.webhookReady,
+        missingOrderCreation: paynet.missingOrderCreation,
+        missingWebhook: paynet.missingWebhook,
+      },
+    });
   } catch (e) {
     const err = e as Error;
     console.error("Health check failed:", err.message);
@@ -42,10 +66,16 @@ app.get("/api/health", async (_req, res) => {
 });
 
 app.use("/api/auth", authRoutes);
+app.use("/api/admin", adminPayoutsRoutes);
 app.use("/api/jobs", jobsRoutes);
+app.use("/api/payments", paymentsRoutes);
 app.use("/api/ratings", ratingsRoutes);
 app.use("/api/branches", branchesRoutes);
 app.use("/api/experiences", experiencesRoutes);
+
+if (isPaynetMockMode()) {
+  app.use("/api/dev/paynet", devPaynetRoutes);
+}
 
 // Răspuns JSON la orice eroare neprinsă (evită HTML 500)
 app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
@@ -104,6 +134,7 @@ async function start() {
     // Continue anyway - memory fallback will be used
   }
   await ensureDefaultAdmin().catch((e) => console.error("Seed admin:", e));
+  logPaynetConfigAtStartup();
   app.listen(Number(PORT), HOST, () => {
     console.log(`Work2Now API: http://localhost:${PORT}`);
     if (HOST === "0.0.0.0") {

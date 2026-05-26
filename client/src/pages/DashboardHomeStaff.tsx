@@ -12,6 +12,7 @@ import {
   loadStaffArchivedJobs,
   removeStaffArchivedJob,
 } from "../utils/staffJobArchive";
+import { payoutStatusClassName, payoutStatusLabel, staffPayoutPipelineLabel } from "../utils/applicationPayouts";
 
 const RATING_ICON = (
   <svg className="w-6 h-6 sm:w-7 sm:h-7 text-primary" fill="currentColor" viewBox="0 0 24 24" aria-hidden>
@@ -57,7 +58,6 @@ export default function DashboardHomeStaff() {
   const [expandedJobId, setExpandedJobId] = useState<string | null>(null);
   const [staffArchiveTick, setStaffArchiveTick] = useState(0);
   const [staffJobsArchiveExpanded, setStaffJobsArchiveExpanded] = useState(false);
-
   const staffUserId = String(user?.id ?? "");
   const staffArchivedIds = useMemo(() => getArchivedApplicationIds(staffUserId), [staffUserId, staffArchiveTick]);
   const staffArchivedList = useMemo(() => loadStaffArchivedJobs(staffUserId), [staffUserId, staffArchiveTick]);
@@ -128,6 +128,29 @@ export default function DashboardHomeStaff() {
   useEffect(() => {
     fetchData();
   }, [user?.role]);
+
+  useEffect(() => {
+    if (!staffUserId || acceptedApplications.length === 0) return;
+    let cancelled = false;
+    let timerId: number | null = null;
+    const refreshPayouts = async () => {
+      try {
+        const res = await jobsApi.myApplicationsList();
+        const byId = new Map((res.applications ?? []).map((a) => [String(a.id), a.payout]));
+        if (cancelled) return;
+        setAcceptedApplications((prev) =>
+          prev.map((app) => (byId.has(app.id) ? { ...app, payout: byId.get(app.id) } : app))
+        );
+      } finally {
+        if (!cancelled) timerId = window.setTimeout(refreshPayouts, 12000);
+      }
+    };
+    refreshPayouts();
+    return () => {
+      cancelled = true;
+      if (timerId !== null) window.clearTimeout(timerId);
+    };
+  }, [staffUserId, acceptedApplications.length]);
 
   const handleApply = (job: JobItem) => {
     const appInfo = applicationsByJob[job.id];
@@ -672,6 +695,31 @@ export default function DashboardHomeStaff() {
                             <span className="px-2 py-1 rounded-lg text-xs font-medium bg-green-100 text-green-700 flex-shrink-0">
                               {t("dashboard.accepted")}
                             </span>
+                            {(() => {
+                              const pipeline = staffPayoutPipelineLabel(
+                                {
+                                  checkedOutAt: checkedOutAtToShow ?? app.checkedOutAt,
+                                  payoutStatus: app.payout?.status,
+                                  jobOpen: true,
+                                },
+                                t
+                              );
+                              if (pipeline) {
+                                return (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium border bg-blue-50 text-blue-800 border-blue-200">
+                                    {pipeline}
+                                  </span>
+                                );
+                              }
+                              if (app.payout?.status) {
+                                return (
+                                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium border ${payoutStatusClassName(app.payout.status)}`}>
+                                    {payoutStatusLabel(app.payout.status, t)}
+                                  </span>
+                                );
+                              }
+                              return null;
+                            })()}
                           </div>
                           <div className="space-y-1.5 text-sm text-gray-600">
                             {app.jobLocation && (
