@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "../hooks/useAuth";
 import { experiencesApi } from "../api/client";
+import GoogleAuthButton from "../components/GoogleAuthButton";
 
 export default function Login() {
   const { t } = useTranslation();
@@ -57,6 +58,8 @@ export default function Login() {
         {error && (
           <div className="auth-alert error">{error}</div>
         )}
+        <GoogleAuthButton mode="login" className="mb-4" />
+        <p className="auth-muted text-center text-sm mb-4">{t("auth.orContinueWithEmail")}</p>
         <form onSubmit={handleSubmit} className="auth-form">
           <label>
             {t("auth.email")}

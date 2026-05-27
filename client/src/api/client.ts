@@ -133,7 +133,8 @@ export const authApi = {
   validateRegistration: (body: {
     name: string;
     email: string;
-    password: string;
+    password?: string;
+    googleRegisterToken?: string;
     role?: string;
     employeeProfile?: {
       firstName: string;
@@ -159,10 +160,22 @@ export const authApi = {
     contactDateOfBirth?: string;
   }) =>
     api<{ valid: boolean }>("/auth/validate-registration", { method: "POST", body: JSON.stringify(body) }),
+  googleRegisterPrefill: (token: string) =>
+    api<{
+      email: string;
+      firstName: string;
+      lastName: string;
+      picture: string;
+      dateOfBirth?: string;
+      role: "staff" | "customer";
+    }>(`/auth/google/register-prefill?token=${encodeURIComponent(token)}`),
+
   register: (body: {
     name: string;
     email: string;
-    password: string;
+    password?: string;
+    googleRegisterToken?: string;
+    phoneNumber?: string;
     role?: string;
     employeeProfile?: {
       firstName: string;
@@ -186,7 +199,11 @@ export const authApi = {
       raionId?: number | null;
     };
   }) =>
-    api<{ message: string }>("/auth/register", { method: "POST", body: JSON.stringify(body) }),
+    api<{
+      message: string;
+      token?: string;
+      user?: { id: number | string; name: string; email: string; role?: string; avatar?: string; isActive?: boolean };
+    }>("/auth/register", { method: "POST", body: JSON.stringify(body) }),
   me: () => api<{ id: number; name: string; email: string; role: string; avatar?: string; isActive?: boolean; boosterUntil?: string; cvFileUrl?: string; cvOriginalName?: string }>("/auth/me"),
   updateProfile: (data: { name?: string; avatar?: string | null }) =>
     api<{ id: number; name: string; email: string; role: string; avatar?: string }>("/auth/me", {
@@ -247,6 +264,11 @@ export const authApi = {
       method: "POST",
       body: JSON.stringify({ description }),
     }),
+  supportChatWithFriend: (targetUserId: string) =>
+    api<{ ok: true; chatId: string; created: boolean }>("/auth/support/chat/with-friend", {
+      method: "POST",
+      body: JSON.stringify({ targetUserId }),
+    }),
   supportChatMy: () =>
     api<{ chats: Array<any> }>("/auth/support/chat/my"),
   supportChatInbox: () =>
@@ -279,6 +301,11 @@ export const authApi = {
       method: "POST",
       body: JSON.stringify({ message }),
     }),
+  supportChatDeleteMessage: (chatId: string, messageId: string) =>
+    api<{ ok: true }>(
+      `/auth/support/chat/${encodeURIComponent(chatId)}/messages/${encodeURIComponent(messageId)}`,
+      { method: "DELETE" }
+    ),
   supportChatTyping: (chatId: string, isTyping: boolean) =>
     api<{ ok: true }>(`/auth/support/chat/${encodeURIComponent(chatId)}/typing`, {
       method: "POST",
@@ -362,6 +389,11 @@ export const authApi = {
       method: "POST",
       body: JSON.stringify(payload),
     }),
+  supportChatVoiceSignal: (chatId: string, signalType: string, payload: unknown) =>
+    api<{ ok: true }>(`/auth/support/chat/${encodeURIComponent(chatId)}/voice-signal`, {
+      method: "POST",
+      body: JSON.stringify({ signalType, payload }),
+    }),
   supportChatStreamUrl: () => {
     const token = getToken() || "";
     const base = getApiBase();
@@ -373,6 +405,41 @@ export const authApi = {
     api<{ ok: boolean; boosterUntil?: string }>("/auth/users/set-booster", {
       method: "POST",
       body: JSON.stringify({ userId: String(userId).trim(), boosterUntil }),
+    }),
+
+  friendsSearch: (q: string) =>
+    api<{ users: Array<{ id: string; email: string; role: string; displayName: string; avatar?: string | null }> }>(
+      `/auth/friends/search?q=${encodeURIComponent(q)}`
+    ),
+  friendsList: () =>
+    api<{ friends: Array<{ id: string; email: string; role: string; displayName: string; avatar?: string | null }> }>("/auth/friends"),
+  friendsIncomingRequests: () =>
+    api<{
+      requests: Array<{
+        id: string;
+        email: string;
+        role: string;
+        displayName: string;
+        avatar?: string | null;
+        requestedAt: string;
+      }>;
+    }>("/auth/friends/requests"),
+  friendsAdd: (targetUserId: string) =>
+    api<{ ok: true; state: "pending" | "connected" }>("/auth/friends", {
+      method: "POST",
+      body: JSON.stringify({ targetUserId }),
+    }),
+  friendsAcceptRequest: (fromUserId: string) =>
+    api<{ ok: true }>(`/auth/friends/requests/${encodeURIComponent(fromUserId)}/accept`, {
+      method: "POST",
+    }),
+  friendsDeclineRequest: (fromUserId: string) =>
+    api<{ ok: true }>(`/auth/friends/requests/${encodeURIComponent(fromUserId)}`, {
+      method: "DELETE",
+    }),
+  friendsRemove: (targetUserId: string) =>
+    api<{ ok: true }>(`/auth/friends/${encodeURIComponent(targetUserId)}`, {
+      method: "DELETE",
     }),
 };
 

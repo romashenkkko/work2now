@@ -1,12 +1,19 @@
 import { useState, useContext, useEffect } from "react";
 import { useTranslation } from "react-i18next";
-import { Lock, Eye, EyeOff, MapPin, Briefcase } from "lucide-react";
+import { Lock, Eye, EyeOff, MapPin, Briefcase, MessageCircle, Phone } from "lucide-react";
 import StarRating from "../components/StarRating";
 import { authApi } from "../api/client";
 import { useAuth } from "../hooks/useAuth";
 import { DashboardContext } from "./DashboardLayout";
 import BranchesSection from "../components/BranchesSection";
 import ExperiencesSection from "../components/ExperiencesSection";
+import {
+  CHAT_SOUND_SETTINGS_CHANGED,
+  isChatCallSoundEnabled,
+  isChatMessageSoundEnabled,
+  setChatCallSoundEnabled,
+  setChatMessageSoundEnabled,
+} from "../lib/playChatSounds";
 
 /** Avatari din folderul Illustration care încep cu Avatar */
 const AVATAR_OPTIONS = [
@@ -111,6 +118,21 @@ export default function DashboardSettings() {
   const { user } = useAuth();
   const { availableToWork, setAvailableToWork, userRating } = useContext(DashboardContext);
   const [activeSection, setActiveSection] = useState<Section | null>(null);
+  const [msgSoundOn, setMsgSoundOn] = useState(() => isChatMessageSoundEnabled());
+  const [callSoundOn, setCallSoundOn] = useState(() => isChatCallSoundEnabled());
+
+  useEffect(() => {
+    const sync = () => {
+      setMsgSoundOn(isChatMessageSoundEnabled());
+      setCallSoundOn(isChatCallSoundEnabled());
+    };
+    window.addEventListener(CHAT_SOUND_SETTINGS_CHANGED, sync);
+    window.addEventListener("storage", sync);
+    return () => {
+      window.removeEventListener(CHAT_SOUND_SETTINGS_CHANGED, sync);
+      window.removeEventListener("storage", sync);
+    };
+  }, []);
 
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -249,6 +271,58 @@ export default function DashboardSettings() {
                 <span
                   className={`pointer-events-none inline-block h-6 w-6 transform rounded-full bg-white shadow ring-0 transition ${
                     availableToWork ? "translate-x-5" : "translate-x-1"
+                  }`}
+                />
+              </button>
+            </div>
+
+            <div className="border-t border-gray-100 px-4 py-3.5 flex items-center justify-between gap-3">
+              <span className="flex items-center gap-3 text-sm font-medium text-gray-800">
+                <MessageCircle className="w-5 h-5 text-gray-500 flex-shrink-0" />
+                {t("profile.messageSound")}
+              </span>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={msgSoundOn}
+                onClick={() => {
+                  const next = !msgSoundOn;
+                  setMsgSoundOn(next);
+                  setChatMessageSoundEnabled(next);
+                }}
+                className={`relative inline-flex h-7 w-12 flex-shrink-0 rounded-full border-2 border-transparent transition-colors focus:ring-2 focus:ring-primary focus:ring-offset-2 ${
+                  msgSoundOn ? "bg-primary" : "bg-gray-200"
+                }`}
+              >
+                <span
+                  className={`pointer-events-none inline-block h-6 w-6 transform rounded-full bg-white shadow ring-0 transition ${
+                    msgSoundOn ? "translate-x-5" : "translate-x-1"
+                  }`}
+                />
+              </button>
+            </div>
+
+            <div className="border-t border-gray-100 px-4 py-3.5 flex items-center justify-between gap-3">
+              <span className="flex items-center gap-3 text-sm font-medium text-gray-800">
+                <Phone className="w-5 h-5 text-gray-500 flex-shrink-0" />
+                {t("profile.callSound")}
+              </span>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={callSoundOn}
+                onClick={() => {
+                  const next = !callSoundOn;
+                  setCallSoundOn(next);
+                  setChatCallSoundEnabled(next);
+                }}
+                className={`relative inline-flex h-7 w-12 flex-shrink-0 rounded-full border-2 border-transparent transition-colors focus:ring-2 focus:ring-primary focus:ring-offset-2 ${
+                  callSoundOn ? "bg-primary" : "bg-gray-200"
+                }`}
+              >
+                <span
+                  className={`pointer-events-none inline-block h-6 w-6 transform rounded-full bg-white shadow ring-0 transition ${
+                    callSoundOn ? "translate-x-5" : "translate-x-1"
                   }`}
                 />
               </button>

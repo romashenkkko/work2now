@@ -7,7 +7,9 @@ import Contact from "./pages/Contact";
 import Blog from "./pages/Blog";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
+import GoogleCallback from "./pages/GoogleCallback";
 import DashboardLayout from "./pages/DashboardLayout";
+import { DashboardThemeProvider } from "./context/DashboardThemeContext";
 import DashboardHome from "./pages/DashboardHome";
 import DashboardJoburi from "./pages/DashboardJoburi";
 import DashboardAplicatii from "./pages/DashboardAplicatii";
@@ -27,7 +29,11 @@ export default function App() {
   return (
     <div className="page-enter min-h-screen w-full">
     <Routes>
-      <Route path="/dashboard" element={<DashboardLayout />}>
+      <Route path="/dashboard" element={
+        <DashboardThemeProvider>
+          <DashboardLayout />
+        </DashboardThemeProvider>
+      }>
         <Route index element={<DashboardHome />} />
         <Route path="joburi" element={<DashboardJoburi />} />
         <Route path="aplicatii" element={<DashboardAplicatii />} />
@@ -56,6 +62,7 @@ export default function App() {
             <Route path="/app" element={<AppPage />} />
             <Route path="/locations" element={<Locations />} />
             <Route path="/login" element={<Login />} />
+            <Route path="/auth/google/callback" element={<GoogleCallback />} />
             <Route path="/register" element={<Register />} />
             <Route path="/register/:role" element={<Register />} />
             <Route path="/onboarding" element={<EmployeeOnboarding />} />

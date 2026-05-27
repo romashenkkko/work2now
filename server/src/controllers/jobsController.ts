@@ -32,7 +32,14 @@ function handleError(res: Response, error: unknown, logLabel: string, fallbackMe
     return;
   }
   console.error(logLabel, error);
-  res.status(500).json({ error: fallbackMessage });
+  const isDev = process.env.NODE_ENV !== "production";
+  const body: { error: string; detail?: string; code?: string } = { error: fallbackMessage };
+  if (isDev && error instanceof Error) {
+    body.detail = error.message;
+    const code = (error as { code?: unknown }).code;
+    if (typeof code === "string" || typeof code === "number") body.code = String(code);
+  }
+  res.status(500).json(body);
 }
 
 function getUserId(req: ReqWithUser): string | null {

@@ -1,7 +1,29 @@
 const net = require("net");
 const path = require("path");
 const http = require("http");
+const fs = require("fs");
 const { spawn } = require("child_process");
+
+/** Load server/.env into a plain object for the backend child process. */
+function loadServerEnv(rootDir) {
+  const envPath = path.join(rootDir, "server", ".env");
+  const out = {};
+  if (!fs.existsSync(envPath)) return out;
+  const text = fs.readFileSync(envPath, "utf8");
+  for (const line of text.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    const eq = trimmed.indexOf("=");
+    if (eq <= 0) continue;
+    const key = trimmed.slice(0, eq).trim();
+    let val = trimmed.slice(eq + 1).trim();
+    if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+      val = val.slice(1, -1);
+    }
+    out[key] = val;
+  }
+  return out;
+}
 
 function canConnect(host, port) {
   return new Promise((resolve) => {
@@ -93,8 +115,14 @@ async function main() {
   const serverDir = path.join(rootDir, "server");
   const clientDir = path.join(rootDir, "client");
 
-  const commonEnv = { ...process.env };
-  const backendEnv = { ...commonEnv, PORT: String(backendPort) };
+  const serverEnv = loadServerEnv(rootDir);
+  const commonEnv = { ...process.env, ...serverEnv };
+  const backendEnv = {
+    ...commonEnv,
+    PORT: String(backendPort),
+    FRONTEND_URL: `http://localhost:${frontendPort}`,
+    GOOGLE_CALLBACK_URL: `http://localhost:${backendPort}/api/auth/google/callback`,
+  };
   const frontendEnv = {
     ...commonEnv,
     VITE_PORT: String(frontendPort),

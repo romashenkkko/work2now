@@ -39,6 +39,14 @@ async function getEmployeeProfileId(userId: string): Promise<string | null> {
   return employeeProfile?.Id ?? null;
 }
 
+function isValidJobCategory(code: number): boolean {
+  return Number.isInteger(code) && code >= JobCategory.Barback && code <= JobCategory.Waiter;
+}
+
+function isValidExperienceDuration(code: number): boolean {
+  return Number.isInteger(code) && code >= ExperienceDuration.NoExperience && code <= ExperienceDuration.MoreThanFiveYears;
+}
+
 function assertOptionalDescriptionLength(desc: string): void {
   const t = desc.trim();
   if (t.length > 0 && t.length < EXPERIENCE_DESCRIPTION_MIN_LENGTH) {
@@ -81,11 +89,16 @@ export async function saveOnboardingExperiences(userId?: string, payload?: { exp
     throw new ServiceError("Trebuie să selectați cel puțin o categorie de job.", 400);
   }
 
+  const categoryCodes: number[] = [];
   for (const exp of experiences) {
     const item = exp as { jobCategory?: unknown; duration?: unknown; description?: unknown };
-    if (typeof item.jobCategory !== "number" || !Object.values(JobCategory).includes(item.jobCategory)) {
+    if (typeof item.jobCategory !== "number" || !isValidJobCategory(item.jobCategory)) {
       throw new ServiceError("Categoria de job invalidă.", 400);
     }
+    if (categoryCodes.includes(item.jobCategory)) {
+      throw new ServiceError("Nu poți adăuga aceeași categorie de job de două ori.", 400);
+    }
+    categoryCodes.push(item.jobCategory);
     if (typeof item.duration !== "number" || !ONBOARDING_ALLOWED_DURATIONS.includes(item.duration)) {
       throw new ServiceError("Selectează o durată a experienței (fără opțiunea «Fără experiență»).", 400);
     }
@@ -101,6 +114,13 @@ export async function saveOnboardingExperiences(userId?: string, payload?: { exp
   const employeeProfileId = await getEmployeeProfileId(resolvedUserId);
   if (!employeeProfileId) {
     throw new ServiceError("Nu aveți profil de angajat. Doar angajații pot completa onboarding-ul.", 403);
+  }
+
+  const existingCount = await prisma.experiences.count({
+    where: { EmployeeProfileId: employeeProfileId },
+  });
+  if (existingCount > 0) {
+    throw new ServiceError("Onboarding-ul a fost deja completat. Editează experiențele din Setări.", 400);
   }
 
   await prisma.$transaction(
@@ -166,10 +186,10 @@ export async function createExperience(userId: string | undefined, payload: Expe
   const resolvedUserId = requireUserId(userId);
   const { jobCategory, duration, description } = payload;
 
-  if (typeof jobCategory !== "number" || !Object.values(JobCategory).includes(jobCategory)) {
+  if (typeof jobCategory !== "number" || !isValidJobCategory(jobCategory)) {
     throw new ServiceError("Categoria de job invalidă.", 400);
   }
-  if (typeof duration !== "number" || !Object.values(ExperienceDuration).includes(duration)) {
+  if (typeof duration !== "number" || !isValidExperienceDuration(duration)) {
     throw new ServiceError("Durata experienței invalidă.", 400);
   }
 
@@ -210,7 +230,7 @@ export async function updateExperience(userId: string | undefined, id: string, p
   const resolvedUserId = requireUserId(userId);
   const { duration, description } = payload;
 
-  if (duration !== undefined && (typeof duration !== "number" || !Object.values(ExperienceDuration).includes(duration))) {
+  if (duration !== undefined && (typeof duration !== "number" || !isValidExperienceDuration(duration))) {
     throw new ServiceError("Durata experienței invalidă.", 400);
   }
 

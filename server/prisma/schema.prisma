@@ -414,7 +414,8 @@ model testimonials_section {
 model users {
   Id                              String             @id @db.Char(36)
   Email                           String             @unique(map: "Email")
-  PasswordHash                    String             @db.VarChar(255)
+  PasswordHash                    String?            @db.VarChar(255)
+  GoogleId                        String?            @unique(map: "GoogleId") @db.VarChar(255)
   Role                            Int
   CreatedAt                       DateTime           @db.DateTime(0)
   Avatar                          String?            @db.MediumText

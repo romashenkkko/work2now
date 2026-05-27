@@ -1036,7 +1036,6 @@ export default function DashboardHomeSupport() {
                 value={staffForm.dateOfBirth}
                 onChange={(v) => setStaffForm({ ...staffForm, dateOfBirth: v })}
                 label="Data nașterii"
-                disableFutureDates
                 disablePastDates={false}
                 hideFooter
                 className="[&_.date-picker-label]:text-sm [&_.date-picker-label]:font-normal [&_.date-picker-label]:text-gray-700"
@@ -1117,7 +1116,6 @@ export default function DashboardHomeSupport() {
                 value={customerForm.contactDateOfBirth}
                 onChange={(v) => setCustomerForm({ ...customerForm, contactDateOfBirth: v })}
                 label="Data nașterii contactului"
-                disableFutureDates
                 disablePastDates={false}
                 hideFooter
                 className="[&_.date-picker-label]:text-sm [&_.date-picker-label]:font-normal [&_.date-picker-label]:text-gray-700"

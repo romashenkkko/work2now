@@ -5,6 +5,8 @@ import {
   MIN_EXPERIENCE_DESCRIPTION_LENGTH,
   descriptionForEditing,
 } from "../constants/experienceDescription";
+import CategoryIllustration from "./CategoryIllustration";
+import { jobCategoryLabelKey } from "../lib/jobCategories";
 
 // Job categories matching the database enum (codes 1-22)
 enum JobCategory {
@@ -40,37 +42,37 @@ enum ExperienceDuration {
   MoreThanFiveYears = 4,
 }
 
-const JOB_CATEGORIES = [
-  { id: JobCategory.Barback, name: "Barback", icon: "🍺" },
-  { id: JobCategory.Barista, name: "Barista", icon: "☕" },
-  { id: JobCategory.Bartender, name: "Bartender", icon: "🍸" },
-  { id: JobCategory.Cashier, name: "Cashier", icon: "💰" },
-  { id: JobCategory.Chef, name: "Chef", icon: "👨‍🍳" },
-  { id: JobCategory.ChefHead, name: "Chef (Head)", icon: "👨‍🍳" },
-  { id: JobCategory.ChefPastry, name: "Chef (Pastry)", icon: "🧁" },
-  { id: JobCategory.ChefSous, name: "Chef (Sous)", icon: "👨‍🍳" },
-  { id: JobCategory.ChefSushi, name: "Chef (Sushi)", icon: "🍣" },
-  { id: JobCategory.Cleaner, name: "Cleaner", icon: "🧹" },
-  { id: JobCategory.CocktailBartender, name: "Cocktail Bartender", icon: "🍹" },
-  { id: JobCategory.Dishwasher, name: "Dishwasher", icon: "🧽" },
-  { id: JobCategory.EventCrew, name: "Event Crew", icon: "🎉" },
-  { id: JobCategory.GroceryStoreWorker, name: "Grocery Store Worker", icon: "🛒" },
-  { id: JobCategory.HeadWaiter, name: "Head Waiter", icon: "🍽️" },
-  { id: JobCategory.Housekeeper, name: "Housekeeper", icon: "🏠" },
-  { id: JobCategory.Maintenance, name: "Maintenance", icon: "🔧" },
-  { id: JobCategory.Pizzaiolo, name: "Pizzaiolo", icon: "🍕" },
-  { id: JobCategory.Receptionist, name: "Receptionist", icon: "📞" },
-  { id: JobCategory.Sommelier, name: "Sommelier", icon: "🍷" },
-  { id: JobCategory.T2SAppTester, name: "T2S App Tester", icon: "📱" },
-  { id: JobCategory.Waiter, name: "Waiter", icon: "🍽️" },
+const JOB_CATEGORY_CODES = [
+  JobCategory.Barback,
+  JobCategory.Barista,
+  JobCategory.Bartender,
+  JobCategory.Cashier,
+  JobCategory.Chef,
+  JobCategory.ChefHead,
+  JobCategory.ChefPastry,
+  JobCategory.ChefSous,
+  JobCategory.ChefSushi,
+  JobCategory.Cleaner,
+  JobCategory.CocktailBartender,
+  JobCategory.Dishwasher,
+  JobCategory.EventCrew,
+  JobCategory.GroceryStoreWorker,
+  JobCategory.HeadWaiter,
+  JobCategory.Housekeeper,
+  JobCategory.Maintenance,
+  JobCategory.Pizzaiolo,
+  JobCategory.Receptionist,
+  JobCategory.Sommelier,
+  JobCategory.T2SAppTester,
+  JobCategory.Waiter,
 ];
 
-const EXPERIENCE_DURATIONS = [
-  { id: ExperienceDuration.NoExperience, name: "NoExperience", label: "Fără experiență" },
-  { id: ExperienceDuration.LessThanOneYear, name: "LessThanOneYear", label: "Mai puțin de 1 an" },
-  { id: ExperienceDuration.OneToFiveYears, name: "OneToFiveYears", label: "1-5 ani" },
-  { id: ExperienceDuration.MoreThanFiveYears, name: "MoreThanFiveYears", label: "Mai mult de 5 ani" },
-];
+const EXPERIENCE_DURATION_IDS = [
+  ExperienceDuration.NoExperience,
+  ExperienceDuration.LessThanOneYear,
+  ExperienceDuration.OneToFiveYears,
+  ExperienceDuration.MoreThanFiveYears,
+] as const;
 
 export type Experience = {
   id: string;
@@ -103,6 +105,11 @@ export default function ExperiencesSection({ onBack, t }: ExperiencesSectionProp
   const categoryRef = useRef<HTMLDivElement>(null);
   const durationRef = useRef<HTMLDivElement>(null);
 
+  const getCategoryLabel = (categoryId: number) => {
+    const key = jobCategoryLabelKey(categoryId);
+    return key ? t(key) : t("dashboard.experience");
+  };
+
   useEffect(() => {
     loadExperiences();
   }, []);
@@ -126,7 +133,6 @@ export default function ExperiencesSection({ onBack, t }: ExperiencesSectionProp
     try {
       const data = await experiencesApi.list();
       setExperiences(data.experiences);
-      // Initialize editing descriptions
       const descMap: Record<string, string> = {};
       data.experiences.forEach((exp) => {
         descMap[exp.id] = descriptionForEditing(exp.description);
@@ -151,7 +157,7 @@ export default function ExperiencesSection({ onBack, t }: ExperiencesSectionProp
     setFormData({
       jobCategory: experience.jobCategory,
       duration: experience.duration,
-      description: experience.description || "",
+      description: descriptionForEditing(experience.description),
     });
     setShowForm(true);
     setMessage(null);
@@ -167,6 +173,11 @@ export default function ExperiencesSection({ onBack, t }: ExperiencesSectionProp
     try {
       await experiencesApi.delete(id);
       setExperiences((prev) => prev.filter((exp) => exp.id !== id));
+      setEditingDescription((prev) => {
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
       setMessage({ type: "success", text: "Experiența a fost ștearsă cu succes." });
     } catch (e) {
       setMessage({ type: "error", text: (e as Error).message });
@@ -193,21 +204,21 @@ export default function ExperiencesSection({ onBack, t }: ExperiencesSectionProp
     setMessage(null);
     try {
       if (editingId) {
-        // Update existing
         await experiencesApi.update(editingId, {
           duration: formData.duration,
           description: formData.description,
         });
+        const savedDesc = formData.description.trim();
         setExperiences((prev) =>
           prev.map((exp) =>
             exp.id === editingId
-              ? { ...exp, duration: formData.duration, description: formData.description }
+              ? { ...exp, duration: formData.duration, description: savedDesc }
               : exp
           )
         );
+        setEditingDescription((prev) => ({ ...prev, [editingId]: savedDesc }));
         setMessage({ type: "success", text: "Experiența a fost actualizată cu succes." });
       } else {
-        // Create new
         const newExp = await experiencesApi.create({
           jobCategory: formData.jobCategory,
           duration: formData.duration,
@@ -252,20 +263,23 @@ export default function ExperiencesSection({ onBack, t }: ExperiencesSectionProp
     }
   };
 
-  const getCategoryName = (categoryId: number) => {
-    return JOB_CATEGORIES.find((c) => c.id === categoryId)?.name || "Unknown";
-  };
-
-  const getCategoryIcon = (categoryId: number) => {
-    return JOB_CATEGORIES.find((c) => c.id === categoryId)?.icon || "💼";
-  };
-
-  const selectedCategory = JOB_CATEGORIES.find((c) => c.id === formData.jobCategory);
-  const selectedDuration = EXPERIENCE_DURATIONS.find((d) => d.id === formData.duration);
-
   const getDurationLabel = (durationId: number) => {
-    return EXPERIENCE_DURATIONS.find((d) => d.id === durationId)?.label || "Unknown";
+    switch (durationId) {
+      case ExperienceDuration.NoExperience:
+        return t("dashboard.experienceDurationNone");
+      case ExperienceDuration.LessThanOneYear:
+        return t("dashboard.experienceDurationLessThanOne");
+      case ExperienceDuration.OneToFiveYears:
+        return t("dashboard.experienceDurationOneToFive");
+      case ExperienceDuration.MoreThanFiveYears:
+        return t("dashboard.experienceDurationMoreThanFive");
+      default:
+        return "—";
+    }
   };
+
+  const selectedDurationLabel =
+    formData.duration > 0 ? getDurationLabel(formData.duration) : null;
 
   return (
     <section className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6">
@@ -279,10 +293,8 @@ export default function ExperiencesSection({ onBack, t }: ExperiencesSectionProp
         </svg>
         {t("profile.back")}
       </button>
-      <h2 className="text-lg font-semibold text-gray-900 mb-2">Experiențe profesionale</h2>
-      <p className="text-sm text-gray-600 mb-6">
-        Gestionați experiențele dvs. profesionale și adăugați descrieri detaliate.
-      </p>
+      <h2 className="text-lg font-semibold text-gray-900 mb-2">{t("profile.experiences.title")}</h2>
+      <p className="text-sm text-gray-600 mb-6">{t("profile.experiences.subtitle")}</p>
 
       {message && (
         <div
@@ -331,40 +343,40 @@ export default function ExperiencesSection({ onBack, t }: ExperiencesSectionProp
                       }}
                       className="w-full px-4 py-2.5 rounded-xl border border-violet-200 bg-white focus:ring-2 focus:ring-primary focus:border-primary transition-colors inline-flex items-center justify-between gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
                     >
-                      <span className="inline-flex items-center gap-2 text-gray-800">
-                        {selectedCategory ? (
+                      <span className="inline-flex items-center gap-3 text-gray-800 min-w-0">
+                        {formData.jobCategory ? (
                           <>
-                            <span>{selectedCategory.icon}</span>
-                            <span>{selectedCategory.name}</span>
+                            <CategoryIllustration categoryCode={formData.jobCategory} size="xs" />
+                            <span className="truncate">{getCategoryLabel(formData.jobCategory)}</span>
                           </>
                         ) : (
                           <span className="text-gray-500">Selectează categoria</span>
                         )}
                       </span>
                       <ChevronDown
-                        className={`w-4 h-4 text-violet-500 transition-transform ${categoryOpen ? "rotate-180" : ""}`}
+                        className={`w-4 h-4 text-violet-500 shrink-0 transition-transform ${categoryOpen ? "rotate-180" : ""}`}
                       />
                     </button>
 
                     {categoryOpen && editingId === null && (
                       <div className="absolute z-30 mt-1 w-full rounded-xl border border-violet-200 bg-white shadow-lg overflow-hidden">
-                        <ul className="max-h-64 overflow-y-auto py-1">
-                          {JOB_CATEGORIES.map((cat) => (
-                            <li key={cat.id}>
+                        <ul className="max-h-72 overflow-y-auto py-1">
+                          {JOB_CATEGORY_CODES.map((code) => (
+                            <li key={code}>
                               <button
                                 type="button"
                                 onClick={() => {
-                                  setFormData((prev) => ({ ...prev, jobCategory: cat.id }));
+                                  setFormData((prev) => ({ ...prev, jobCategory: code }));
                                   setCategoryOpen(false);
                                 }}
-                                className={`w-full px-4 py-2 text-left inline-flex items-center gap-2 transition-colors ${
-                                  formData.jobCategory === cat.id
+                                className={`w-full px-3 py-2 text-left inline-flex items-center gap-3 transition-colors ${
+                                  formData.jobCategory === code
                                     ? "bg-violet-100 text-violet-800 font-medium"
                                     : "text-gray-800 hover:bg-violet-50"
                                 }`}
                               >
-                                <span>{cat.icon}</span>
-                                <span>{cat.name}</span>
+                                <CategoryIllustration categoryCode={code} size="xs" />
+                                <span>{getCategoryLabel(code)}</span>
                               </button>
                             </li>
                           ))}
@@ -387,8 +399,8 @@ export default function ExperiencesSection({ onBack, t }: ExperiencesSectionProp
                       }}
                       className="w-full px-4 py-2.5 rounded-xl border border-violet-200 bg-white focus:ring-2 focus:ring-primary focus:border-primary transition-colors inline-flex items-center justify-between gap-2"
                     >
-                      <span className={selectedDuration ? "text-gray-800" : "text-gray-500"}>
-                        {selectedDuration ? selectedDuration.label : "Selectează durata"}
+                      <span className={selectedDurationLabel ? "text-gray-800" : "text-gray-500"}>
+                        {selectedDurationLabel ?? "Selectează durata"}
                       </span>
                       <ChevronDown
                         className={`w-4 h-4 text-violet-500 transition-transform ${durationOpen ? "rotate-180" : ""}`}
@@ -398,21 +410,21 @@ export default function ExperiencesSection({ onBack, t }: ExperiencesSectionProp
                     {durationOpen && (
                       <div className="absolute z-30 mt-1 w-full rounded-xl border border-violet-200 bg-white shadow-lg overflow-hidden">
                         <ul className="max-h-64 overflow-y-auto py-1">
-                          {EXPERIENCE_DURATIONS.map((dur) => (
-                            <li key={dur.id}>
+                          {EXPERIENCE_DURATION_IDS.map((durId) => (
+                            <li key={durId}>
                               <button
                                 type="button"
                                 onClick={() => {
-                                  setFormData((prev) => ({ ...prev, duration: dur.id }));
+                                  setFormData((prev) => ({ ...prev, duration: durId }));
                                   setDurationOpen(false);
                                 }}
                                 className={`w-full px-4 py-2 text-left transition-colors ${
-                                  formData.duration === dur.id
+                                  formData.duration === durId
                                     ? "bg-violet-100 text-violet-800 font-medium"
                                     : "text-gray-800 hover:bg-violet-50"
                                 }`}
                               >
-                                {dur.label}
+                                {getDurationLabel(durId)}
                               </button>
                             </li>
                           ))}
@@ -493,14 +505,14 @@ export default function ExperiencesSection({ onBack, t }: ExperiencesSectionProp
                   className="p-4 border border-gray-200 rounded-xl bg-gray-50 hover:bg-gray-100/50 transition-colors"
                 >
                   <div className="flex items-start justify-between gap-4 mb-3">
-                    <div className="flex items-center gap-3 flex-1">
-                      <span className="text-2xl">{getCategoryIcon(exp.jobCategory)}</span>
-                      <div className="flex-1">
-                        <h4 className="font-semibold text-gray-900">{getCategoryName(exp.jobCategory)}</h4>
+                    <div className="flex items-center gap-3 flex-1 min-w-0">
+                      <CategoryIllustration categoryCode={exp.jobCategory} size="md" />
+                      <div className="flex-1 min-w-0">
+                        <h4 className="font-semibold text-gray-900">{getCategoryLabel(exp.jobCategory)}</h4>
                         <p className="text-sm text-gray-600">{getDurationLabel(exp.duration)}</p>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 shrink-0">
                       <button
                         type="button"
                         onClick={() => handleEdit(exp)}
@@ -589,4 +601,3 @@ export default function ExperiencesSection({ onBack, t }: ExperiencesSectionProp
     </section>
   );
 }
-

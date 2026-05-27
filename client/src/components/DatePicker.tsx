@@ -94,6 +94,11 @@ export default function DatePicker({
     }
   }, [open]);
 
+  useEffect(() => {
+    const parsed = parseYMD(value);
+    if (parsed) setViewDate(parsed);
+  }, [value]);
+
   const year = viewDate.getFullYear();
   const month = viewDate.getMonth();
   const firstDay = new Date(year, month, 1);
@@ -112,7 +117,8 @@ export default function DatePicker({
   const isToday = (d: Date) => d.getFullYear() === today.getFullYear() && d.getMonth() === today.getMonth() && d.getDate() === today.getDate();
   const isPast = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime() < today.getTime();
   const isFuture = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime() > today.getTime();
-  const isDayDisabled = (d: Date) => (disablePastDates && isPast(d)) || (disableFutureDates && isFuture(d));
+  const isDayDisabled = (d: Date) =>
+    (disablePastDates && isPast(d)) || (disableFutureDates && isFuture(d));
   const years = Array.from({ length: currentYear - 1900 + 1 }, (_, i) => currentYear - i);
 
   const displayValue = value ? (() => {

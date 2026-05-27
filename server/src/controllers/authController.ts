@@ -34,6 +34,7 @@ import {
   deleteSupportChatMacro,
   escalateSupportChat,
   getSupportChatTimeline,
+  ensureChatWithFriend,
   listMySupportChats,
   listSupportChatMacros,
   listSupportChatTags,
@@ -41,6 +42,7 @@ import {
   listSupportInbox,
   markSupportChatSeen,
   postSupportChatMessage,
+  deleteOwnSupportChatMessage,
   reopenSupportChat,
   requestSupportChat,
   resolveSupportChatReminder,
@@ -52,9 +54,24 @@ import {
   setSupportChatTyping,
   submitSupportChatCsat,
   assignSupportChat,
+  relayVoiceCallSignal,
 } from "../services/supportChatService";
 import { subscribeSupportChatEvents } from "../services/supportChatRealtimeService";
 import { uploadCv } from "../middleware/upload";
+import {
+  acceptFriendRequest,
+  addFriend,
+  declineFriendRequest,
+  listFriends,
+  listIncomingFriendRequests,
+  removeFriend,
+  searchFriendCandidates,
+} from "../services/friendService";
+import {
+  getGoogleAuthRedirectUrl,
+  handleGoogleOAuthCallback,
+} from "../services/googleAuthService";
+import { resolveGoogleRegisterPrefill } from "../services/googleRegisterToken";
 
 type ReqWithUser = Request & { user?: JwtPayload };
 
@@ -88,6 +105,57 @@ export async function postLogin(req: Request, res: Response): Promise<void> {
     res.json(await loginUser(req.body ?? {}));
   } catch (error) {
     handleError(res, error, "POST /api/auth/login error:", "Email sau parola incorecta.");
+  }
+}
+
+export async function getGoogleAuth(req: Request, res: Response): Promise<void> {
+  try {
+    const mode = req.query.mode === "register" ? "register" : "login";
+    const role = typeof req.query.role === "string" ? req.query.role : undefined;
+    const url = getGoogleAuthRedirectUrl(mode, role);
+    res.redirect(url);
+  } catch (error) {
+    if (error instanceof ServiceError && error.status === 503) {
+      res.status(503).json({ error: error.message });
+      return;
+    }
+    handleError(res, error, "GET /api/auth/google error:", "Eroare la autentificarea Google.");
+  }
+}
+
+export async function getGoogleAuthCallback(req: Request, res: Response): Promise<void> {
+  try {
+    const code = typeof req.query.code === "string" ? req.query.code : "";
+    const state = typeof req.query.state === "string" ? req.query.state : "";
+    if (!code || !state) {
+      res.redirect(
+        `${process.env.FRONTEND_URL || "http://localhost:5500"}/auth/google/callback?error=missing_code`
+      );
+      return;
+    }
+    const redirectUrl = await handleGoogleOAuthCallback(code, state);
+    res.redirect(redirectUrl);
+  } catch (error) {
+    console.error("GET /api/auth/google/callback error:", error);
+    const msg =
+      error instanceof ServiceError
+        ? error.message
+        : "Eroare la autentificarea Google.";
+    const base = (process.env.FRONTEND_URL || "http://localhost:5500").replace(/\/+$/, "");
+    res.redirect(`${base}/auth/google/callback?error=${encodeURIComponent(msg)}`);
+  }
+}
+
+export async function getGoogleRegisterPrefill(req: Request, res: Response): Promise<void> {
+  try {
+    const token = typeof req.query.token === "string" ? req.query.token : "";
+    if (!token) {
+      res.status(400).json({ error: "Token lipsă." });
+      return;
+    }
+    res.json(resolveGoogleRegisterPrefill(token));
+  } catch (error) {
+    handleError(res, error, "GET /api/auth/google/register-prefill error:", "Token Google invalid.");
   }
 }
 
@@ -216,6 +284,15 @@ export async function postSupportChatRequest(req: ReqWithUser, res: Response): P
   }
 }
 
+export async function postSupportChatWithFriend(req: ReqWithUser, res: Response): Promise<void> {
+  try {
+    const targetUserId = String((req.body as { targetUserId?: string })?.targetUserId ?? "").trim();
+    res.json(await ensureChatWithFriend(req.user?.userId, targetUserId));
+  } catch (error) {
+    handleError(res, error, "POST /api/auth/support/chat/with-friend error:", "Nu am putut deschide chatul.");
+  }
+}
+
 export async function getMySupportChats(req: ReqWithUser, res: Response): Promise<void> {
   try {
     res.json(await listMySupportChats(req.user?.userId));
@@ -253,6 +330,14 @@ export async function postSupportChatMessageController(req: ReqWithUser, res: Re
     res.json(await postSupportChatMessage(req.user?.userId, req.params.id, (req.body ?? {}).message));
   } catch (error) {
     handleError(res, error, "POST /api/auth/support/chat/:id/message error:", "Eroare la trimiterea mesajului.");
+  }
+}
+
+export async function deleteSupportChatMessageController(req: ReqWithUser, res: Response): Promise<void> {
+  try {
+    res.json(await deleteOwnSupportChatMessage(req.user?.userId, req.params.id, req.params.messageId));
+  } catch (error) {
+    handleError(res, error, "DELETE /api/auth/support/chat/:id/messages/:messageId error:", "Eroare la anularea mesajului.");
   }
 }
 
@@ -408,6 +493,14 @@ export async function postSupportChatBulk(req: ReqWithUser, res: Response): Prom
   }
 }
 
+export async function postSupportChatVoiceSignal(req: ReqWithUser, res: Response): Promise<void> {
+  try {
+    res.json(await relayVoiceCallSignal(req.user?.userId, req.params.id, req.body ?? {}));
+  } catch (error) {
+    handleError(res, error, "POST /api/auth/support/chat/:id/voice-signal error:", "Eroare la semnalizarea apelului.");
+  }
+}
+
 export async function getSupportChatStream(req: ReqWithUser, res: Response): Promise<void> {
   let userId = String(req.user?.userId ?? "").trim();
   if (!userId) {
@@ -483,5 +576,66 @@ export async function getCv(req: Request, res: Response): Promise<void> {
     fs.createReadStream(filePath).pipe(res);
   } catch (error) {
     handleError(res, error, "GET /api/auth/cv/:userId error:", "Eroare la descărcarea CV-ului.");
+  }
+}
+
+export async function getFriendSearch(req: ReqWithUser, res: Response): Promise<void> {
+  try {
+    const q = String(req.query.q ?? "");
+    res.json(await searchFriendCandidates(req.user?.userId, q));
+  } catch (error) {
+    handleError(res, error, "GET /api/auth/friends/search error:", "Eroare la căutare.");
+  }
+}
+
+export async function getFriends(req: ReqWithUser, res: Response): Promise<void> {
+  try {
+    res.json(await listFriends(req.user?.userId));
+  } catch (error) {
+    handleError(res, error, "GET /api/auth/friends error:", "Eroare la lista de prieteni.");
+  }
+}
+
+export async function postFriendAdd(req: ReqWithUser, res: Response): Promise<void> {
+  try {
+    const targetUserId = String((req.body as { targetUserId?: string })?.targetUserId ?? "").trim();
+    res.json(await addFriend(req.user?.userId, targetUserId));
+  } catch (error) {
+    handleError(res, error, "POST /api/auth/friends error:", "Nu am putut trimite cererea de prietenie.");
+  }
+}
+
+export async function getFriendRequestsIncoming(req: ReqWithUser, res: Response): Promise<void> {
+  try {
+    res.json(await listIncomingFriendRequests(req.user?.userId));
+  } catch (error) {
+    handleError(res, error, "GET /api/auth/friends/requests error:", "Eroare la cererile de prietenie.");
+  }
+}
+
+export async function postFriendRequestAccept(req: ReqWithUser, res: Response): Promise<void> {
+  try {
+    const fromUserId = String(req.params.fromUserId ?? "").trim();
+    res.json(await acceptFriendRequest(req.user?.userId, fromUserId));
+  } catch (error) {
+    handleError(res, error, "POST /api/auth/friends/requests/:fromUserId/accept error:", "Nu am putut accepta cererea.");
+  }
+}
+
+export async function deleteFriendRequestDecline(req: ReqWithUser, res: Response): Promise<void> {
+  try {
+    const fromUserId = String(req.params.fromUserId ?? "").trim();
+    res.json(await declineFriendRequest(req.user?.userId, fromUserId));
+  } catch (error) {
+    handleError(res, error, "DELETE /api/auth/friends/requests/:fromUserId error:", "Nu am putut respinge cererea.");
+  }
+}
+
+export async function deleteFriendById(req: ReqWithUser, res: Response): Promise<void> {
+  try {
+    const targetUserId = String(req.params.targetUserId ?? "").trim();
+    res.json(await removeFriend(req.user?.userId, targetUserId));
+  } catch (error) {
+    handleError(res, error, "DELETE /api/auth/friends/:targetUserId error:", "Nu am putut elimina prietenul.");
   }
 }

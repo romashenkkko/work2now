@@ -1,7 +1,13 @@
 import type { Response } from "express";
 
 type SupportRealtimeEvent =
-  | { type: "chat_updated"; chatId: string; reason: "request" | "accept" | "message" | "close" | "seen" | "deleted" }
+  | {
+      type: "chat_updated";
+      chatId: string;
+      reason: "request" | "accept" | "message" | "message_deleted" | "close" | "seen" | "deleted";
+      /** La reason === "message": cine a trimis mesajul (pentru sunet notificare la destinatar). */
+      fromUserId?: string;
+    }
   | { type: "typing"; chatId: string; userId: string; isTyping: boolean; at: string }
   | { type: "delivered"; chatId: string; messageId: string; deliveredToUserId: string; at: string }
   | { type: "assigned"; chatId: string; assignedToUserId: string; assignedToEmail: string; at: string }
@@ -12,7 +18,16 @@ type SupportRealtimeEvent =
   | { type: "escalated"; chatId: string; level: "none" | "level_1" | "level_2" | "critical"; note?: string; at: string }
   | { type: "reminder_due"; chatId: string; reminderId: number; dueAt: string; at: string }
   | { type: "csat_submitted"; chatId: string; rating: number; at: string }
-  | { type: "bulk_updated"; chatIds: string[]; operation: string; at: string };
+  | { type: "bulk_updated"; chatIds: string[]; operation: string; at: string }
+  | { type: "friend_request_received"; fromUserId: string; at: string }
+  | {
+      type: "voice_call_signal";
+      chatId: string;
+      fromUserId: string;
+      signalType: "offer" | "answer" | "ice" | "hangup" | "reject";
+      payload: unknown;
+      at: string;
+    };
 
 type Client = {
   userId: string;

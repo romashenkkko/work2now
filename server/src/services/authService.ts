@@ -6,6 +6,7 @@ import { sendOTP, verifyOTP } from "../twilio";
 import { sendTermsAcceptanceEmail } from "../email";
 import { stringToUserRole, UserRole, userRoleToString } from "../enums";
 import { ServiceError } from "./ServiceError";
+import { verifyGoogleRegisterToken } from "./googleRegisterToken";
 
 const JWT_SECRET = process.env.JWT_SECRET || "default-secret-change-me";
 
@@ -30,6 +31,8 @@ type ValidateRegistrationInput = {
   name?: string;
   email?: string;
   password?: string;
+  googleRegisterToken?: string;
+  phoneNumber?: string;
   role?: string;
   employeeProfile?: { firstName?: string; lastName?: string; dateOfBirth?: string; aboutMe?: string };
   businessProfile?: {
@@ -44,6 +47,8 @@ type ValidateRegistrationInput = {
 };
 
 type RegisterInput = ValidateRegistrationInput & {
+  googleRegisterToken?: string;
+  phoneNumber?: string;
   employeeProfile?: {
     firstName?: string;
     lastName?: string;
@@ -160,7 +165,18 @@ async function ensureAdminInMemory(): Promise<void> {
 function validateCommonRegistrationFields(input: ValidateRegistrationInput) {
   const nameTrim = String(input.name ?? "").trim();
   const emailTrim = normalizeEmail(input.email);
-  const password = String(input.password ?? "");
+  const googleRegisterToken = String(input.googleRegisterToken ?? "").trim();
+  let googlePayload: ReturnType<typeof verifyGoogleRegisterToken> | null = null;
+  if (googleRegisterToken) {
+    googlePayload = verifyGoogleRegisterToken(googleRegisterToken);
+    if (googlePayload.email !== emailTrim) {
+      throw new ServiceError("Emailul nu corespunde contului Google.", 400);
+    }
+    if (googlePayload.role !== input.role) {
+      throw new ServiceError("Rolul nu corespunde înregistrării Google.", 400);
+    }
+  }
+  const password = googlePayload ? "" : String(input.password ?? "");
   const allowedRole = ["user", "staff", "customer", "admin"].includes(String(input.role)) ? String(input.role) : "user";
 
   if (!nameTrim || nameTrim.length < 2) {
@@ -169,7 +185,7 @@ function validateCommonRegistrationFields(input: ValidateRegistrationInput) {
   if (!emailTrim || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailTrim)) {
     throw new ServiceError("Email invalid.", 400);
   }
-  if (!password || password.length < 6) {
+  if (!googlePayload && (!password || password.length < 6)) {
     throw new ServiceError("Parola trebuie sa aiba minim 6 caractere.", 400);
   }
   if (allowedRole === "user") {
@@ -216,12 +232,7 @@ function validateCommonRegistrationFields(input: ValidateRegistrationInput) {
     }
   }
 
-  return {
-    nameTrim,
-    emailTrim,
-    password,
-    allowedRole,
-  };
+  return { nameTrim, emailTrim, password, allowedRole, googlePayload };
 }
 
 async function ensureEmailAvailable(email: string) {
@@ -316,14 +327,39 @@ export async function validateRegistration(input: ValidateRegistrationInput) {
   return { valid: true };
 }
 
+export async function buildLoginResponseForUser(user: {
+  Id: string;
+  Email: string;
+  Role: number;
+  IsActive: boolean;
+  Avatar?: string | null;
+  employee_profiles?: { Name: string; Surname: string; ProfilePictureFileId?: string | null } | null;
+  business_profiles?: { CompanyName: string } | null;
+}) {
+  const publicUser = buildDisplayName(user);
+  const token = jwt.sign({ userId: user.Id, email: user.Email }, JWT_SECRET, { expiresIn: "7d" });
+  return {
+    token,
+    user: {
+      id: user.Id,
+      name: publicUser.name,
+      email: user.Email,
+      role: publicUser.role,
+      avatar: publicUser.avatar,
+      isActive: user.IsActive,
+    },
+  };
+}
+
 export async function registerUser(input: RegisterInput) {
-  const { nameTrim, emailTrim, password, allowedRole } = validateCommonRegistrationFields(input);
+  const { nameTrim, emailTrim, password, allowedRole, googlePayload } = validateCommonRegistrationFields(input);
 
   try {
     await ensureEmailAvailable(emailTrim);
-    const passwordHash = await bcrypt.hash(password, 10);
+    const passwordHash = googlePayload ? null : await bcrypt.hash(password, 10);
     const roleEnum = stringToUserRole(allowedRole);
     const userId = randomUUID();
+    const phone = String(input.phoneNumber ?? "").trim() || null;
 
     await prisma.$transaction(async (tx) => {
       await tx.users.create({
@@ -331,6 +367,9 @@ export async function registerUser(input: RegisterInput) {
           Id: userId,
           Email: emailTrim,
           PasswordHash: passwordHash,
+          GoogleId: googlePayload?.googleId ?? null,
+          Avatar: googlePayload?.picture || null,
+          PhoneNumber: phone,
           Role: roleEnum,
           CreatedAt: new Date(),
         },
@@ -397,6 +436,21 @@ export async function registerUser(input: RegisterInput) {
           : nameTrim;
 
     await sendTermsAcceptanceEmail(emailTrim, displayName || nameTrim);
+
+    if (googlePayload) {
+      const created = await prisma.users.findUnique({
+        where: { Id: userId },
+        include: {
+          employee_profiles: { select: { Name: true, Surname: true, ProfilePictureFileId: true } },
+          business_profiles: { select: { CompanyName: true } },
+        },
+      });
+      if (created) {
+        const login = await buildLoginResponseForUser(created);
+        return { message: "Cont creat cu succes.", token: login.token, user: login.user };
+      }
+    }
+
     return { message: "Cont creat cu succes. Acum te poti autentifica." };
   } catch (error) {
     // In development we previously fell back to an in-memory user list when Prisma failed.
@@ -430,24 +484,17 @@ export async function loginUser(input: LoginInput) {
       },
     });
 
-    if (!user || !(await bcrypt.compare(password, user.PasswordHash))) {
+    if (!user) {
+      throw new ServiceError("Email sau parola incorecta.", 401);
+    }
+    if (!user.PasswordHash) {
+      throw new ServiceError("Acest cont folosește autentificarea Google. Apasă „Continuă cu Google”.", 401);
+    }
+    if (!(await bcrypt.compare(password, user.PasswordHash))) {
       throw new ServiceError("Email sau parola incorecta.", 401);
     }
 
-    const publicUser = buildDisplayName(user);
-    const token = jwt.sign({ userId: user.Id, email: emailTrim }, JWT_SECRET, { expiresIn: "7d" });
-
-    return {
-      token,
-      user: {
-        id: user.Id,
-        name: publicUser.name,
-        email: user.Email,
-        role: publicUser.role,
-        avatar: publicUser.avatar,
-        isActive: user.IsActive,
-      },
-    };
+    return buildLoginResponseForUser(user);
   } catch (error) {
     if (useMemoryFallback() && isDbConnectionError(error)) {
       await ensureAdminInMemory();
@@ -488,6 +535,9 @@ export async function changePassword(userId: string | undefined, input: ChangePa
       select: { PasswordHash: true },
     });
     if (!user) throw new ServiceError("Utilizator negăsit.", 404);
+    if (!user.PasswordHash) {
+      throw new ServiceError("Cont Google: setează parola din Setări (fără parola curentă) sau folosește Google.", 400);
+    }
     const valid = await bcrypt.compare(currentPassword, user.PasswordHash);
     if (!valid) throw new ServiceError("Parola curentă este incorectă.", 400);
 

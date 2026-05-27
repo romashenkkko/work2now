@@ -5,7 +5,8 @@ import { useTranslation } from "react-i18next";
 import { Mail, User, MessageSquare, X, LayoutGrid, Calendar } from "lucide-react";
 import StarRating from "./StarRating";
 import { ratingsApi, experiencesApi, type ReviewItem, type Experience } from "../api/client";
-import { JobTitleIcon, JOB_TITLE_OPTIONS } from "../pages/DashboardLayout";
+import CategoryIllustration from "./CategoryIllustration";
+import { jobCategoryLabelKey } from "../lib/jobCategories";
 
 const DEFAULT_AVATAR = "/Illustration/AvatarWhiteGuy.png";
 
@@ -18,17 +19,6 @@ function avatarSrc(url: string | undefined): string | undefined {
   if (s.startsWith("uploads/")) return typeof window !== "undefined" ? `${window.location.origin}/${s}` : `/${s}`;
   return typeof window !== "undefined" ? `${window.location.origin}/${s}` : `/${s}`;
 }
-
-const JOB_CATEGORY_TO_ICON_ID: Record<number, string> = {
-  1: "waiter",
-  2: "chef",
-  3: "dishwasher",
-  4: "barista",
-  5: "bartender",
-  6: "cleaner",
-  7: "receptionist",
-  8: "chef",
-};
 
 function ReviewPhotoThumb({ photoUrl }: { photoUrl: string }) {
   const { t } = useTranslation();
@@ -142,21 +132,19 @@ export default function StaffProfileModal({
       : reviews;
 
   const uniqueExperiences = useMemo(() => {
-    const byIconId = new Map<string, Experience>();
+    const byCategory = new Map<number, Experience>();
     for (const exp of experiences) {
-      const iconId = JOB_CATEGORY_TO_ICON_ID[exp.jobCategory] ?? String(exp.jobCategory);
-      const existing = byIconId.get(iconId);
+      const existing = byCategory.get(exp.jobCategory);
       if (!existing || exp.duration > existing.duration) {
-        byIconId.set(iconId, exp);
+        byCategory.set(exp.jobCategory, exp);
       }
     }
-    return Array.from(byIconId.values());
+    return Array.from(byCategory.values());
   }, [experiences]);
 
   const reviewExperienceOptions = useMemo(() => {
     return uniqueExperiences.map((exp) => {
-      const iconId = JOB_CATEGORY_TO_ICON_ID[exp.jobCategory] ?? "";
-      const labelKey = JOB_TITLE_OPTIONS.find((o) => o.id === iconId)?.labelKey;
+      const labelKey = jobCategoryLabelKey(exp.jobCategory);
       const label = labelKey ? t(labelKey) : t("dashboard.experience", "Experiență");
       return { value: label, label };
     });
@@ -477,8 +465,7 @@ export default function StaffProfileModal({
                         </div>
                       </button>
                       {uniqueExperiences.map((exp) => {
-                        const iconId = JOB_CATEGORY_TO_ICON_ID[exp.jobCategory] ?? "";
-                        const labelKey = JOB_TITLE_OPTIONS.find((o) => o.id === iconId)?.labelKey;
+                        const labelKey = jobCategoryLabelKey(exp.jobCategory);
                         const jobLabel = labelKey ? t(labelKey) : t("dashboard.experience", "Experiență");
                         const durationLabel =
                           exp.duration === 1
@@ -509,9 +496,7 @@ export default function StaffProfileModal({
                                 : "bg-gray-50 border-gray-200 hover:bg-gray-100"
                             }`}
                           >
-                            <div className="flex-shrink-0 w-9 h-9 rounded-lg bg-white border border-gray-200 flex items-center justify-center">
-                              <JobTitleIcon jobId={iconId} className="w-4 h-4 text-primary" size={16} />
-                            </div>
+                            <CategoryIllustration categoryCode={exp.jobCategory} size="sm" />
                             <div className="min-w-0 flex-1">
                               <p className="font-semibold text-gray-900 text-xs sm:text-sm truncate">{jobLabel}</p>
                               {durationLabel && (

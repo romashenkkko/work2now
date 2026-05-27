@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { authApi, jobsApi } from "../api/client";
 import AddressPickerModal from "../components/AddressPickerModal";
 import DatePicker from "../components/DatePicker";
+import GoogleAuthButton from "../components/GoogleAuthButton";
 import { TERMS_AND_CONDITIONS_RO, TERMS_AND_CONDITIONS_EN } from "../content/termsAndConditions";
 import { foldForSearch } from "../utils/foldForSearch";
 
@@ -23,6 +24,9 @@ function getPasswordStrength(password: string): 0 | 1 | 2 | 3 | 4 {
   return 4;
 }
 
+/** Set to true to require phone + Twilio OTP before registration. */
+const PHONE_OTP_ENABLED = false;
+
 const COMPANY_CATEGORY_OPTIONS = [
   { value: "1", labelKey: "auth.companyCategoryCanteen" },
   { value: "2", labelKey: "auth.companyCategoryCatering" },
@@ -37,6 +41,7 @@ export default function Register() {
   const { t, i18n } = useTranslation();
   const termsContent = i18n.language?.startsWith("ro") ? TERMS_AND_CONDITIONS_RO : TERMS_AND_CONDITIONS_EN;
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { role: roleParam } = useParams<{ role: string }>();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -51,6 +56,7 @@ export default function Register() {
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [dateOfBirth, setDateOfBirth] = useState("");
+  const [dateOfBirthError, setDateOfBirthError] = useState("");
   const [aboutMe, setAboutMe] = useState("");
   const [cvFile, setCvFile] = useState<File | null>(null);
   const [phoneNumber, setPhoneNumber] = useState(""); // Staff phone number (without prefix)
@@ -60,6 +66,7 @@ export default function Register() {
   const [contactFirstName, setContactFirstName] = useState("");
   const [contactLastName, setContactLastName] = useState("");
   const [contactDateOfBirth, setContactDateOfBirth] = useState("");
+  const [contactDateOfBirthError, setContactDateOfBirthError] = useState("");
   const [contactPhoneNumber, setContactPhoneNumber] = useState(""); // Customer contact phone number (without prefix)
   const [companyCategory, setCompanyCategory] = useState("1");
   const [companyCategoryOpen, setCompanyCategoryOpen] = useState(false);
@@ -91,6 +98,9 @@ export default function Register() {
   const [otpLoading, setOtpLoading] = useState(false);
   const [otpError, setOtpError] = useState("");
   const [verifiedPhone, setVerifiedPhone] = useState("");
+  const [googleRegisterToken, setGoogleRegisterToken] = useState("");
+  const [isGoogleRegister, setIsGoogleRegister] = useState(false);
+  const [googlePrefillLoading, setGooglePrefillLoading] = useState(false);
 
   // Terms & Conditions modal state
   const [showTermsModal, setShowTermsModal] = useState(false);
@@ -115,6 +125,53 @@ export default function Register() {
     }
     return age;
   };
+
+  const validateMinAge18 = (value: string): string => {
+    if (!value) return "";
+    const age = calculateAgeFromYmd(value);
+    if (age === null || age < 18) return t("auth.ageRestriction18");
+    return "";
+  };
+
+  useEffect(() => {
+    const token = searchParams.get("googleToken");
+    if (!token || role === "user") return;
+
+    setGooglePrefillLoading(true);
+    authApi
+      .googleRegisterPrefill(token)
+      .then((prefill) => {
+        if (prefill.role !== role) {
+          navigate(`/register/${prefill.role}?googleToken=${encodeURIComponent(token)}`, { replace: true });
+          return;
+        }
+        setGoogleRegisterToken(token);
+        setIsGoogleRegister(true);
+        setEmail(prefill.email);
+        if (role === "staff") {
+          setFirstName(prefill.firstName);
+          setLastName(prefill.lastName);
+          if (prefill.dateOfBirth) {
+            setDateOfBirth(prefill.dateOfBirth);
+            setDateOfBirthError(validateMinAge18(prefill.dateOfBirth));
+          }
+        } else {
+          setContactFirstName(prefill.firstName);
+          setContactLastName(prefill.lastName);
+          if (prefill.dateOfBirth) {
+            setContactDateOfBirth(prefill.dateOfBirth);
+            setContactDateOfBirthError(validateMinAge18(prefill.dateOfBirth));
+          }
+        }
+        const next = new URLSearchParams(searchParams);
+        next.delete("googleToken");
+        setSearchParams(next, { replace: true });
+      })
+      .catch((err) => {
+        setError(err instanceof Error ? err.message : t("auth.googleLoginFailed"));
+      })
+      .finally(() => setGooglePrefillLoading(false));
+  }, [role, searchParams, navigate, setSearchParams, t]);
 
   useEffect(() => {
     const onOutsideClick = (e: MouseEvent) => {
@@ -165,13 +222,91 @@ export default function Register() {
     return () => clearTimeout(t);
   }, [showTermsModal]);
 
+  async function finalizeRegistration() {
+    setLoading(true);
+    try {
+      const registerData: any = {
+        name: role === "staff" ? `${firstName.trim()} ${lastName.trim()}` : companyName.trim(),
+        email,
+        role,
+      };
+      if (PHONE_OTP_ENABLED && verifiedPhone) {
+        registerData.phoneNumber = verifiedPhone;
+      }
+      if (isGoogleRegister && googleRegisterToken) {
+        registerData.googleRegisterToken = googleRegisterToken;
+      } else {
+        registerData.password = password;
+      }
+
+      if (role === "staff") {
+        registerData.employeeProfile = {
+          firstName: firstName.trim(),
+          lastName: lastName.trim(),
+          dateOfBirth: dateOfBirth,
+          aboutMe: aboutMe.trim() || t("auth.aboutMeDefault"),
+        };
+      } else if (role === "customer") {
+        registerData.businessProfile = {
+          companyName: companyName.trim(),
+          contactFirstName: contactFirstName.trim(),
+          contactLastName: contactLastName.trim(),
+          companyCategory: parseInt(companyCategory, 10),
+          infoForStaff: infoForStaff.trim() || t("auth.infoForStaffDefault"),
+        };
+        registerData.contactDateOfBirth = contactDateOfBirth;
+        registerData.branch = {
+          name: branchName.trim(),
+          address: branchAddress.trim(),
+          city: branchCity.trim(),
+          country: branchCountry.trim() || "Moldova",
+          phoneNumber: `+373${branchPhone.trim()}`,
+          raionId: selectedRaionId,
+        };
+      }
+
+      const registerResult = await authApi.register(registerData);
+
+      if (registerResult.token) {
+        localStorage.setItem("token", registerResult.token);
+        if (cvFile && role === "staff") {
+          try {
+            await authApi.uploadCv(cvFile);
+          } catch {
+            /* best-effort */
+          }
+        }
+        navigate("/dashboard", { replace: true });
+        return;
+      }
+
+      if (cvFile && role === "staff" && password) {
+        try {
+          const loginResult = await authApi.login(email, password);
+          localStorage.setItem("token", loginResult.token);
+          await authApi.uploadCv(cvFile);
+          localStorage.removeItem("token");
+        } catch {
+          /* best-effort */
+        }
+      }
+
+      setSuccess(t("auth.registerSuccess"));
+      setTimeout(() => navigate("/login"), 2000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t("auth.registerError"));
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
     setSuccess("");
     setOtpError("");
     
-    if (password !== confirm) {
+    if (!isGoogleRegister && password !== confirm) {
       setError(t("auth.passwordMismatch"));
       return;
     }
@@ -186,12 +321,13 @@ export default function Register() {
         setError(t("auth.dateOfBirthRequired"));
         return;
       }
-      const age = calculateAgeFromYmd(dateOfBirth);
-      if (age === null || age < 18) {
-        setError(t("auth.ageRestriction18"));
+      const dobErr = validateMinAge18(dateOfBirth);
+      if (dobErr) {
+        setDateOfBirthError(dobErr);
+        setError(dobErr);
         return;
       }
-      if (!phoneNumber.trim()) {
+      if (PHONE_OTP_ENABLED && !phoneNumber.trim()) {
         setError(t("auth.phoneNumberRequired"));
         return;
       }
@@ -208,12 +344,13 @@ export default function Register() {
         setError(t("auth.dateOfBirthRequired"));
         return;
       }
-      const age = calculateAgeFromYmd(contactDateOfBirth);
-      if (age === null || age < 18) {
-        setError(t("auth.ageRestriction18"));
+      const contactDobErr = validateMinAge18(contactDateOfBirth);
+      if (contactDobErr) {
+        setContactDateOfBirthError(contactDobErr);
+        setError(contactDobErr);
         return;
       }
-      if (!contactPhoneNumber.trim()) {
+      if (PHONE_OTP_ENABLED && !contactPhoneNumber.trim()) {
         setError(t("auth.contactPhoneNumberRequired"));
         return;
       }
@@ -233,9 +370,13 @@ export default function Register() {
       const validationData: any = {
         name: role === "staff" ? `${firstName.trim()} ${lastName.trim()}` : companyName.trim(),
         email,
-        password,
         role,
       };
+      if (isGoogleRegister && googleRegisterToken) {
+        validationData.googleRegisterToken = googleRegisterToken;
+      } else {
+        validationData.password = password;
+      }
 
       if (role === "staff") {
         validationData.employeeProfile = {
@@ -278,8 +419,7 @@ export default function Register() {
       }
     }
 
-    // If OTP step, verify OTP first
-    if (otpStep === "otp") {
+    if (PHONE_OTP_ENABLED && otpStep === "otp") {
       if (!otpCode.trim() || otpCode.trim().length < 4) {
         setOtpError(t("auth.otpCodeRequired"));
         return;
@@ -293,7 +433,6 @@ export default function Register() {
           setOtpError(t("auth.otpInvalid"));
           return;
         }
-        // OTP verified, proceed with registration
       } catch (err) {
         setOtpError(err instanceof Error ? err.message : t("auth.otpVerifyError"));
         setOtpLoading(false);
@@ -302,71 +441,19 @@ export default function Register() {
         setOtpLoading(false);
       }
     }
-    
-    // Complete registration after OTP is verified
-    setLoading(true);
-    try {
-      // MIGRATION FIX: Build registration data with profile information
-      const registerData: any = { 
-        name: role === "staff" ? `${firstName.trim()} ${lastName.trim()}` : companyName.trim(), // For backward compatibility
-        email, 
-        password, 
-        role,
-        phoneNumber: verifiedPhone, // Include verified phone number
-      };
-      
-      if (role === "staff") {
-        registerData.employeeProfile = {
-          firstName: firstName.trim(),
-          lastName: lastName.trim(),
-          dateOfBirth: dateOfBirth,
-          aboutMe: aboutMe.trim() || t("auth.aboutMeDefault"),
-        };
-      } else if (role === "customer") {
-        registerData.businessProfile = {
-          companyName: companyName.trim(),
-          contactFirstName: contactFirstName.trim(),
-          contactLastName: contactLastName.trim(),
-          companyCategory: parseInt(companyCategory, 10),
-          infoForStaff: infoForStaff.trim() || t("auth.infoForStaffDefault"),
-        };
-        registerData.contactDateOfBirth = contactDateOfBirth;
-        registerData.branch = {
-          name: branchName.trim(),
-          address: branchAddress.trim(),
-          city: branchCity.trim(),
-          country: branchCountry.trim() || "Moldova",
-          phoneNumber: `+373${branchPhone.trim()}`,
-          raionId: selectedRaionId,
-        };
-      }
-      
-      await authApi.register(registerData);
 
-      if (cvFile && role === "staff") {
-        try {
-          const loginResult = await authApi.login(email, password);
-          localStorage.setItem("token", loginResult.token);
-          await authApi.uploadCv(cvFile);
-          localStorage.removeItem("token");
-        } catch {
-          // CV upload is best-effort; user can re-upload from profile later
-        }
-      }
-
-      setSuccess(t("auth.registerSuccess"));
-      setTimeout(() => navigate("/login"), 2000);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : t("auth.registerError"));
-    } finally {
-      setLoading(false);
-    }
+    await finalizeRegistration();
   }
 
   async function handleAcceptTerms() {
+    if (!PHONE_OTP_ENABLED) {
+      setShowTermsModal(false);
+      await finalizeRegistration();
+      return;
+    }
+
     const phoneToVerify = role === "staff" ? `+373${phoneNumber.trim()}` : `+373${contactPhoneNumber.trim()}`;
     
-    // Validate phone number before sending OTP
     if (!phoneToVerify) {
       setOtpError(t("auth.phoneNumberRequired"));
       return;
@@ -381,7 +468,6 @@ export default function Register() {
       setOtpStep("otp");
     } catch (err) {
       setOtpError(err instanceof Error ? err.message : t("auth.otpSendError"));
-      // Keep modal open on error so user can see the error message
     } finally {
       setTermsAcceptLoading(false);
     }
@@ -457,6 +543,14 @@ export default function Register() {
         {success && (
           <div className="auth-alert success">{success}</div>
         )}
+        {googlePrefillLoading ? (
+          <p className="auth-muted text-sm mb-3">{t("auth.googleProcessing")}</p>
+        ) : null}
+        {isGoogleRegister ? (
+          <div className="auth-alert success mb-3 text-sm">{t("auth.googleRegisterHint")}</div>
+        ) : null}
+        <GoogleAuthButton mode="register" role={role === "staff" || role === "customer" ? role : undefined} className="mb-4" />
+        <p className="auth-muted text-center text-sm mb-4">{t("auth.orContinueWithEmail")}</p>
         <form onSubmit={handleSubmit} className="auth-form">
           <input type="hidden" name="role" value={role} />
           
@@ -468,8 +562,12 @@ export default function Register() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
+              readOnly={isGoogleRegister}
+              className={isGoogleRegister ? "bg-gray-50" : undefined}
             />
           </label>
+          {!isGoogleRegister ? (
+          <>
           <label>
             {t("auth.password")}
             <input
@@ -521,6 +619,8 @@ export default function Register() {
               required
             />
           </label>
+          </>
+          ) : null}
           
           {/* Staff/Employee specific fields */}
           {role === "staff" && (
@@ -548,17 +648,25 @@ export default function Register() {
                   />
                 </label>
               </div>
-              <DatePicker
-                name="dateOfBirth"
-                value={dateOfBirth}
-                onChange={setDateOfBirth}
-                label={t("auth.dateOfBirth")}
-                className="auth-date-wrap"
-                openUpward
-                disableFutureDates
-                disablePastDates={false}
-                hideFooter
-              />
+              <div>
+                <DatePicker
+                  name="dateOfBirth"
+                  value={dateOfBirth}
+                  onChange={(v) => {
+                    setDateOfBirth(v);
+                    setDateOfBirthError(validateMinAge18(v));
+                  }}
+                  label={t("auth.dateOfBirth")}
+                  className={`auth-date-wrap${dateOfBirthError ? " [&_.date-picker-trigger]:border-red-400" : ""}`}
+                  openUpward
+                  disablePastDates={false}
+                  hideFooter
+                />
+                {dateOfBirthError ? (
+                  <p className="mt-1 text-sm text-red-600" role="alert">{dateOfBirthError}</p>
+                ) : null}
+              </div>
+              {PHONE_OTP_ENABLED ? (
               <label>
                 {t("auth.phoneNumber")} <span className="text-red-500">*</span>
                 <div className="flex items-center rounded-xl border border-gray-200 bg-white overflow-hidden focus-within:ring-2 focus-within:ring-primary/30 focus-within:border-primary transition-all mt-1">
@@ -574,6 +682,7 @@ export default function Register() {
                 </div>
                 <small className="text-gray-500 text-xs mt-1 block">{t("auth.phoneNumberHint") || "Introduceți numărul fără prefix"}</small>
               </label>
+              ) : null}
               <label>
                 {t("auth.aboutMe")}
                 <textarea
@@ -634,17 +743,25 @@ export default function Register() {
                   />
                 </label>
               </div>
-              <DatePicker
-                name="contactDateOfBirth"
-                value={contactDateOfBirth}
-                onChange={setContactDateOfBirth}
-                label={t("auth.dateOfBirth")}
-                className="auth-date-wrap"
-                openUpward
-                disableFutureDates
-                disablePastDates={false}
-                hideFooter
-              />
+              <div>
+                <DatePicker
+                  name="contactDateOfBirth"
+                  value={contactDateOfBirth}
+                  onChange={(v) => {
+                    setContactDateOfBirth(v);
+                    setContactDateOfBirthError(validateMinAge18(v));
+                  }}
+                  label={t("auth.dateOfBirth")}
+                  className={`auth-date-wrap${contactDateOfBirthError ? " [&_.date-picker-trigger]:border-red-400" : ""}`}
+                  openUpward
+                  disablePastDates={false}
+                  hideFooter
+                />
+                {contactDateOfBirthError ? (
+                  <p className="mt-1 text-sm text-red-600" role="alert">{contactDateOfBirthError}</p>
+                ) : null}
+              </div>
+              {PHONE_OTP_ENABLED ? (
               <label>
                 {t("auth.contactPhoneNumber")} <span className="text-red-500">*</span>
                 <div className="flex items-center rounded-xl border border-gray-200 bg-white overflow-hidden focus-within:ring-2 focus-within:ring-primary/30 focus-within:border-primary transition-all mt-1">
@@ -660,6 +777,7 @@ export default function Register() {
                 </div>
                 <small className="text-gray-500 text-xs mt-1 block">{t("auth.phoneNumberHint") || "Introduceți numărul fără prefix"}</small>
               </label>
+              ) : null}
               <label>
                 {t("auth.companyCategory")}
                 <div className="auth-custom-dropdown" ref={companyCategoryRef}>
@@ -841,7 +959,13 @@ export default function Register() {
           
           {otpStep === "form" && (
             <button type="submit" disabled={loading || otpLoading} className="btn-primary w-full py-3.5 disabled:opacity-50" style={{ marginTop: "24px" }}>
-              {loading ? (t("auth.validating") || "Se validează...") : otpLoading ? (t("auth.sendingOTP") || "Se trimite codul...") : (t("auth.continueToOTP") || "Continuă cu verificarea")}
+              {loading
+                ? (t("auth.validating") || "Se validează...")
+                : PHONE_OTP_ENABLED
+                  ? otpLoading
+                    ? (t("auth.sendingOTP") || "Se trimite codul...")
+                    : (t("auth.continueToOTP") || "Continuă cu verificarea")
+                  : (t("auth.submitRegister") || "Înregistrare")}
             </button>
           )}
         </form>
@@ -897,7 +1021,7 @@ export default function Register() {
         )}
 
         {/* OTP Verification Screen */}
-        {otpStep === "otp" && (
+        {PHONE_OTP_ENABLED && otpStep === "otp" && (
           <div className="auth-otp-section">
             <div className="auth-otp-header">
               <h3>{t("auth.verifyPhoneNumber") || "Verifică numărul de telefon"}</h3>

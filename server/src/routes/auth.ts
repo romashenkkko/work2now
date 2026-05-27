@@ -6,6 +6,9 @@ import {
   patchMe,
   postChangePassword,
   postLogin,
+  getGoogleAuth,
+  getGoogleAuthCallback,
+  getGoogleRegisterPrefill,
   postLogout,
   postRegister,
   postSendOtp,
@@ -19,6 +22,7 @@ import {
   patchSupportUsers,
   deleteSupportUsers,
   postSupportChatRequest,
+  postSupportChatWithFriend,
   getMySupportChats,
   getSupportChatInbox,
   getSupportChatMetricsController,
@@ -40,13 +44,22 @@ import {
   postSupportChatCsat,
   getSupportChatTimelineController,
   postSupportChatBulk,
+  postSupportChatVoiceSignal,
   postSupportChatSeen,
   postSupportChatMessageController,
+  deleteSupportChatMessageController,
   postSupportChatTyping,
   getSupportChatStream,
   postUploadCv,
   deleteCv,
   getCv,
+  getFriendSearch,
+  getFriends,
+  getFriendRequestsIncoming,
+  postFriendAdd,
+  postFriendRequestAccept,
+  deleteFriendRequestDecline,
+  deleteFriendById,
 } from "../controllers/authController";
 import { ensureDefaultAdmin } from "../services/authService";
 
@@ -55,6 +68,9 @@ const router = Router();
 router.post("/validate-registration", postValidateRegistration);
 router.post("/register", postRegister);
 router.post("/login", postLogin);
+router.get("/google", getGoogleAuth);
+router.get("/google/callback", getGoogleAuthCallback);
+router.get("/google/register-prefill", getGoogleRegisterPrefill);
 router.post("/logout", authMiddleware, postLogout);
 router.post("/change-password", authMiddleware, postChangePassword);
 router.get("/me", authMiddleware, getMe);
@@ -70,12 +86,14 @@ router.post("/support/users", authMiddleware, postSupportUsers);
 router.patch("/support/users/:id", authMiddleware, patchSupportUsers);
 router.delete("/support/users/:id", authMiddleware, deleteSupportUsers);
 router.post("/support/chat/request", authMiddleware, postSupportChatRequest);
+router.post("/support/chat/with-friend", authMiddleware, postSupportChatWithFriend);
 router.get("/support/chat/my", authMiddleware, getMySupportChats);
 router.get("/support/chat/inbox", authMiddleware, getSupportChatInbox);
 router.get("/support/chat/metrics", authMiddleware, getSupportChatMetricsController);
 router.get("/support/chat/stream", getSupportChatStream);
 router.post("/support/chat/:id/accept", authMiddleware, postSupportChatAccept);
 router.post("/support/chat/:id/message", authMiddleware, postSupportChatMessageController);
+router.delete("/support/chat/:id/messages/:messageId", authMiddleware, deleteSupportChatMessageController);
 router.post("/support/chat/:id/typing", authMiddleware, postSupportChatTyping);
 router.post("/support/chat/:id/seen", authMiddleware, postSupportChatSeen);
 router.post("/support/chat/:id/close", authMiddleware, postSupportChatClose);
@@ -95,10 +113,19 @@ router.post("/support/chat/:id/escalate", authMiddleware, postSupportChatEscalat
 router.post("/support/chat/:id/csat", authMiddleware, postSupportChatCsat);
 router.get("/support/chat/:id/timeline", authMiddleware, getSupportChatTimelineController);
 router.post("/support/chat/bulk", authMiddleware, postSupportChatBulk);
+router.post("/support/chat/:id/voice-signal", authMiddleware, postSupportChatVoiceSignal);
 
 router.post("/cv/upload", authMiddleware, postUploadCv);
 router.delete("/cv", authMiddleware, deleteCv);
 router.get("/cv/:userId", getCv);
+
+router.get("/friends/requests", authMiddleware, getFriendRequestsIncoming);
+router.post("/friends/requests/:fromUserId/accept", authMiddleware, postFriendRequestAccept);
+router.delete("/friends/requests/:fromUserId", authMiddleware, deleteFriendRequestDecline);
+router.get("/friends/search", authMiddleware, getFriendSearch);
+router.get("/friends", authMiddleware, getFriends);
+router.post("/friends", authMiddleware, postFriendAdd);
+router.delete("/friends/:targetUserId", authMiddleware, deleteFriendById);
 
 export { ensureDefaultAdmin };
 export default router;

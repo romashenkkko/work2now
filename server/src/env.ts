@@ -17,16 +17,18 @@ export function ensureEnvLoaded() {
   (globalThis as any).__WORK2NOW_ENV_LOADED__ = true;
 
   const possiblePaths = [
-    path.resolve(process.cwd(), ".env"), // when running inside /server
-    path.resolve(__dirname, "../.env"), // when running from /server/src
-    path.resolve(__dirname, "../../.env"), // when running from /server/dist
+    path.resolve(__dirname, "../.env"), // server/.env (canonical)
+    path.resolve(process.cwd(), "server", ".env"), // npm run dev from repo root
+    path.resolve(process.cwd(), ".env"),
+    path.resolve(__dirname, "../../.env"), // dist layout fallback
   ];
 
+  const loaded = new Set<string>();
   for (const p of possiblePaths) {
-    if (fs.existsSync(p)) {
-      dotenv.config({ path: p });
-      break;
-    }
+    const resolved = path.normalize(p);
+    if (loaded.has(resolved) || !fs.existsSync(resolved)) continue;
+    loaded.add(resolved);
+    dotenv.config({ path: resolved });
   }
 
   // Prisma uses DATABASE_URL. The rest of the app mostly uses DB_*.

@@ -106,6 +106,11 @@ async function start() {
   await ensureDefaultAdmin().catch((e) => console.error("Seed admin:", e));
   app.listen(Number(PORT), HOST, () => {
     console.log(`Work2Now API: http://localhost:${PORT}`);
+    if (process.env.GOOGLE_CLIENT_ID?.trim() && process.env.GOOGLE_CLIENT_SECRET?.trim()) {
+      console.log("[Auth] Google OAuth: configurat");
+    } else {
+      console.warn("[Auth] Google OAuth: lipsesc GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET în server/.env");
+    }
     if (HOST === "0.0.0.0") {
       const nets = os.networkInterfaces();
       for (const name of Object.keys(nets)) {

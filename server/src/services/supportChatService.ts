@@ -42,6 +42,30 @@ function canModerate(role: string): boolean {
   return role === "support" || role === "admin";
 }
 
+/** Comparație stabilă pentru GUID-uri (MySQL / driver: string, Buffer binar, casing). */
+function normalizeUserIdString(v: unknown): string {
+  if (v == null) return "";
+  if (typeof Buffer !== "undefined" && Buffer.isBuffer(v)) {
+    if (v.length === 16) {
+      const h = v.toString("hex");
+      return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20, 32)}`.toLowerCase();
+    }
+    const u = v.toString("utf8");
+    return u.trim().toLowerCase();
+  }
+  return String(v).trim().toLowerCase();
+}
+
+function userIdsEqual(a: unknown, b: unknown): boolean {
+  return normalizeUserIdString(a) === normalizeUserIdString(b);
+}
+
+function coercePositiveInt(v: unknown): number {
+  if (typeof v === "bigint") return Number(v);
+  const n = typeof v === "number" ? v : Number(String(v ?? ""));
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : NaN;
+}
+
 function isOnlineByLastActive(lastActiveAt: unknown, isActive: unknown): boolean {
   if (isActive === false || Number(isActive) === 0) return false;
   if (!lastActiveAt) return false;
@@ -63,6 +87,17 @@ function emailToName(email?: string | null): string {
   if (!raw) return "User";
   const left = raw.split("@")[0] || raw;
   return left.replace(/[._-]+/g, " ").trim() || "User";
+}
+
+function phoneForUserRow(u: {
+  PhoneNumber: string | null;
+  business_profiles: { branches?: Array<{ PhoneNumber: string | null }> } | null;
+}): string | null {
+  const direct = String(u.PhoneNumber ?? "").trim();
+  if (direct) return direct;
+  const br = u.business_profiles?.branches?.[0]?.PhoneNumber;
+  const b = String(br ?? "").trim();
+  return b || null;
 }
 
 async function logSupportChatAudit(chatId: number, actor: { id: string; email: string }, eventType: string, details?: unknown) {
@@ -230,12 +265,17 @@ export async function listMySupportChats(userId?: string) {
   let messages: Array<Record<string, unknown>> = [];
   if (chatIds.length > 0) {
     const idList = chatIds.map((id) => Number(id)).filter((id) => Number.isFinite(id) && id > 0).join(",");
+    /** Ultimele mesaje per chat (nu primele 5000 global cu ORDER BY id ASC — acelea excludeau mesajele noi și stricau badge-ul necitite). */
     messages = await prisma.$queryRawUnsafe<Array<Record<string, unknown>>>(
-      `SELECT id, chat_id, sender_user_id, sender_email, sender_role, message, created_at
-       FROM support_chat_messages
-       WHERE chat_id IN (${idList})
-       ORDER BY id ASC
-       LIMIT 5000`
+      `SELECT t.id, t.chat_id, t.sender_user_id, t.sender_email, t.sender_role, t.message, t.created_at
+       FROM (
+         SELECT m.id, m.chat_id, m.sender_user_id, m.sender_email, m.sender_role, m.message, m.created_at,
+                ROW_NUMBER() OVER (PARTITION BY m.chat_id ORDER BY m.id DESC) AS rn
+         FROM support_chat_messages m
+         WHERE m.chat_id IN (${idList})
+       ) t
+       WHERE t.rn <= 2000
+       ORDER BY t.chat_id ASC, t.id ASC`
     );
   }
   const byChat: Record<string, Array<Record<string, unknown>>> = {};
@@ -269,6 +309,8 @@ export async function listMySupportChats(userId?: string) {
   const onlineByUserId: Record<string, boolean> = {};
   const avatarByUserId: Record<string, string | null> = {};
   const displayNameByUserId: Record<string, string> = {};
+  const roleByUserId: Record<string, string> = {};
+  const phoneByUserId: Record<string, string | null> = {};
   if (userIds.length > 0) {
     const users = await prisma.users.findMany({
       where: { Id: { in: userIds } },
@@ -279,14 +321,22 @@ export async function listMySupportChats(userId?: string) {
         LastActiveAt: true,
         IsActive: true,
         Avatar: true,
+        PhoneNumber: true,
         employee_profiles: { select: { Name: true, Surname: true, ProfilePictureFileId: true } },
-        business_profiles: { select: { CompanyName: true } },
+        business_profiles: {
+          select: {
+            CompanyName: true,
+            branches: { take: 1, orderBy: { CreatedAt: "asc" }, select: { PhoneNumber: true } },
+          },
+        },
       },
     });
     for (const u of users) {
       onlineByUserId[u.Id] = isOnlineByLastActive(u.LastActiveAt, u.IsActive);
       avatarByUserId[u.Id] = u.Avatar ?? u.employee_profiles?.ProfilePictureFileId ?? null;
+      phoneByUserId[u.Id] = phoneForUserRow(u);
       const resolvedRole = userRoleToString(u.Role as UserRole);
+      roleByUserId[u.Id] = resolvedRole;
       const employeeName = `${u.employee_profiles?.Name ?? ""} ${u.employee_profiles?.Surname ?? ""}`.trim();
       displayNameByUserId[u.Id] =
         resolvedRole === "support"
@@ -311,6 +361,7 @@ export async function listMySupportChats(userId?: string) {
         requesterAvatar: c.requester_user_id ? (avatarByUserId[String(c.requester_user_id)] ?? null) : null,
         requesterOnline: c.requester_user_id ? !!onlineByUserId[String(c.requester_user_id)] : false,
         requesterLastActiveAt: c.requester_user_id ? (lastByUserId[String(c.requester_user_id)] ?? null) : null,
+        requesterPhone: c.requester_user_id ? phoneByUserId[String(c.requester_user_id)] ?? null : null,
         status: normalizeStatus(c.status),
         priority: normalizePriority(c.priority),
         assignedToUserId: c.assigned_to_user_id ? String(c.assigned_to_user_id) : null,
@@ -327,14 +378,16 @@ export async function listMySupportChats(userId?: string) {
           ? (displayNameByUserId[String(c.accepted_by_user_id)] ?? emailToName(c.accepted_by_email ? String(c.accepted_by_email) : ""))
           : (c.accepted_by_email ? emailToName(String(c.accepted_by_email)) : null),
         acceptedByAvatar: c.accepted_by_user_id ? (avatarByUserId[String(c.accepted_by_user_id)] ?? null) : null,
+        acceptedByRole: c.accepted_by_user_id ? roleByUserId[String(c.accepted_by_user_id)] ?? null : null,
         acceptedByOnline: c.accepted_by_user_id ? !!onlineByUserId[String(c.accepted_by_user_id)] : false,
         acceptedByLastActiveAt: c.accepted_by_user_id ? (lastByUserId[String(c.accepted_by_user_id)] ?? null) : null,
+        acceptedByPhone: c.accepted_by_user_id ? phoneByUserId[String(c.accepted_by_user_id)] ?? null : null,
         createdAt: c.created_at ? new Date(String(c.created_at)).toISOString() : null,
         updatedAt: c.updated_at ? new Date(String(c.updated_at)).toISOString() : null,
         messages: (byChat[String(c.id ?? "")] ?? []).map((m) => ({
           id: String(m.id ?? ""),
           chatId: String(m.chat_id ?? ""),
-          senderUserId: m.sender_user_id ? String(m.sender_user_id) : null,
+          senderUserId: m.sender_user_id != null && String(m.sender_user_id).trim() !== "" ? normalizeUserIdString(m.sender_user_id) : null,
           senderEmail: m.sender_email ? String(m.sender_email) : "",
           senderRole: m.sender_role ? String(m.sender_role) : "unknown",
           message: String(m.message ?? ""),
@@ -353,6 +406,7 @@ export async function listMySupportChats(userId?: string) {
       requesterAvatar: null,
       requesterOnline: false,
       requesterLastActiveAt: null,
+      requesterPhone: null,
       status: normalizeStatus(c.status),
       priority: normalizePriority(c.priority),
       assignedToUserId: c.assigned_to_user_id ? String(c.assigned_to_user_id) : null,
@@ -367,14 +421,16 @@ export async function listMySupportChats(userId?: string) {
       acceptedByEmail: c.accepted_by_email ? String(c.accepted_by_email) : null,
       acceptedByDisplayName: c.accepted_by_email ? emailToName(String(c.accepted_by_email)) : null,
       acceptedByAvatar: null,
+      acceptedByRole: null,
       acceptedByOnline: false,
       acceptedByLastActiveAt: null,
+      acceptedByPhone: null,
       createdAt: c.created_at ? new Date(String(c.created_at)).toISOString() : null,
       updatedAt: c.updated_at ? new Date(String(c.updated_at)).toISOString() : null,
       messages: (byChat[String(c.id ?? "")] ?? []).map((m) => ({
         id: String(m.id ?? ""),
         chatId: String(m.chat_id ?? ""),
-        senderUserId: m.sender_user_id ? String(m.sender_user_id) : null,
+        senderUserId: m.sender_user_id != null && String(m.sender_user_id).trim() !== "" ? normalizeUserIdString(m.sender_user_id) : null,
         senderEmail: m.sender_email ? String(m.sender_email) : "",
         senderRole: m.sender_role ? String(m.sender_role) : "unknown",
         message: String(m.message ?? ""),
@@ -446,6 +502,8 @@ export async function listSupportInbox(userId?: string) {
   const onlineByUserId: Record<string, boolean> = {};
   const avatarByUserId: Record<string, string | null> = {};
   const displayNameByUserId: Record<string, string> = {};
+  const roleByUserId: Record<string, string> = {};
+  const phoneByUserId: Record<string, string | null> = {};
   if (userIds.length > 0) {
     const users = await prisma.users.findMany({
       where: { Id: { in: userIds } },
@@ -456,14 +514,22 @@ export async function listSupportInbox(userId?: string) {
         LastActiveAt: true,
         IsActive: true,
         Avatar: true,
+        PhoneNumber: true,
         employee_profiles: { select: { Name: true, Surname: true, ProfilePictureFileId: true } },
-        business_profiles: { select: { CompanyName: true } },
+        business_profiles: {
+          select: {
+            CompanyName: true,
+            branches: { take: 1, orderBy: { CreatedAt: "asc" }, select: { PhoneNumber: true } },
+          },
+        },
       },
     });
     for (const u of users) {
       onlineByUserId[u.Id] = isOnlineByLastActive(u.LastActiveAt, u.IsActive);
       avatarByUserId[u.Id] = u.Avatar ?? u.employee_profiles?.ProfilePictureFileId ?? null;
+      phoneByUserId[u.Id] = phoneForUserRow(u);
       const resolvedRole = userRoleToString(u.Role as UserRole);
+      roleByUserId[u.Id] = resolvedRole;
       const employeeName = `${u.employee_profiles?.Name ?? ""} ${u.employee_profiles?.Surname ?? ""}`.trim();
       displayNameByUserId[u.Id] =
         resolvedRole === "support"
@@ -488,6 +554,7 @@ export async function listSupportInbox(userId?: string) {
         requesterAvatar: c.requester_user_id ? (avatarByUserId[String(c.requester_user_id)] ?? null) : null,
         requesterOnline: c.requester_user_id ? !!onlineByUserId[String(c.requester_user_id)] : false,
         requesterLastActiveAt: c.requester_user_id ? (lastByUserId[String(c.requester_user_id)] ?? null) : null,
+        requesterPhone: c.requester_user_id ? phoneByUserId[String(c.requester_user_id)] ?? null : null,
         status: normalizeStatus(c.status),
         priority: normalizePriority(c.priority),
         assignedToUserId: c.assigned_to_user_id ? String(c.assigned_to_user_id) : null,
@@ -504,8 +571,10 @@ export async function listSupportInbox(userId?: string) {
           ? (displayNameByUserId[String(c.accepted_by_user_id)] ?? emailToName(c.accepted_by_email ? String(c.accepted_by_email) : ""))
           : (c.accepted_by_email ? emailToName(String(c.accepted_by_email)) : null),
         acceptedByAvatar: c.accepted_by_user_id ? (avatarByUserId[String(c.accepted_by_user_id)] ?? null) : null,
+        acceptedByRole: c.accepted_by_user_id ? roleByUserId[String(c.accepted_by_user_id)] ?? null : null,
         acceptedByOnline: c.accepted_by_user_id ? !!onlineByUserId[String(c.accepted_by_user_id)] : false,
         acceptedByLastActiveAt: c.accepted_by_user_id ? (lastByUserId[String(c.accepted_by_user_id)] ?? null) : null,
+        acceptedByPhone: c.accepted_by_user_id ? phoneByUserId[String(c.accepted_by_user_id)] ?? null : null,
         createdAt: c.created_at ? new Date(String(c.created_at)).toISOString() : null,
         updatedAt: c.updated_at ? new Date(String(c.updated_at)).toISOString() : null,
       })),
@@ -521,6 +590,7 @@ export async function listSupportInbox(userId?: string) {
       requesterAvatar: null,
       requesterOnline: false,
       requesterLastActiveAt: null,
+      requesterPhone: null,
       status: normalizeStatus(c.status),
       priority: normalizePriority(c.priority),
       assignedToUserId: c.assigned_to_user_id ? String(c.assigned_to_user_id) : null,
@@ -535,8 +605,10 @@ export async function listSupportInbox(userId?: string) {
       acceptedByEmail: c.accepted_by_email ? String(c.accepted_by_email) : null,
       acceptedByDisplayName: c.accepted_by_email ? emailToName(String(c.accepted_by_email)) : null,
       acceptedByAvatar: null,
+      acceptedByRole: null,
       acceptedByOnline: false,
       acceptedByLastActiveAt: null,
+      acceptedByPhone: null,
       createdAt: c.created_at ? new Date(String(c.created_at)).toISOString() : null,
       updatedAt: c.updated_at ? new Date(String(c.updated_at)).toISOString() : null,
     })),
@@ -610,23 +682,26 @@ export async function postSupportChatMessage(userId: string | undefined, chatIdR
     throw new ServiceError("Solicitarea este în așteptare. Poți scrie după ce un agent support acceptă chatul.", 400);
   }
 
-  await prisma.$executeRaw`
-    INSERT INTO support_chat_messages (
-      chat_id,
-      sender_user_id,
-      sender_email,
-      sender_role,
-      message
-    ) VALUES (
-      ${chatId},
-      ${actor.id},
-      ${actor.email},
-      ${actor.role},
-      ${message}
-    )
-  `;
-  const inserted = await prisma.$queryRaw<Array<{ id: number }>>`SELECT LAST_INSERT_ID() AS id`;
-  const messageId = String(inserted[0]?.id ?? "");
+  const messageId = await prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`
+      INSERT INTO support_chat_messages (
+        chat_id,
+        sender_user_id,
+        sender_email,
+        sender_role,
+        message
+      ) VALUES (
+        ${chatId},
+        ${actor.id},
+        ${actor.email},
+        ${actor.role},
+        ${message}
+      )
+    `;
+    const inserted = await tx.$queryRaw<Array<{ id: unknown }>>`SELECT LAST_INSERT_ID() AS id`;
+    const raw = inserted[0]?.id;
+    return raw != null ? String(raw) : "";
+  });
   await prisma.$executeRaw`
     UPDATE support_chats
     SET updated_at = CURRENT_TIMESTAMP,
@@ -651,8 +726,65 @@ export async function postSupportChatMessage(userId: string | undefined, chatIdR
       [actor.id]
     );
   }
-  publishSupportChatEvent({ type: "chat_updated", chatId: String(chatId), reason: "message" });
+  publishSupportChatEvent({ type: "chat_updated", chatId: String(chatId), reason: "message", fromUserId: actor.id });
   return { ok: true as const, messageId, deliveredAt };
+}
+
+export async function deleteOwnSupportChatMessage(
+  userId: string | undefined,
+  _chatIdFromRoute: string | undefined,
+  messageIdRaw: string | undefined
+) {
+  const actor = await getActor(userId);
+  const messageId = coercePositiveInt(messageIdRaw);
+  if (!Number.isFinite(messageId) || messageId <= 0) throw new ServiceError("Mesaj invalid.", 400);
+
+  const msgRows = await prisma.$queryRaw<Array<{ chat_id: unknown; sender_user_id: string | null }>>`
+    SELECT chat_id, sender_user_id FROM support_chat_messages
+    WHERE id = ${messageId}
+    LIMIT 1
+  `;
+  if (!msgRows.length) throw new ServiceError("Mesaj negăsit.", 404);
+
+  const chatId = coercePositiveInt(msgRows[0].chat_id);
+  if (!Number.isFinite(chatId) || chatId <= 0) throw new ServiceError("Chat invalid.", 400);
+
+  if (!userIdsEqual(msgRows[0].sender_user_id, actor.id)) {
+    throw new ServiceError("Poți anula doar mesajele tale.", 403);
+  }
+
+  const chats = await prisma.$queryRaw<Array<{ requester_user_id: string | null; accepted_by_user_id: string | null; status: unknown }>>`
+    SELECT requester_user_id, accepted_by_user_id, status
+    FROM support_chats
+    WHERE id = ${chatId}
+    LIMIT 1
+  `;
+  if (!chats.length) throw new ServiceError("Chat negăsit.", 404);
+  const chat = chats[0];
+  const status = normalizeStatus(chat.status);
+  if (status === "closed") throw new ServiceError("Chat închis.", 400);
+
+  const requesterId = chat.requester_user_id ? String(chat.requester_user_id) : "";
+  const acceptedBy = chat.accepted_by_user_id ? String(chat.accepted_by_user_id) : "";
+  const isRequester = userIdsEqual(requesterId, actor.id);
+  const isModerator = canModerate(actor.role);
+  const isAssignedSupport = userIdsEqual(acceptedBy, actor.id) || (!acceptedBy && isModerator);
+  if (!isRequester && !isAssignedSupport) {
+    throw new ServiceError("Nu ai acces la acest chat.", 403);
+  }
+  if (isRequester && status === "open" && !acceptedBy) {
+    throw new ServiceError("Solicitarea este în așteptare.", 400);
+  }
+
+  await prisma.$executeRaw`
+    DELETE FROM support_chat_messages WHERE id = ${messageId} AND chat_id = ${chatId}
+  `;
+  await prisma.$executeRaw`
+    UPDATE support_chats SET updated_at = CURRENT_TIMESTAMP WHERE id = ${chatId}
+  `;
+  await logSupportChatAudit(chatId, actor, "message_deleted", { messageId });
+  publishSupportChatEvent({ type: "chat_updated", chatId: String(chatId), reason: "message_deleted", fromUserId: actor.id });
+  return { ok: true as const };
 }
 
 export async function closeSupportChat(userId: string | undefined, chatIdRaw: string | undefined) {
@@ -746,6 +878,9 @@ export async function markSupportChatSeen(userId: string | undefined, chatIdRaw:
   let seenColumn: "last_seen_by_requester_at" | "last_seen_by_support_at" = "last_seen_by_requester_at";
   if (actor.id === requesterId) {
     seenColumn = "last_seen_by_requester_at";
+  } else if (acceptedById && actor.id === acceptedById) {
+    // Peer în chat (prieten, agent asignat etc.) — același câmp „support” ca în listă.
+    seenColumn = "last_seen_by_support_at";
   } else if (canModerate(actor.role) && (!acceptedById || acceptedById === actor.id)) {
     seenColumn = "last_seen_by_support_at";
   } else {
@@ -1227,5 +1362,161 @@ export async function getSupportChatMetrics(userId?: string) {
     })),
     slaMinutes: SLA_MINUTES,
   };
+}
+
+function roleIsModerate(role: UserRole): boolean {
+  return role === UserRole.Admin || role === UserRole.Support;
+}
+
+/** Clientul (non-support) apare ca requester în UI; support/staff „preluat” în accepted_by. */
+function pickRequesterAndAccepted(
+  actorId: string,
+  actorRole: UserRole,
+  friendId: string,
+  friendRole: UserRole
+): { requester: string; accepted: string } {
+  const actorMod = roleIsModerate(actorRole);
+  const friendMod = roleIsModerate(friendRole);
+  if (!actorMod && friendMod) return { requester: actorId, accepted: friendId };
+  if (actorMod && !friendMod) return { requester: friendId, accepted: actorId };
+  return { requester: actorId, accepted: friendId };
+}
+
+/** Găsește sau creează un chat support între doi utilizatori care sunt prieteni. */
+export async function ensureChatWithFriend(userId: string | undefined, friendUserIdRaw: unknown): Promise<{ ok: true; chatId: string; created: boolean }> {
+  const actor = await getActor(userId);
+  const friendId = String(friendUserIdRaw ?? "").trim();
+  if (!friendId) throw new ServiceError("ID lipsă.", 400);
+  if (friendId === actor.id) throw new ServiceError("Invalid.", 400);
+
+  const { areUsersFriends } = await import("./friendService");
+  if (!(await areUsersFriends(actor.id, friendId))) {
+    throw new ServiceError("Utilizatorul nu este în lista ta de prieteni.", 403);
+  }
+
+  const friend = await prisma.users.findUnique({ where: { Id: friendId }, select: { Email: true, Role: true, IsActive: true } });
+  if (!friend?.IsActive) throw new ServiceError("Utilizator negăsit sau inactiv.", 404);
+
+  const actorRow = await prisma.users.findUnique({ where: { Id: actor.id }, select: { Role: true } });
+  if (!actorRow) throw new ServiceError("Unauthorized", 401);
+  const actorRole = actorRow.Role as UserRole;
+  const friendRole = friend.Role as UserRole;
+
+  const existing = await prisma.$queryRaw<Array<{ id: number }>>`
+    SELECT id FROM support_chats
+    WHERE status IN ('open', 'accepted')
+      AND deleted_by_requester_at IS NULL
+      AND deleted_by_support_at IS NULL
+      AND (
+        (requester_user_id = ${actor.id} AND accepted_by_user_id = ${friendId})
+        OR (requester_user_id = ${friendId} AND accepted_by_user_id = ${actor.id})
+      )
+    ORDER BY updated_at DESC
+    LIMIT 1
+  `;
+  if (existing.length > 0) {
+    return { ok: true, chatId: String(existing[0].id), created: false };
+  }
+
+  const { requester, accepted } = pickRequesterAndAccepted(actor.id, actorRole, friendId, friendRole);
+  const reqUser = await prisma.users.findUnique({
+    where: { Id: requester },
+    select: { Email: true, Role: true },
+  });
+  const accUser = await prisma.users.findUnique({
+    where: { Id: accepted },
+    select: { Email: true, Role: true },
+  });
+  if (!reqUser || !accUser) throw new ServiceError("Eroare la crearea chatului.", 500);
+
+  const reqEmail = reqUser.Email ?? "";
+  const accEmail = accUser.Email ?? "";
+  const reqRoleStr = userRoleToString(reqUser.Role as UserRole);
+
+  await prisma.$executeRaw`
+    INSERT INTO support_chats (
+      requester_user_id,
+      requester_email,
+      requester_role,
+      status,
+      accepted_by_user_id,
+      accepted_by_email,
+      updated_at
+    ) VALUES (
+      ${requester},
+      ${reqEmail},
+      ${reqRoleStr},
+      ${"accepted"},
+      ${accepted},
+      ${accEmail},
+      CURRENT_TIMESTAMP
+    )
+  `;
+  const ins = await prisma.$queryRaw<Array<{ id: number }>>`SELECT LAST_INSERT_ID() AS id`;
+  const chatId = Number(ins[0]?.id ?? 0);
+  if (chatId <= 0) throw new ServiceError("Nu am putut crea chatul.", 500);
+
+  await logSupportChatAudit(chatId, actor, "friend_chat_ensure", { friendUserId: friendId });
+  publishSupportChatEvent({ type: "chat_updated", chatId: String(chatId), reason: "accept" });
+
+  return { ok: true, chatId: String(chatId), created: true };
+}
+
+const VOICE_SIGNAL_TYPES = new Set(["offer", "answer", "ice", "hangup", "reject"]);
+
+export async function relayVoiceCallSignal(
+  userId: string | undefined,
+  chatIdRaw: string,
+  body: { signalType?: string; payload?: unknown }
+) {
+  const actor = await getActor(userId);
+  if (canModerate(actor.role)) {
+    throw new ServiceError("Apelurile vocale nu sunt disponibile pentru contul support.", 403);
+  }
+  const chatId = Number(chatIdRaw);
+  if (!Number.isFinite(chatId) || chatId <= 0) throw new ServiceError("Chat invalid.", 400);
+  const signalType = String(body.signalType ?? "").trim().toLowerCase();
+  if (!VOICE_SIGNAL_TYPES.has(signalType)) throw new ServiceError("Tip semnal invalid.", 400);
+
+  const rows = await prisma.$queryRaw<Array<{ requester_user_id: string | null; accepted_by_user_id: string | null; requester_role: string | null }>>`
+    SELECT requester_user_id, accepted_by_user_id, requester_role
+    FROM support_chats
+    WHERE id = ${chatId}
+    LIMIT 1
+  `;
+  if (!rows.length) throw new ServiceError("Chat negăsit.", 404);
+  const chat = rows[0];
+  const reqId = chat.requester_user_id ? String(chat.requester_user_id) : "";
+  const accId = chat.accepted_by_user_id ? String(chat.accepted_by_user_id) : "";
+  if (!reqId || !accId) {
+    throw new ServiceError("Apelul vocal este disponibil doar în conversațiile dintre utilizatori (nu în solicitările de support în așteptare).", 400);
+  }
+  const my = actor.id;
+  if (my !== reqId && my !== accId) throw new ServiceError("Nu ai acces la acest chat.", 403);
+  const peerId = my === reqId ? accId : reqId;
+
+  const reqRole = String(chat.requester_role ?? "").toLowerCase();
+  if (reqRole === "support" || reqRole === "admin") {
+    throw new ServiceError("Apelurile vocale nu sunt disponibile pentru acest chat.", 403);
+  }
+  const peerUser = await prisma.users.findUnique({ where: { Id: peerId }, select: { Role: true } });
+  if (!peerUser) throw new ServiceError("Utilizator negăsit.", 404);
+  const peerRole = userRoleToString(peerUser.Role as UserRole);
+  if (peerRole === "support" || peerRole === "admin") {
+    throw new ServiceError("Apelurile vocale nu sunt disponibile pentru acest chat.", 403);
+  }
+
+  publishSupportChatEvent(
+    {
+      type: "voice_call_signal",
+      chatId: String(chatId),
+      fromUserId: my,
+      signalType: signalType as "offer" | "answer" | "ice" | "hangup" | "reject",
+      payload: body.payload ?? null,
+      at: new Date().toISOString(),
+    },
+    [peerId]
+  );
+  return { ok: true as const };
 }
 

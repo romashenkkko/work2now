@@ -2,6 +2,14 @@ import { useEffect, useMemo, useState } from "react";
 import { MessageCircle, Send } from "lucide-react";
 import { authApi } from "../api/client";
 import { useAuth } from "../hooks/useAuth";
+import {
+  DEFAULT_AVATAR_URL,
+  SUPPORT_AVATAR_URL,
+  avatarSrc,
+  isSupportTicketChat,
+  peerAvatarUrlForSidebar,
+} from "../lib/supportChatPeerUi";
+import { maybePlayIncomingMessageSound } from "../lib/playChatSounds";
 
 type ChatMessage = {
   id: string;
@@ -13,6 +21,7 @@ type ChatMessage = {
 
 type ChatItem = {
   id: string;
+  requesterUserId?: string;
   requesterEmail: string;
   requesterDisplayName?: string;
   requesterRole: string;
@@ -20,31 +29,20 @@ type ChatItem = {
   status: "open" | "accepted" | "closed";
   priority?: "low" | "normal" | "high" | "urgent";
   escalationLevel?: "none" | "level_1" | "level_2" | "critical";
+  acceptedByUserId?: string | null;
   acceptedByEmail?: string | null;
   acceptedByDisplayName?: string | null;
   acceptedByAvatar?: string | null;
+  acceptedByRole?: string | null;
   messages?: ChatMessage[];
   updatedAt?: string | null;
 };
-
-const SUPPORT_AVATAR_URL = "/Illustration/SupportAvatar.png";
-const DEFAULT_AVATAR_URL = "/Illustration/AvatarWhiteGuy.png";
 
 function nameFromEmail(email?: string | null): string {
   const raw = String(email ?? "").trim();
   if (!raw) return "User";
   const left = raw.split("@")[0] || raw;
   return left.replace(/[._-]+/g, " ").trim() || "User";
-}
-
-function avatarSrc(url?: string | null): string | undefined {
-  const s = String(url ?? "").trim();
-  if (!s) return undefined;
-  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(s)) return "/Illustration/AvatarWhiteGuy.png";
-  if (s.startsWith("data:") || s.startsWith("http://") || s.startsWith("https://")) return s;
-  if (s.startsWith("/")) return typeof window !== "undefined" ? `${window.location.origin}${s}` : s;
-  if (s.startsWith("uploads/")) return typeof window !== "undefined" ? `${window.location.origin}/${s}` : `/${s}`;
-  return s;
 }
 
 export default function SupportChatWidget({ forceOpen = false, hideFloatingButton = false }: { forceOpen?: boolean; hideFloatingButton?: boolean }) {
@@ -70,6 +68,10 @@ export default function SupportChatWidget({ forceOpen = false, hideFloatingButto
   }, [selectedChatId, myChats, inboxChats]);
   const isSelectedClosed = selectedChat?.status === "closed";
   const isWaitingSupportAccept = !!selectedChat && !isSupport && selectedChat.status === "open" && !selectedChat.acceptedByEmail;
+  const selectedIsSupportTicket = useMemo(
+    () => (selectedChat ? isSupportTicketChat(selectedChat) : false),
+    [selectedChat]
+  );
 
   const load = async () => {
     if (!user) return;
@@ -115,7 +117,15 @@ export default function SupportChatWidget({ forceOpen = false, hideFloatingButto
         setSseStatus("connected");
         retryDelayMs = 1000;
       };
-      es.addEventListener("support_chat_event", () => {
+      es.addEventListener("support_chat_event", (ev) => {
+        try {
+          const payload = JSON.parse((ev as MessageEvent).data || "{}");
+          if (payload?.type === "chat_updated" && payload?.reason === "message") {
+            maybePlayIncomingMessageSound(payload, user?.id !== undefined ? String(user.id) : undefined);
+          }
+        } catch {
+          // ignore
+        }
         void load();
       });
       es.onerror = () => {
@@ -272,7 +282,7 @@ export default function SupportChatWidget({ forceOpen = false, hideFloatingButto
           <div className="p-4 border-b border-gray-100 flex items-center justify-between">
             <div>
               <div className="flex items-center gap-2">
-                <h3 className="text-base font-semibold text-gray-900">Support chat</h3>
+                <h3 className="text-base font-semibold text-gray-900">{isSupport ? "Support chat" : "Mesaje"}</h3>
                 <span
                   className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${
                     sseStatus === "connected" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"
@@ -281,7 +291,9 @@ export default function SupportChatWidget({ forceOpen = false, hideFloatingButto
                   {sseStatus === "connected" ? "connected" : "reconnecting..."}
                 </span>
               </div>
-              <p className="text-xs text-gray-500">{isSupport ? "Inbox support + chaturi active" : "Solicitare și conversație cu support"}</p>
+              <p className="text-xs text-gray-500">
+                {isSupport ? "Inbox support + chaturi active" : "Conversații cu prietenii și solicitări către echipa de support"}
+              </p>
               <button
                 type="button"
                 className="mt-1 rounded border border-gray-200 px-2 py-0.5 text-[10px] text-gray-600"
@@ -341,14 +353,20 @@ export default function SupportChatWidget({ forceOpen = false, hideFloatingButto
                         </div>
                         <div className="text-xs text-gray-700 truncate">{c.requesterDisplayName || nameFromEmail(c.requesterEmail) || "user"}</div>
                       </div>
-                      <div className="text-[11px] text-gray-500">Status: {c.status}</div>
-                      <div className="text-[11px] text-gray-500">Priority: {c.priority ?? "normal"}</div>
-                      <div className="text-[11px] text-gray-500">Escalation: {c.escalationLevel ?? "none"}</div>
+                      {(isSupportTicketChat(c) || c.status === "closed") && (
+                        <div className="text-[11px] text-gray-500">Status: {c.status}</div>
+                      )}
+                      {isSupportTicketChat(c) && (
+                        <>
+                          <div className="text-[11px] text-gray-500">Priority: {c.priority ?? "normal"}</div>
+                          <div className="text-[11px] text-gray-500">Escalation: {c.escalationLevel ?? "none"}</div>
+                        </>
+                      )}
                       <div className="mt-1 flex gap-2">
                         <button className="rounded border border-gray-200 px-2 py-1 text-[11px]" onClick={() => setSelectedChatId(c.id)}>
                           Deschide
                         </button>
-                        {c.status === "open" && (
+                        {c.status === "open" && isSupportTicketChat(c) && (
                           <button className="rounded border border-primary/30 px-2 py-1 text-[11px] text-primary" onClick={() => void acceptChat(c.id)}>
                             Acceptă
                           </button>
@@ -372,17 +390,30 @@ export default function SupportChatWidget({ forceOpen = false, hideFloatingButto
                   <div className="flex items-center gap-2">
                     <div className="h-7 w-7 rounded-full bg-primary/15 text-primary text-[10px] font-semibold flex items-center justify-center overflow-hidden">
                       <img
-                        src={avatarSrc(isSupport ? c.requesterAvatar : SUPPORT_AVATAR_URL) || DEFAULT_AVATAR_URL}
+                        src={
+                          avatarSrc(
+                            isSupport
+                              ? c.requesterAvatar
+                              : peerAvatarUrlForSidebar(c, String(user?.id ?? ""), false)
+                          ) || DEFAULT_AVATAR_URL
+                        }
                         alt={(isSupport ? c.requesterEmail : c.acceptedByEmail) || "avatar"}
                         className="h-full w-full object-cover"
                       />
                     </div>
                     <div className="text-xs text-gray-700 truncate">
-                      #{c.id} {isSupport ? c.requesterDisplayName || nameFromEmail(c.requesterEmail) : c.acceptedByDisplayName || nameFromEmail(c.acceptedByEmail) || "Support"}
+                      #{c.id}{" "}
+                      {isSupport
+                        ? c.requesterDisplayName || nameFromEmail(c.requesterEmail)
+                        : c.acceptedByDisplayName || nameFromEmail(c.acceptedByEmail) || (isSupportTicketChat(c) ? "Support" : "Utilizator")}
                     </div>
                   </div>
-                  <div className="text-[11px] text-gray-500">Status: {c.status}</div>
-                  <div className="text-[11px] text-gray-500">Priority: {c.priority ?? "normal"}</div>
+                  {(isSupportTicketChat(c) || c.status === "closed") && (
+                    <div className="text-[11px] text-gray-500">Status: {c.status}</div>
+                  )}
+                  {isSupportTicketChat(c) && (
+                    <div className="text-[11px] text-gray-500">Priority: {c.priority ?? "normal"}</div>
+                  )}
                   </button>
                   {isSupport && c.status === "closed" && (
                     <button
@@ -415,8 +446,15 @@ export default function SupportChatWidget({ forceOpen = false, hideFloatingButto
                         {(() => {
                           const mine = m.senderEmail.toLowerCase() === (user?.email ?? "").toLowerCase();
                           const src = mine
-                            ? avatarSrc(isSupport ? SUPPORT_AVATAR_URL : user?.avatar) || (isSupport ? SUPPORT_AVATAR_URL : DEFAULT_AVATAR_URL)
-                            : avatarSrc(isSupport ? selectedChat?.requesterAvatar : SUPPORT_AVATAR_URL) || DEFAULT_AVATAR_URL;
+                            ? avatarSrc(isSupport && selectedIsSupportTicket ? SUPPORT_AVATAR_URL : user?.avatar) ||
+                              (isSupport && selectedIsSupportTicket ? SUPPORT_AVATAR_URL : DEFAULT_AVATAR_URL)
+                            : avatarSrc(
+                                isSupport
+                                  ? selectedChat?.requesterAvatar
+                                  : selectedChat
+                                    ? peerAvatarUrlForSidebar(selectedChat, String(user?.id ?? ""), false)
+                                    : undefined
+                              ) || DEFAULT_AVATAR_URL;
                           return <img src={src} alt={m.senderEmail || "avatar"} className="h-full w-full object-cover" />;
                         })()}
                       </div>

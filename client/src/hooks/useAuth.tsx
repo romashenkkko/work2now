@@ -8,6 +8,7 @@ const AuthContext = createContext<{
   user: User;
   loading: boolean;
   login: (email: string, password: string) => Promise<User>;
+  loginWithToken: (token: string) => Promise<User>;
   logout: () => void;
   setUser: (u: User) => void;
   refreshUser: () => Promise<void>;
@@ -68,6 +69,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return userWithActive;
   };
 
+  const loginWithToken = async (token: string): Promise<User> => {
+    localStorage.setItem("token", token);
+    const u = await authApi.me();
+    const userWithActive = { ...u, isActive: u.isActive !== false };
+    setUser(userWithActive);
+    return userWithActive;
+  };
+
   const logout = () => {
     authApi.logout().catch(() => {});
     localStorage.removeItem("token");
@@ -84,7 +93,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const isBlocked = user && user.isActive === false;
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout, setUser, refreshUser }}>
+    <AuthContext.Provider value={{ user, loading, login, loginWithToken, logout, setUser, refreshUser }}>
       {isBlocked ? <BlockedAccountModal onLogout={logout} /> : children}
     </AuthContext.Provider>
   );
