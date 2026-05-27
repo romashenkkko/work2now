@@ -2,7 +2,13 @@ import { useContext, useState, useEffect, useRef, useCallback, useMemo } from "r
 import { useTranslation } from "react-i18next";
 import { useAuth } from "../hooks/useAuth";
 import { DashboardContext, getApplications, setApplications, type JobRow, type Application, type JobType } from "./DashboardLayout";
-import { jobsApi } from "../api/client";
+import { jobsApi, type JobPaymentReservationStatusResponse } from "../api/client";
+import {
+  canRetryJobReservationPublish,
+  jobPublishStatusClassName,
+  jobPublishStatusLabel,
+  jobPublishUiState,
+} from "../utils/applicationPayouts";
 import JobsMapModal from "../components/JobsMapModal";
 import JobScheduleModal from "../components/JobScheduleModal";
 import CustomerProfileModal from "../components/CustomerProfileModal";
@@ -51,7 +57,10 @@ function getCardDisplayTotal(row: JobRow, viewerIsStaff: boolean): number | null
 export default function DashboardJoburi() {
   const { t } = useTranslation();
   const { user } = useAuth();
-  const { jobsAdded, openPostJobModal, removeJob } = useContext(DashboardContext);
+  const { jobsAdded, openPostJobModal, removeJob, refreshJobs } = useContext(DashboardContext);
+  const [reservationByJobId, setReservationByJobId] = useState<Record<string, JobPaymentReservationStatusResponse>>({});
+  const [publishLoadingId, setPublishLoadingId] = useState<string | null>(null);
+  const [publishError, setPublishError] = useState<string | null>(null);
   const [showMapModal, setShowMapModal] = useState(false);
   const [scheduleJob, setScheduleJob] = useState<JobRow | null>(null);
   const [customerProfileModal, setCustomerProfileModal] = useState<{
@@ -110,6 +119,104 @@ export default function DashboardJoburi() {
     if (!isCustomer) return;
     loadCustomerApplications();
   }, [isCustomer, loadCustomerApplications]);
+
+  const pollableJobIds = useMemo(() => {
+    if (!isCustomer) return [];
+    return jobs
+      .filter((row) => {
+        const st = String(row.status ?? "").trim().toLowerCase();
+        return st === "draft" || st === "open";
+      })
+      .map((row) => String(row.id ?? "").trim())
+      .filter((id) => id.length > 0);
+  }, [isCustomer, jobs]);
+
+  useEffect(() => {
+    if (!isCustomer || pollableJobIds.length === 0) return;
+    let cancelled = false;
+    let timerId: number | null = null;
+
+    const syncReservations = async () => {
+      try {
+        const results = await Promise.all(
+          pollableJobIds.map(async (jobId) => {
+            try {
+              const data = await jobsApi.getJobPaymentReservation(jobId);
+              return { jobId, data };
+            } catch {
+              return null;
+            }
+          })
+        );
+        if (cancelled) return;
+        const next: Record<string, JobPaymentReservationStatusResponse> = {};
+        results.forEach((item) => {
+          if (!item) return;
+          next[item.jobId] = item.data;
+        });
+        if (Object.keys(next).length > 0) {
+          setReservationByJobId((prev) => ({ ...prev, ...next }));
+          const anyOpened = Object.values(next).some(
+            (r) => String(r.jobStatus ?? "").trim().toLowerCase() === "open"
+          );
+          if (anyOpened) refreshJobs();
+        }
+      } finally {
+        if (!cancelled) {
+          timerId = window.setTimeout(syncReservations, 8000);
+        }
+      }
+    };
+
+    syncReservations();
+    return () => {
+      cancelled = true;
+      if (timerId !== null) window.clearTimeout(timerId);
+    };
+  }, [isCustomer, pollableJobIds, refreshJobs]);
+
+  const redirectToPaynetIfNeeded = (redirectUrl: string | null | undefined) => {
+    const url = redirectUrl?.trim();
+    if (url) {
+      window.location.assign(url);
+      return true;
+    }
+    return false;
+  };
+
+  const handlePublishAndReserve = async (jobId: string) => {
+    if (publishLoadingId) return;
+    setPublishLoadingId(jobId);
+    setPublishError(null);
+    try {
+      const res = await jobsApi.publishAndReserve(jobId);
+      if (redirectToPaynetIfNeeded(res.paynet?.redirectUrl)) return;
+      const status = await jobsApi.getJobPaymentReservation(jobId);
+      setReservationByJobId((prev) => ({ ...prev, [jobId]: status }));
+      refreshJobs();
+    } catch (err) {
+      setPublishError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setPublishLoadingId(null);
+    }
+  };
+
+  const handleRetryReservationPayment = async (jobId: string) => {
+    if (publishLoadingId) return;
+    setPublishLoadingId(jobId);
+    setPublishError(null);
+    try {
+      const res = await jobsApi.retryJobPaymentReservation(jobId);
+      if (redirectToPaynetIfNeeded(res.redirectUrl)) return;
+      const status = await jobsApi.getJobPaymentReservation(jobId);
+      setReservationByJobId((prev) => ({ ...prev, [jobId]: status }));
+      refreshJobs();
+    } catch (err) {
+      setPublishError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setPublishLoadingId(null);
+    }
+  };
 
   /** Customer: derive "in_process" | "finished" and first check-in time for a job. */
   const getCustomerJobStatus = (jobId: string): { status: "in_process" | "finished" | null; firstCheckedInAt?: string } => {
@@ -1184,6 +1291,12 @@ export default function DashboardJoburi() {
         {/* Harta (joburi + locația mea) – doar pentru staff; customer nu o vede */}
       </header>
 
+      {publishError && (
+        <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {publishError}
+        </div>
+      )}
+
       {(() => {
         const visibleCustomerJobs = jobs.filter((row) => {
           // Only customers use the jobs list; staff sees an empty list here.
@@ -1349,6 +1462,61 @@ export default function DashboardJoburi() {
                         <p className="text-sm font-semibold text-gray-900 truncate">{name}</p>
                         <span className="inline-flex w-fit px-2 py-0.5 rounded-full text-xs font-medium bg-primary/15 text-primary border border-primary/25">{t("dashboard.roleStaff")}</span>
                       </div>
+                    </div>
+                  );
+                })()}
+
+                {isCustomer && row.id && (() => {
+                  const reservation = reservationByJobId[String(row.id)];
+                  const publishState = jobPublishUiState(
+                    reservation?.jobStatus ?? row.status,
+                    reservation?.reservation?.status ?? null
+                  );
+                  const isDraftLike = publishState === "draft" || publishState === "reservation_pending" || publishState === "reservation_failed";
+                  if (!isDraftLike && publishState !== "open") return null;
+                  return (
+                    <div
+                      className="mt-3 pt-3 border-t border-gray-100 space-y-2"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${jobPublishStatusClassName(publishState)}`}>
+                        {jobPublishStatusLabel(publishState, t)}
+                      </span>
+                      {reservation?.publishBlockedReason && (
+                        <p className="text-xs text-red-600">{reservation.publishBlockedReason}</p>
+                      )}
+                      {reservation?.reservation?.lastError && (
+                        <p className="text-xs text-red-600">{reservation.reservation.lastError}</p>
+                      )}
+                      {(publishState === "draft" || publishState === "reservation_failed") && (
+                        <button
+                          type="button"
+                          disabled={!!publishLoadingId}
+                          onClick={() => handlePublishAndReserve(String(row.id))}
+                          className="w-full py-2 rounded-xl bg-primary text-white text-sm font-semibold hover:bg-primary-dark disabled:opacity-50"
+                        >
+                          {publishLoadingId === String(row.id)
+                            ? t("dashboard.loading", "Loading...")
+                            : t("dashboard.publishAndReserve", "Publish and reserve payment")}
+                        </button>
+                      )}
+                      {canRetryJobReservationPublish(publishState) && publishState !== "draft" && publishState !== "reservation_failed" && (
+                        <button
+                          type="button"
+                          disabled={publishLoadingId === String(row.id)}
+                          onClick={() => handleRetryReservationPayment(String(row.id))}
+                          className="w-full py-2 rounded-xl border border-primary/30 bg-primary/5 text-primary text-sm font-semibold hover:bg-primary/10 disabled:opacity-50"
+                        >
+                          {publishLoadingId === String(row.id)
+                            ? t("dashboard.loading", "Loading...")
+                            : t("dashboard.retryReservationPayment", "Continue / retry payment")}
+                        </button>
+                      )}
+                      {publishState === "reservation_pending" && publishLoadingId !== String(row.id) && (
+                        <p className="text-xs text-gray-500">
+                          {t("dashboard.reservationPendingHint", "Complete payment on Paynet to publish this job.")}
+                        </p>
+                      )}
                     </div>
                   );
                 })()}

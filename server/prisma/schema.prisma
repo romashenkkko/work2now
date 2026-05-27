@@ -66,12 +66,85 @@ model applications {
   created_at                DateTime                    @default(now()) @db.Timestamp(0)
   business_confirmed_at     DateTime?                   @db.Timestamp(0)
   application_work_sessions application_work_sessions[]
+  application_payments      application_payments?
+  application_payout        application_payouts?
   jobs                      jobs                        @relation(fields: [job_id], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "fk_applications_job_id_jobs_id")
   users                     users?                      @relation(fields: [staff_id], references: [Id], onUpdate: Restrict, map: "fk_applications_staff_id_users_id")
   ratings                   ratings[]
 
   @@index([job_id], map: "idx_app_job_id")
   @@index([staff_id], map: "idx_app_staff_id")
+}
+
+model application_payments {
+  id                                        Int                        @id @default(autoincrement()) @db.UnsignedInt
+  application_id                            Int                        @unique(map: "uq_application_payments_application_id") @db.UnsignedInt
+  job_id                                    Int                        @db.UnsignedInt
+  customer_user_id                          String                     @db.Char(36)
+  staff_user_id                             String                     @db.Char(36)
+  currency                                  String                     @default("MDL") @db.VarChar(10)
+  hourly_rate_snapshot                      Decimal                    @db.Decimal(10, 2)
+  worked_minutes                            Int                        @db.UnsignedInt
+  amount_due                                Decimal                    @db.Decimal(10, 2)
+  status                                    application_payment_status @default(draft)
+  provider                                  String                     @default("paynet") @db.VarChar(20)
+  paynet_order_id                           String?                    @unique(map: "uq_application_payments_paynet_order_id") @db.VarChar(100)
+  paynet_transaction_id                     String?                    @unique(map: "uq_application_payments_paynet_transaction_id") @db.VarChar(100)
+  customer_confirmed_at                     DateTime?                  @db.Timestamp(0)
+  payment_started_at                        DateTime?                  @db.Timestamp(0)
+  paid_at                                   DateTime?                  @db.Timestamp(0)
+  failed_at                                 DateTime?                  @db.Timestamp(0)
+  last_error                                String?                    @db.Text
+  created_at                                DateTime                   @default(now()) @db.Timestamp(0)
+  updated_at                                DateTime                   @default(now()) @db.Timestamp(0)
+  applications                              applications               @relation(fields: [application_id], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "fk_application_payments_application_id_applications_id")
+  jobs                                      jobs                       @relation(fields: [job_id], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_application_payments_job_id_jobs_id")
+  users_application_payments_customer_users users                      @relation("application_payments_customer_user_idTousers", fields: [customer_user_id], references: [Id], onDelete: Restrict, onUpdate: Restrict, map: "fk_application_payments_customer_user_id_users_id")
+  users_application_payments_staff_users    users                      @relation("application_payments_staff_user_idTousers", fields: [staff_user_id], references: [Id], onDelete: Restrict, onUpdate: Restrict, map: "fk_application_payments_staff_user_id_users_id")
+  paynet_webhook_events                     paynet_webhook_events[]
+
+  @@index([job_id], map: "idx_application_payments_job_id")
+  @@index([customer_user_id], map: "idx_application_payments_customer_user_id")
+  @@index([staff_user_id], map: "idx_application_payments_staff_user_id")
+  @@index([status], map: "idx_application_payments_status")
+}
+
+model paynet_webhook_events {
+  id                     Int                  @id @default(autoincrement()) @db.UnsignedInt
+  provider               String               @default("paynet") @db.VarChar(20)
+  provider_event_id      String               @unique(map: "uq_paynet_webhook_events_provider_event_id") @db.VarChar(100)
+  paynet_order_id        String?              @db.VarChar(100)
+  application_payment_id Int                  @db.UnsignedInt
+  event_type             String               @db.VarChar(100)
+  signature_valid        Boolean              @default(false)
+  processing_status      String               @default("received") @db.VarChar(30)
+  raw_payload            String               @db.MediumText
+  received_at            DateTime             @default(now()) @db.Timestamp(0)
+  processed_at           DateTime?            @db.Timestamp(0)
+  error_message          String?              @db.Text
+  application_payments   application_payments @relation(fields: [application_payment_id], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "fk_pwe_app_payment_id_app_payments_id")
+
+  @@index([application_payment_id], map: "idx_paynet_webhook_events_application_payment_id")
+  @@index([paynet_order_id], map: "idx_paynet_webhook_events_paynet_order_id")
+  @@index([received_at], map: "idx_paynet_webhook_events_received_at")
+}
+
+model payment_idempotency_keys {
+  id              Int      @id @default(autoincrement()) @db.UnsignedInt
+  actor_user_id   String   @db.Char(36)
+  scope           String   @db.VarChar(80)
+  idempotency_key String   @db.VarChar(100)
+  request_hash    String   @db.VarChar(128)
+  response_status Int?
+  response_body   String?  @db.MediumText
+  expires_at      DateTime @db.Timestamp(0)
+  created_at      DateTime @default(now()) @db.Timestamp(0)
+  users           users    @relation(fields: [actor_user_id], references: [Id], onDelete: Cascade, onUpdate: Restrict, map: "fk_payment_idempotency_keys_actor_user_id_users_id")
+
+  @@unique([actor_user_id, scope, idempotency_key], map: "uq_payment_idempotency_keys_actor_scope_key")
+  @@index([actor_user_id], map: "idx_payment_idempotency_keys_actor_user_id")
+  @@index([scope], map: "idx_payment_idempotency_keys_scope")
+  @@index([expires_at], map: "idx_payment_idempotency_keys_expires_at")
 }
 
 model branches {
@@ -236,40 +309,47 @@ model job_categories {
 }
 
 model jobs {
-  id                 Int             @id @default(autoincrement()) @db.UnsignedInt
-  user_id            String?         @db.Char(36)
-  location           String?         @db.Text
-  status             String          @default("Draft") @db.VarChar(50)
-  status_class       String          @default("bg-gray-100 text-gray-700") @db.VarChar(100)
-  date               String          @db.VarChar(50)
-  end_date           String?         @db.VarChar(50)
-  job_type           String?         @db.VarChar(30)
-  applications_count Int             @default(0) @db.UnsignedInt
-  start_time         String?         @db.VarChar(20)
-  end_time           String?         @db.VarChar(20)
-  people_needed      String?         @db.VarChar(50)
-  duration           String?         @db.VarChar(100)
-  estimated_salary   String?         @db.VarChar(100)
-  image_url          String?         @db.Text
-  gallery_image_urls String?         @db.Text
+  id                      Int                       @id @default(autoincrement()) @db.UnsignedInt
+  user_id                 String?                   @db.Char(36)
+  location                String?                   @db.Text
+  status                  String                    @default("Draft") @db.VarChar(50)
+  status_class            String                    @default("bg-gray-100 text-gray-700") @db.VarChar(100)
+  date                    String                    @db.VarChar(50)
+  end_date                String?                   @db.VarChar(50)
+  job_type                String?                   @db.VarChar(30)
+  applications_count      Int                       @default(0) @db.UnsignedInt
+  start_time              String?                   @db.VarChar(20)
+  end_time                String?                   @db.VarChar(20)
+  people_needed           String?                   @db.VarChar(50)
+  duration                String?                   @db.VarChar(100)
+  estimated_salary        String?                   @db.VarChar(100)
+  image_url               String?                   @db.Text
+  gallery_image_urls      String?                   @db.Text
   /// JSON job attachments: [{"url":"/api/jobs/attachments/...","name":"file.pdf"}, ...]
-  attachment_urls    String?         @db.Text
-  created_at         DateTime        @default(now()) @db.Timestamp(0)
-  check_in_lat       Float?
-  check_in_lng       Float?
-  check_in_radius_m  Int?
-  job_category_code  Int?
-  hourly_rate_base   Decimal?        @db.Decimal(10, 2)
-  Title              String          @db.VarChar(30)
-  is_promoted        Boolean         @default(false)
-  raion_id           Int?            @db.UnsignedInt
-  localitate         String?         @db.VarChar(200)
-  branch_id          String?         @db.Char(36)
-  applications       applications[]
-  job_categories     job_categories? @relation(fields: [job_category_code], references: [Code], onUpdate: Restrict, map: "fk_jobs_job_category_code_job_categories_code")
-  raioane            raioane?        @relation(fields: [raion_id], references: [id], onUpdate: Restrict, map: "fk_jobs_raion_id_raioane_id")
-  users              users?          @relation(fields: [user_id], references: [Id], onUpdate: Restrict, map: "fk_jobs_user_id_users_id")
-  branches           branches?       @relation(fields: [branch_id], references: [Id], onDelete: SetNull, onUpdate: Restrict, map: "fk_jobs_branch_id_branches_id")
+  attachment_urls         String?                   @db.Text
+  created_at              DateTime                  @default(now()) @db.Timestamp(0)
+  check_in_lat            Float?
+  check_in_lng            Float?
+  check_in_radius_m       Int?
+  job_category_code       Int?
+  hourly_rate_base        Decimal?                  @db.Decimal(10, 2)
+  Title                   String                    @db.VarChar(30)
+  is_promoted             Boolean                   @default(false)
+  raion_id                Int?                      @db.UnsignedInt
+  localitate              String?                   @db.VarChar(200)
+  branch_id               String?                   @db.Char(36)
+  /// Set when Paynet reservation fails or publish is blocked; cleared on successful publish.
+  publish_blocked_reason  String?                   @db.Text
+  /// When the job became live (Open) after verified reservation webhook.
+  published_at            DateTime?                 @db.Timestamp(0)
+  applications            applications[]
+  application_payments    application_payments[]
+  job_payment_reservation job_payment_reservations?
+  application_payouts     application_payouts[]
+  job_categories          job_categories?           @relation(fields: [job_category_code], references: [Code], onUpdate: Restrict, map: "fk_jobs_job_category_code_job_categories_code")
+  raioane                 raioane?                  @relation(fields: [raion_id], references: [id], onUpdate: Restrict, map: "fk_jobs_raion_id_raioane_id")
+  users                   users?                    @relation(fields: [user_id], references: [Id], onUpdate: Restrict, map: "fk_jobs_user_id_users_id")
+  branches                branches?                 @relation(fields: [branch_id], references: [Id], onDelete: SetNull, onUpdate: Restrict, map: "fk_jobs_branch_id_branches_id")
 
   @@index([job_category_code], map: "fk_jobs_job_category_code_job_categories_code")
   @@index([raion_id], map: "idx_jobs_raion_id")
@@ -359,6 +439,157 @@ model reviews {
   @@index([created_at], map: "idx_reviews_created_at")
 }
 
+model job_payment_reservations {
+  id                                            Int                      @id @default(autoincrement()) @db.UnsignedInt
+  job_id                                        Int                      @unique(map: "uq_job_payment_reservations_job_id") @db.UnsignedInt
+  customer_user_id                              String                   @db.Char(36)
+  provider                                      payment_provider         @default(paynet)
+  currency                                      String                   @default("MDL") @db.VarChar(10)
+  planned_minutes_snapshot                      Int                      @db.UnsignedInt
+  hourly_rate_snapshot                          Decimal                  @db.Decimal(10, 2)
+  reserved_amount                               Decimal                  @db.Decimal(10, 2)
+  status                                        reservation_status       @default(draft)
+  paynet_order_id                               String?                  @unique(map: "uq_job_payment_reservations_paynet_order_id") @db.VarChar(100)
+  paynet_transaction_id                         String?                  @unique(map: "uq_job_payment_reservations_paynet_transaction_id") @db.VarChar(100)
+  reserved_at                                   DateTime?                @db.Timestamp(0)
+  reservation_expires_at                        DateTime?                @db.Timestamp(0)
+  released_at                                   DateTime?                @db.Timestamp(0)
+  refunded_at                                   DateTime?                @db.Timestamp(0)
+  last_error                                    String?                  @db.Text
+  created_at                                    DateTime                 @default(now()) @db.Timestamp(0)
+  updated_at                                    DateTime                 @default(now()) @db.Timestamp(0)
+  jobs                                          jobs                     @relation(fields: [job_id], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "fk_job_payment_reservations_job_id_jobs_id")
+  users_job_payment_reservations_customer_users users                    @relation("job_payment_reservations_customer_user_idTousers", fields: [customer_user_id], references: [Id], onDelete: Restrict, onUpdate: Restrict, map: "fk_job_payment_reservations_customer_user_id_users_id")
+  payment_webhook_events                        payment_webhook_events[]
+  application_payouts                           application_payouts[]
+
+  @@index([customer_user_id], map: "idx_job_payment_reservations_customer_user_id")
+  @@index([status], map: "idx_job_payment_reservations_status")
+  @@index([provider], map: "idx_job_payment_reservations_provider")
+}
+
+model application_payouts {
+  id                                             Int                       @id @default(autoincrement()) @db.UnsignedInt
+  job_payment_reservation_id                     Int                       @db.UnsignedInt
+  job_id                                         Int                       @db.UnsignedInt
+  application_id                                 Int                       @unique(map: "uq_application_payouts_application_id") @db.UnsignedInt
+  customer_user_id                               String                    @db.Char(36)
+  staff_user_id                                  String                    @db.Char(36)
+  marked_paid_by_user_id                         String?                   @db.Char(36)
+  currency                                       String                    @default("MDL") @db.VarChar(10)
+  planned_minutes_snapshot                       Int                       @db.UnsignedInt
+  actual_minutes_snapshot                        Int                       @db.UnsignedInt
+  approved_overtime_minutes                      Int                       @default(0) @db.UnsignedInt
+  hourly_rate_snapshot                           Decimal                   @db.Decimal(10, 2)
+  reserved_amount_snapshot                       Decimal                   @db.Decimal(10, 2)
+  payout_amount                                  Decimal                   @db.Decimal(10, 2)
+  overtime_amount_snapshot                       Decimal                   @db.Decimal(10, 2)
+  status                                         application_payout_status @default(not_started)
+  payout_due_at                                  DateTime?                 @db.Timestamp(0)
+  payout_pending_at                              DateTime?                 @db.Timestamp(0)
+  queued_at                                      DateTime?                 @db.Timestamp(0)
+  processing_started_at                          DateTime?                 @db.Timestamp(0)
+  paid_at                                        DateTime?                 @db.Timestamp(0)
+  failed_at                                      DateTime?                 @db.Timestamp(0)
+  next_retry_at                                  DateTime?                 @db.Timestamp(0)
+  retry_count                                    Int                       @default(0) @db.UnsignedInt
+  payout_provider                                String?                   @db.VarChar(30)
+  provider_payout_id                             String?                   @unique(map: "uq_application_payouts_provider_payout_id") @db.VarChar(100)
+  provider_reference                             String?                   @unique(map: "uq_application_payouts_provider_reference") @db.VarChar(100)
+  payout_account_id                              Int?                      @db.UnsignedInt
+  manual_override                                Boolean                   @default(false)
+  last_error                                     String?                   @db.Text
+  created_at                                     DateTime                  @default(now()) @db.Timestamp(0)
+  updated_at                                     DateTime                  @default(now()) @db.Timestamp(0)
+  job_payment_reservations                       job_payment_reservations  @relation(fields: [job_payment_reservation_id], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_app_payouts_res_id_reservations_id")
+  jobs                                           jobs                      @relation(fields: [job_id], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_application_payouts_job_id_jobs_id")
+  applications                                   applications              @relation(fields: [application_id], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "fk_application_payouts_application_id_applications_id")
+  users_application_payouts_customer_users       users                     @relation("application_payouts_customer_user_idTousers", fields: [customer_user_id], references: [Id], onDelete: Restrict, onUpdate: Restrict, map: "fk_application_payouts_customer_user_id_users_id")
+  users_application_payouts_staff_users          users                     @relation("application_payouts_staff_user_idTousers", fields: [staff_user_id], references: [Id], onDelete: Restrict, onUpdate: Restrict, map: "fk_application_payouts_staff_user_id_users_id")
+  users_application_payouts_marked_paid_by_users users?                    @relation("application_payouts_marked_paid_by_user_idTousers", fields: [marked_paid_by_user_id], references: [Id], onDelete: SetNull, onUpdate: Restrict, map: "fk_application_payouts_marked_paid_by_user_id_users_id")
+  staff_payout_accounts                          staff_payout_accounts?    @relation(fields: [payout_account_id], references: [id], onDelete: SetNull, onUpdate: Restrict, map: "fk_application_payouts_payout_account_id")
+  payout_provider_events                         payout_provider_events[]
+
+  @@index([job_payment_reservation_id], map: "idx_application_payouts_job_payment_reservation_id")
+  @@index([job_id], map: "idx_application_payouts_job_id")
+  @@index([customer_user_id], map: "idx_application_payouts_customer_user_id")
+  @@index([staff_user_id], map: "idx_application_payouts_staff_user_id")
+  @@index([status], map: "idx_application_payouts_status")
+  @@index([next_retry_at], map: "idx_application_payouts_next_retry_at")
+}
+
+model staff_payout_accounts {
+  id                      Int                       @id @default(autoincrement()) @db.UnsignedInt
+  staff_user_id           String                    @db.Char(36)
+  is_default              Boolean                   @default(false)
+  status                  staff_payout_account_status @default(draft)
+  type                    staff_payout_account_type
+  beneficiary_name        String                    @db.VarChar(200)
+  beneficiary_country     String?                   @db.VarChar(2)
+  iban                    String?                   @db.VarChar(34)
+  bank_name               String?                   @db.VarChar(200)
+  card_token              String?                   @db.VarChar(200)
+  card_last4              String?                   @db.VarChar(4)
+  card_brand              String?                   @db.VarChar(50)
+  phone_e164              String?                   @db.VarChar(20)
+  wallet_provider         String?                   @db.VarChar(50)
+  verification_provider   String?                   @db.VarChar(50)
+  verification_reference  String?                   @db.VarChar(100)
+  verified_at             DateTime?                 @db.Timestamp(0)
+  rejected_at             DateTime?                 @db.Timestamp(0)
+  rejection_reason        String?                   @db.Text
+  created_at              DateTime                  @default(now()) @db.Timestamp(0)
+  updated_at              DateTime                  @default(now()) @db.Timestamp(0)
+  users                   users                     @relation("staff_payout_accounts_staff_user", fields: [staff_user_id], references: [Id], onDelete: Cascade, onUpdate: Restrict, map: "fk_staff_payout_accounts_staff_user_id")
+  application_payouts     application_payouts[]
+
+  @@index([staff_user_id], map: "idx_staff_payout_accounts_staff_user_id")
+  @@index([status], map: "idx_staff_payout_accounts_status")
+}
+
+model payout_provider_events {
+  id                    Int                 @id @default(autoincrement()) @db.UnsignedInt
+  provider              String              @default("mock") @db.VarChar(30)
+  provider_event_id     String              @unique(map: "uq_payout_provider_events_provider_event_id") @db.VarChar(150)
+  provider_payout_id    String?             @db.VarChar(100)
+  application_payout_id Int                 @db.UnsignedInt
+  event_type            String              @db.VarChar(100)
+  status                String              @db.VarChar(50)
+  signature_valid       Boolean             @default(false)
+  processing_status     String              @default("received") @db.VarChar(30)
+  raw_payload           String              @db.MediumText
+  error_message         String?             @db.Text
+  created_at            DateTime            @default(now()) @db.Timestamp(0)
+  updated_at            DateTime            @default(now()) @db.Timestamp(0)
+  processed_at          DateTime?           @db.Timestamp(0)
+  application_payouts   application_payouts @relation(fields: [application_payout_id], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "fk_ppe_application_payout_id")
+
+  @@index([application_payout_id], map: "idx_ppe_application_payout_id")
+  @@index([provider_payout_id], map: "idx_ppe_provider_payout_id")
+  @@index([created_at], map: "idx_ppe_created_at")
+}
+
+model payment_webhook_events {
+  id                         Int                      @id @default(autoincrement()) @db.UnsignedInt
+  provider                   payment_provider         @default(paynet)
+  provider_event_id          String                   @unique(map: "uq_payment_webhook_events_provider_event_id") @db.VarChar(100)
+  job_payment_reservation_id Int                      @db.UnsignedInt
+  paynet_order_id            String?                  @db.VarChar(100)
+  event_type                 String                   @db.VarChar(100)
+  signature_valid            Boolean                  @default(false)
+  processing_status          String                   @default("received") @db.VarChar(30)
+  raw_payload                String                   @db.MediumText
+  error_message              String?                  @db.Text
+  created_at                 DateTime                 @default(now()) @db.Timestamp(0)
+  updated_at                 DateTime                 @default(now()) @db.Timestamp(0)
+  processed_at               DateTime?                @db.Timestamp(0)
+  job_payment_reservations   job_payment_reservations @relation(fields: [job_payment_reservation_id], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "fk_pwe_res_id_reservations_id")
+
+  @@index([job_payment_reservation_id], map: "idx_payment_webhook_events_job_payment_reservation_id")
+  @@index([paynet_order_id], map: "idx_payment_webhook_events_paynet_order_id")
+  @@index([created_at], map: "idx_payment_webhook_events_created_at")
+}
+
 model services {
   id          Int      @id @default(autoincrement())
   title       String   @db.VarChar(255)
@@ -412,23 +643,31 @@ model testimonials_section {
 }
 
 model users {
-  Id                              String             @id @db.Char(36)
-  Email                           String             @unique(map: "Email")
-  PasswordHash                    String?            @db.VarChar(255)
-  GoogleId                        String?            @unique(map: "GoogleId") @db.VarChar(255)
-  Role                            Int
-  CreatedAt                       DateTime           @db.DateTime(0)
-  Avatar                          String?            @db.MediumText
-  IsActive                        Boolean            @default(true)
-  LastActiveAt                    DateTime?          @db.DateTime(0)
-  PhoneNumber                     String?            @db.VarChar(50)
-  BoosterUntil                    DateTime?          @db.DateTime(0)
-  applications                    applications[]
-  business_profiles               business_profiles?
-  employee_profiles               employee_profiles?
-  jobs                            jobs[]
-  ratings_ratings_rated_idTousers ratings[]          @relation("ratings_rated_idTousers")
-  ratings_ratings_rater_idTousers ratings[]          @relation("ratings_rater_idTousers")
+  Id                                          String                     @id @db.Char(36)
+  Email                                       String                     @unique(map: "Email")
+  PasswordHash                                String?                    @db.VarChar(255)
+  GoogleId                                    String?                    @unique(map: "GoogleId") @db.VarChar(255)
+  Role                                        Int
+  CreatedAt                                   DateTime                   @db.DateTime(0)
+  Avatar                                      String?                    @db.MediumText
+  IsActive                                    Boolean                    @default(true)
+  LastActiveAt                                DateTime?                  @db.DateTime(0)
+  PhoneNumber                                 String?                    @db.VarChar(50)
+  BoosterUntil                                DateTime?                  @db.DateTime(0)
+  applications                                applications[]
+  application_payments_as_customer            application_payments[]     @relation("application_payments_customer_user_idTousers")
+  application_payments_as_staff               application_payments[]     @relation("application_payments_staff_user_idTousers")
+  business_profiles                           business_profiles?
+  employee_profiles                           employee_profiles?
+  jobs                                        jobs[]
+  ratings_ratings_rated_idTousers             ratings[]                  @relation("ratings_rated_idTousers")
+  ratings_ratings_rater_idTousers             ratings[]                  @relation("ratings_rater_idTousers")
+  job_payment_reservations_as_customer        job_payment_reservations[] @relation("job_payment_reservations_customer_user_idTousers")
+  application_payouts_as_customer             application_payouts[]      @relation("application_payouts_customer_user_idTousers")
+  application_payouts_as_staff                application_payouts[]      @relation("application_payouts_staff_user_idTousers")
+  application_payouts_as_marked_paid_by_users application_payouts[]      @relation("application_payouts_marked_paid_by_user_idTousers")
+  payment_idempotency_keys                    payment_idempotency_keys[]
+  staff_payout_accounts                       staff_payout_accounts[]    @relation("staff_payout_accounts_staff_user")
 
   @@index([Email], map: "idx_users_email")
   @@index([Role], map: "idx_users_role")
@@ -475,4 +714,63 @@ enum hero_video_type {
 enum hero_media_type {
   image
   video
+}
+
+enum application_payment_status {
+  draft
+  awaiting_customer_payment
+  paynet_pending
+  paid
+  failed
+  cancelled
+  refund_pending
+  refunded
+  disputed
+}
+
+enum reservation_status {
+  draft
+  reserve_pending
+  reserved
+  reserve_failed
+  release_pending
+  released
+  refund_pending
+  refunded
+  cancelled
+  disputed
+}
+
+enum application_payout_status {
+  not_started
+  awaiting_work
+  in_progress
+  awaiting_customer_confirmation
+  payout_pending
+  payout_queued
+  payout_processing
+  retry_pending
+  paid
+  failed
+  reversed
+  cancelled
+  disputed
+}
+
+enum staff_payout_account_status {
+  draft
+  submitted
+  verified
+  rejected
+  disabled
+}
+
+enum staff_payout_account_type {
+  iban
+  card
+  phone
+}
+
+enum payment_provider {
+  paynet
 }

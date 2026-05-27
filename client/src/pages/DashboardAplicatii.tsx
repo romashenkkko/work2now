@@ -2,6 +2,7 @@ import { useContext, useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 import { useAuth } from "../hooks/useAuth";
 import { DashboardContext, getApplications, setApplications, JobTitleIcon, type Application, type JobRow } from "./DashboardLayout";
 import { jobsApi, ratingsApi, authApi } from "../api/client";
@@ -9,6 +10,12 @@ import { MapPin, Calendar, User, Mail, Clock, CheckCircle2, XCircle, Hourglass }
 import StarRating from "../components/StarRating";
 import StaffProfileModal from "../components/StaffProfileModal";
 import DatePicker from "../components/DatePicker";
+import {
+  payoutStatusClassName,
+  payoutStatusLabel,
+  staffPayoutPipelineLabel,
+  type ApplicationPayoutSummary,
+} from "../utils/applicationPayouts";
 
 const DEFAULT_AVATAR = "/Illustration/AvatarWhiteGuy.png";
 
@@ -377,6 +384,7 @@ type StaffApplication = {
 
   // Rating (optional)
   ratingScore?: number;
+  payout?: ApplicationPayoutSummary;
 };
 
 function statusBadge(t: (k: string) => string, status: "pending" | "accepted" | "refused") {
@@ -401,6 +409,16 @@ function statusBadge(t: (k: string) => string, status: "pending" | "accepted" | 
     <span className={`inline-flex items-center gap-1 mt-1 px-2 py-0.5 rounded text-xs font-medium ${cls}`}>
       <Icon className="w-3.5 h-3.5" />
       {label}
+    </span>
+  );
+}
+
+function payoutBadge(payout: ApplicationPayoutSummary | null | undefined, t: TFunction) {
+  if (!payout?.status) return null;
+  return (
+    <span className={`inline-flex items-center gap-1 mt-1 px-2 py-0.5 rounded text-xs font-medium border ${payoutStatusClassName(payout.status)}`}>
+      <span className="h-2 w-2 rounded-full bg-current opacity-60" />
+      {payoutStatusLabel(payout.status, t)}
     </span>
   );
 }
@@ -479,6 +497,7 @@ export default function DashboardAplicatii() {
                 ? (a.workSessions as { workDate: string; checkedInAt?: string; checkedOutAt?: string }[])
                 : undefined,
               ratingScore: a.ratingScore != null ? Number(a.ratingScore) : undefined,
+              payout: a.payout as ApplicationPayoutSummary | undefined,
             };
           });
         });
@@ -513,6 +532,7 @@ export default function DashboardAplicatii() {
         workSessions: Array.isArray(a.workSessions) ? a.workSessions : undefined,
   
         ratingScore: a.ratingScore != null ? Number(a.ratingScore) : undefined,
+        payout: a.payout as ApplicationPayoutSummary | undefined,
       }));
   
       setMyApps(normalized);
@@ -598,31 +618,65 @@ export default function DashboardAplicatii() {
 
   const [confirmingCompletionId, setConfirmingCompletionId] = useState<string | null>(null);
   const [confirmCompletionPrompt, setConfirmCompletionPrompt] = useState<{ applicationId: string } | null>(null);
+  const [approvedOvertimeMinutes, setApprovedOvertimeMinutes] = useState("");
   const [ratingSubmitting, setRatingSubmitting] = useState<string | null>(null);
   const [ratingDraft, setRatingDraft] = useState<Record<string, { score: number; comment: string }>>({});
+  const [completionFlowError, setCompletionFlowError] = useState<string | null>(null);
 
-  const confirmCompletion = (applicationId: string) => {
+  const patchApplicationPayout = (applicationId: string, payout: ApplicationPayoutSummary | null | undefined) => {
+    if (!payout) return;
+    setApplicationsState((prev) => {
+      const next: Record<string, Application[]> = {};
+      Object.entries(prev).forEach(([jobId, list]) => {
+        next[jobId] = list.map((item) => (item.id === applicationId ? { ...item, payout } : item));
+      });
+      return next;
+    });
+  };
+
+  const submitCompletionConfirmation = async (
+    applicationId: string,
+    confirmed: boolean,
+    overtimeMinutes?: number
+  ) => {
     setConfirmingCompletionId(applicationId);
-    jobsApi
-      .confirmCompletion(applicationId)
-      .then(() => {
+    setCompletionFlowError(null);
+    try {
+      const body = confirmed
+        ? {
+            confirmed: true as const,
+            ...(overtimeMinutes != null && overtimeMinutes > 0 ? { approvedOvertimeMinutes: overtimeMinutes } : {}),
+          }
+        : { confirmed: false as const };
+      const result = await jobsApi.confirmCompletion(applicationId, body);
+      if (!result.refused) {
         const confirmedAtIso = new Date().toISOString();
-        // Update local state instantly so the confirmed timestamp appears without waiting for a refetch.
         setApplicationsState((prev) => {
           const next: Record<string, Application[]> = {};
           Object.entries(prev).forEach(([jobId, list]) => {
             next[jobId] = list.map((item) =>
               item.id === applicationId
-                ? { ...item, businessConfirmedAt: item.businessConfirmedAt ?? confirmedAtIso, isBusinessConfirmed: true }
+                ? {
+                    ...item,
+                    businessConfirmedAt: item.businessConfirmedAt ?? confirmedAtIso,
+                    isBusinessConfirmed: true,
+                    payout: result.payout ?? item.payout,
+                  }
                 : item
             );
           });
           return next;
         });
-        refreshCustomerApplications();
-        refreshJobs();
-      })
-      .finally(() => setConfirmingCompletionId(null));
+      }
+      if (result.payout) patchApplicationPayout(applicationId, result.payout);
+      refreshCustomerApplications();
+      refreshJobs();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Eroare la confirmare.";
+      setCompletionFlowError(message);
+    } finally {
+      setConfirmingCompletionId(null);
+    }
   };
 
   const submitRating = (applicationId: string, score: number, comment?: string) => {
@@ -732,6 +786,18 @@ export default function DashboardAplicatii() {
                   <JobTitleIcon jobId={getJobIconId(a.jobTitle)} className="w-5 h-5 text-primary shrink-0" size={20} />
                   <h3 className="font-semibold text-gray-900">{a.jobTitle || `Job #${a.jobId}`}</h3>
                   {statusBadge(t, a.status)}
+                  {a.status === "accepted" && (() => {
+                    const label = staffPayoutPipelineLabel(
+                      { checkedOutAt: a.checkedOutAt, payoutStatus: a.payout?.status, jobOpen: true },
+                      t
+                    );
+                    if (!label) return null;
+                    return (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium border bg-blue-50 text-blue-800 border-blue-200">
+                        {label}
+                      </span>
+                    );
+                  })()}
                 </div>
                 <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1 text-sm text-gray-500">
                   {a.jobLocation && (
@@ -843,25 +909,58 @@ export default function DashboardAplicatii() {
           {t("dashboard.confirmFinished")}
         </h3>
         <p className="text-gray-600 mb-4">
-          {t("dashboard.confirmCheckoutPrompt", "Sunteți sigur că doriți să confirmați checkout-ul?")}
+          {t("dashboard.confirmCheckoutPrompt", "Confirmați că munca a fost finalizată corect?")}
         </p>
-        <div className="flex gap-3 justify-end">
+        <label className="block mb-4">
+          <span className="text-sm font-medium text-gray-700">
+            {t("dashboard.approvedOvertimeMinutes", "Minute suplimentare aprobate (opțional)")}
+          </span>
+          <input
+            type="number"
+            min={0}
+            step={1}
+            value={approvedOvertimeMinutes}
+            onChange={(e) => setApprovedOvertimeMinutes(e.target.value.replace(/[^\d]/g, ""))}
+            className="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2 text-sm"
+            placeholder="0"
+          />
+        </label>
+        <div className="flex flex-wrap gap-3 justify-end">
+          <button
+            type="button"
+            onClick={() => {
+              const appId = confirmCompletionPrompt.applicationId;
+              setConfirmCompletionPrompt(null);
+              setApprovedOvertimeMinutes("");
+              void submitCompletionConfirmation(appId, false);
+            }}
+            disabled={confirmingCompletionId === confirmCompletionPrompt.applicationId}
+            className="px-4 py-2 rounded-xl border border-red-200 text-red-700 font-medium hover:bg-red-50 disabled:opacity-50"
+          >
+            {t("dashboard.refuseCompletion", "Refuz")}
+          </button>
           <button
             type="button"
             onClick={() => setConfirmCompletionPrompt(null)}
             className="px-4 py-2 rounded-xl border border-gray-300 text-gray-700 font-medium hover:bg-gray-50"
           >
-            {t("dashboard.reject")}
+            {t("dashboard.cancel")}
           </button>
           <button
             type="button"
+            disabled={confirmingCompletionId === confirmCompletionPrompt.applicationId}
             onClick={() => {
-              confirmCompletion(confirmCompletionPrompt.applicationId);
+              const appId = confirmCompletionPrompt.applicationId;
+              const ot = approvedOvertimeMinutes.trim() ? Number.parseInt(approvedOvertimeMinutes, 10) : undefined;
               setConfirmCompletionPrompt(null);
+              setApprovedOvertimeMinutes("");
+              void submitCompletionConfirmation(appId, true, Number.isFinite(ot) ? ot : undefined);
             }}
-            className="px-5 py-2.5 rounded-xl bg-primary text-white font-semibold hover:bg-primary-dark"
+            className="px-5 py-2.5 rounded-xl bg-primary text-white font-semibold hover:bg-primary-dark disabled:opacity-50"
           >
-            {t("dashboard.confirm")}
+            {confirmingCompletionId === confirmCompletionPrompt.applicationId
+              ? "..."
+              : t("dashboard.confirmCompletion", "Confirmă finalizarea")}
           </button>
         </div>
       </div>
@@ -894,6 +993,12 @@ export default function DashboardAplicatii() {
           </button>
         </div>
       </header>
+
+      {completionFlowError && (
+        <div className="mb-6 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          {completionFlowError}
+        </div>
+      )}
 
       {historyMounted && (
         <section className={`${historyClosing ? "history-panel-exit" : "history-panel-enter"} mb-6 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm sm:p-5`}>
@@ -1054,6 +1159,7 @@ export default function DashboardAplicatii() {
                                       <CheckCircle2 className="h-3.5 w-3.5" />
                                       {t("dashboard.finished")}
                                     </span>
+                                    {payoutBadge(a.payout, t)}
                                     {a.businessConfirmedAt && (
                                       <span className="text-xs text-gray-500">
                                         {t("dashboard.completedAt", "Finalizat la")} {formatDateTime(a.businessConfirmedAt)}
@@ -1206,15 +1312,29 @@ export default function DashboardAplicatii() {
 
                           {a.status === "accepted" && a.checkedOutAt && (
                             <div className="mt-2 space-y-2">
-                              {!a.businessConfirmedAt && (
-                                <div>
+                              {payoutBadge(a.payout, t)}
+                              {!a.businessConfirmedAt && !a.isBusinessConfirmed && (
+                                <div className="flex flex-wrap gap-2">
                                   <button
                                     type="button"
-                                    onClick={() => setConfirmCompletionPrompt({ applicationId: a.id })}
+                                    onClick={() => {
+                                      setApprovedOvertimeMinutes("");
+                                      setConfirmCompletionPrompt({ applicationId: a.id });
+                                    }}
                                     disabled={confirmingCompletionId === a.id}
                                     className="inline-flex items-center rounded-xl bg-primary px-5 py-3 text-base font-semibold text-white shadow-sm transition-colors hover:bg-primary-dark disabled:opacity-50"
                                   >
-                                    {confirmingCompletionId === a.id ? "..." : t("dashboard.confirmFinished")}
+                                    {confirmingCompletionId === a.id
+                                      ? "..."
+                                      : t("dashboard.confirmCompletion", "Confirmă finalizarea")}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => void submitCompletionConfirmation(a.id, false)}
+                                    disabled={confirmingCompletionId === a.id}
+                                    className="inline-flex items-center rounded-xl border border-red-200 px-4 py-3 text-sm font-semibold text-red-700 hover:bg-red-50 disabled:opacity-50"
+                                  >
+                                    {t("dashboard.refuseCompletion", "Refuz")}
                                   </button>
                                 </div>
                               )}

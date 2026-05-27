@@ -122,6 +122,8 @@ async function main() {
     PORT: String(backendPort),
     FRONTEND_URL: `http://localhost:${frontendPort}`,
     GOOGLE_CALLBACK_URL: `http://localhost:${backendPort}/api/auth/google/callback`,
+    // Aliniat cu PHONE_OTP_ENABLED=false din Register.tsx (dev fără SMS obligatoriu)
+    PHONE_REGISTRATION_OTP_REQUIRED: "false",
   };
   const frontendEnv = {
     ...commonEnv,

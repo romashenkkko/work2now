@@ -121,12 +121,12 @@ export const authApi = {
       method: "POST",
     }),
   sendOTP: (phoneNumber: string) =>
-    api<{ message: string }>("/auth/send-otp", {
+    api<{ message: string; smsSent?: boolean; testMode?: boolean }>("/auth/send-otp", {
       method: "POST",
       body: JSON.stringify({ phoneNumber }),
     }),
   verifyOTP: (phoneNumber: string, code: string) =>
-    api<{ verified: boolean; message?: string }>("/auth/verify-otp", {
+    api<{ verified: boolean; message?: string; phoneVerificationToken?: string }>("/auth/verify-otp", {
       method: "POST",
       body: JSON.stringify({ phoneNumber, code }),
     }),
@@ -135,6 +135,7 @@ export const authApi = {
     email: string;
     password?: string;
     googleRegisterToken?: string;
+    phoneNumber?: string;
     role?: string;
     employeeProfile?: {
       firstName: string;
@@ -176,6 +177,7 @@ export const authApi = {
     password?: string;
     googleRegisterToken?: string;
     phoneNumber?: string;
+    phoneVerificationToken?: string;
     role?: string;
     employeeProfile?: {
       firstName: string;
@@ -520,6 +522,38 @@ export type JobResponse = {
   jobAttachments?: { url: string; name: string }[];
 };
 
+export type ApplicationPaymentApiResponse = {
+  payment: {
+    id: string;
+    applicationId: string;
+    status: string;
+    currency: string;
+    workedMinutes: number;
+    hourlyRateSnapshot: string;
+    amountDue: string;
+    paynetOrderId: string | null;
+    customerConfirmedAt: string | null;
+    paymentStartedAt: string | null;
+    paidAt: string | null;
+    failedAt?: string | null;
+    lastError?: string | null;
+  };
+  paynet: {
+    provider: "paynet";
+    mode: "server-server";
+    orderId: string | null;
+    redirectUrl: string;
+  };
+};
+
+export type ApplicationPayoutSummary = {
+  status: string;
+  netPayoutAmount: string;
+  currency: string;
+  payoutDueAt?: string | null;
+  payoutPendingAt?: string | null;
+};
+
 export type StaffApplicationItem = {
   id: string;
   jobId: string;
@@ -538,6 +572,141 @@ export type StaffApplicationItem = {
   workSessions?: { workDate: string; checkedInAt?: string; checkedOutAt?: string }[];
 
   ratingScore?: number;
+  payout?: ApplicationPayoutSummary;
+};
+
+export type JobPaymentReservationDto = {
+  id: string;
+  jobId: string;
+  status: string;
+  provider: string;
+  currency: string;
+  plannedMinutesSnapshot: number;
+  hourlyRateSnapshot: string;
+  reservedAmount: string;
+  paynetOrderId: string | null;
+  paynetTransactionId: string | null;
+  reservedAt: string | null;
+  lastError: string | null;
+  createdAt: string | null;
+  updatedAt: string | null;
+};
+
+export type PublishAndReserveResponse = {
+  ok: true;
+  state: "live" | "payment_pending";
+  jobId: number;
+  jobStatus: string;
+  jobStatusClass: string;
+  publishedAt: string | null;
+  publishBlockedReason: string | null;
+  repaired?: boolean;
+  reservation: JobPaymentReservationDto | null;
+  paynet: {
+    provider: "paynet";
+    mode: "server-server";
+    orderId: string | null;
+    redirectUrl: string | null;
+    alreadySubmitted: boolean;
+  };
+};
+
+export type JobPaymentReservationStatusResponse = {
+  jobId: number;
+  jobStatus: string;
+  jobStatusClass: string;
+  publishedAt: string | null;
+  publishBlockedReason: string | null;
+  reservation: JobPaymentReservationDto | null;
+  paynet: {
+    provider: "paynet";
+    mode: "server-server";
+    orderId: string | null;
+    redirectUrl: string | null;
+  };
+};
+
+export type ConfirmCompletionBody = {
+  confirmed: boolean;
+  approvedOvertimeMinutes?: number;
+  refused?: boolean;
+};
+
+export type ConfirmCompletionResponse = {
+  ok: true;
+  refused: boolean;
+  alreadyConfirmed: boolean;
+  payout: ApplicationPayoutSummary | null;
+};
+
+export type AdminPayoutListItem = {
+  id: string;
+  applicationId: string;
+  jobTitle: string;
+  staffName: string;
+  customerName: string;
+  amount: string;
+  currency: string;
+  payoutDueAt: string | null;
+  status: string;
+  payoutProvider?: string | null;
+  providerPayoutId?: string | null;
+  providerReference?: string | null;
+  retryCount?: number;
+  nextRetryAt?: string | null;
+  manualOverride?: boolean;
+};
+
+export type AdminPayoutDetail = AdminPayoutListItem & {
+  payoutPendingAt: string | null;
+  actualMinutesSnapshot: number;
+  plannedMinutesSnapshot: number;
+  approvedOvertimeMinutes: number;
+  overtimeAmount: string;
+  grossAmount: string;
+  payoutAmount: string;
+  lastError: string | null;
+  paidAt: string | null;
+  failedAt: string | null;
+  disputed: boolean;
+  queuedAt?: string | null;
+  processingStartedAt?: string | null;
+};
+
+export type StaffPayoutAccountDto = {
+  id: string;
+  staffUserId: string;
+  isDefault: boolean;
+  status: string;
+  type: string;
+  beneficiaryName: string;
+  beneficiaryCountry: string | null;
+  iban: string | null;
+  bankName: string | null;
+  phoneE164: string | null;
+  walletProvider: string | null;
+  verifiedAt: string | null;
+  rejectedAt: string | null;
+  rejectionReason: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export const payoutAccountsApi = {
+  list: () => api<{ accounts: StaffPayoutAccountDto[] }>("/payout-accounts"),
+  upsert: (body: {
+    type: "iban" | "phone";
+    beneficiaryName: string;
+    beneficiaryCountry?: string;
+    iban?: string;
+    bankName?: string;
+    phoneE164?: string;
+    walletProvider?: string;
+  }) =>
+    api<{ ok: true; account: StaffPayoutAccountDto }>("/payout-accounts", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
 };
 
 export type JobCategory = {
@@ -576,23 +745,31 @@ export const jobsApi = {
     api<{ byJob: Record<string, { status: string; applicationId: string; checkedInAt?: string; checkedOutAt?: string; workSessions: { workDate: string; checkedInAt?: string; checkedOutAt?: string }[] }> }>("/jobs/my-applications"),
   /** Staff: full list of my applications with job details, sessions, rating (GET /api/jobs/my-applications/list). */
   myApplicationsList: () =>
-    api<{ applications: Array<{
-      id: string;
-      jobId: string;
-      status: "pending" | "accepted" | "refused";
-      createdAt?: string;
-      jobTitle?: string;
-      jobLocation?: string;
-      jobDate?: string;
-      jobEndDate?: string;
-      customerName?: string;
-      checkedInAt?: string;
-      checkedOutAt?: string;
-      workSessions?: { workDate: string; checkedInAt?: string; checkedOutAt?: string }[];
-      ratingScore?: number;
-    }> }>("/jobs/my-applications/list"),
+    api<{ applications: StaffApplicationItem[] }>("/jobs/my-applications/list"),
   applications: () =>
-    api<{ applications: Record<string, { id: string; jobId: string; staffId: string; staffName: string; staffEmail?: string; staffAvatar?: string; staffCvFileUrl?: string; staffCvOriginalName?: string; status: string; checkedInAt?: string; checkedOutAt?: string; businessConfirmedAt?: string; isBusinessConfirmed?: boolean; workSessions?: { workDate: string; checkedInAt?: string; checkedOutAt?: string }[]; ratingScore?: number }[]> }>("/jobs/applications"),
+    api<{
+      applications: Record<
+        string,
+        {
+          id: string;
+          jobId: string;
+          staffId: string;
+          staffName: string;
+          staffEmail?: string;
+          staffAvatar?: string;
+          staffCvFileUrl?: string;
+          staffCvOriginalName?: string;
+          status: string;
+          checkedInAt?: string;
+          checkedOutAt?: string;
+          businessConfirmedAt?: string;
+          isBusinessConfirmed?: boolean;
+          workSessions?: { workDate: string; checkedInAt?: string; checkedOutAt?: string }[];
+          ratingScore?: number;
+          payout?: ApplicationPayoutSummary;
+        }[]
+      >;
+    }>("/jobs/applications"),
   setApplicationStatus: (applicationId: string, status: "accepted" | "refused") =>
     api<{ ok: boolean }>(`/jobs/applications/${applicationId}`, {
       method: "PATCH",
@@ -600,9 +777,36 @@ export const jobsApi = {
     }),
   completeApplication: (applicationId: string) =>
     api<{ ok: boolean }>(`/jobs/applications/${applicationId}/complete`, { method: "PATCH" }),
-  /** Customer: confirm job finished (after staff checkout); application then moves to history. */
-  confirmCompletion: (applicationId: string) =>
-    api<{ ok: boolean }>(`/jobs/applications/${applicationId}/confirm-completion`, { method: "PATCH" }),
+  /** Customer: confirm or refuse job completion (after staff checkout). */
+  confirmCompletion: (applicationId: string, body: ConfirmCompletionBody) =>
+    api<ConfirmCompletionResponse>(`/jobs/applications/${applicationId}/confirm-completion`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
+  /** Customer: publish Draft job and start Paynet reservation. */
+  publishAndReserve: (jobId: string) =>
+    api<PublishAndReserveResponse>(`/jobs/${jobId}/publish-and-reserve`, { method: "POST" }),
+  /** Customer: poll reservation + job publish status. */
+  getJobPaymentReservation: (jobId: string) =>
+    api<JobPaymentReservationStatusResponse>(`/jobs/${jobId}/payment-reservation`, { method: "GET" }),
+  retryJobPaymentReservation: (jobId: string) =>
+    api<{
+      ok: true;
+      jobId: number;
+      paynetOrderId: string | null;
+      redirectUrl: string | null;
+      alreadySubmitted: boolean;
+      reservationStatus: string;
+    }>(`/jobs/${jobId}/payment-reservation/retry`, { method: "POST" }),
+  /** Customer/staff: read current payment state for an application. */
+  getApplicationPayment: (applicationId: string) =>
+    api<ApplicationPaymentApiResponse>(`/payments/applications/${applicationId}`, { method: "GET" }),
+  /** Customer: start the Paynet redirect flow for a confirmed application. */
+  startApplicationPayment: (applicationId: string, idempotencyKey: string) =>
+    api<ApplicationPaymentApiResponse>(`/payments/applications/${applicationId}/start`, {
+      method: "POST",
+      headers: { "Idempotency-Key": idempotencyKey },
+    }),
   checkIn: (applicationId: string, workDate?: string, geo?: { lat: number; lng: number }) =>
     api<{ ok: boolean; alreadyDone?: boolean }>(`/jobs/applications/${applicationId}/check-in`, {
       method: "PATCH",
@@ -651,6 +855,59 @@ export const jobsApi = {
     api<{
       raioane: Array<{ id: number; name: string; type: string }>;
     }>(`/jobs/raioane${search ? `?search=${encodeURIComponent(search)}` : ""}`),
+};
+
+export const adminApi = {
+  listOrphanReservations: () => api<{ orphans: Array<{
+    reservationId: string;
+    jobId: string;
+    jobStatus: string;
+    reservationStatus: string;
+    paynetOrderId: string | null;
+    issue: string;
+  }> }>("/admin/payments/orphans"),
+  expireStaleReservations: () =>
+    api<{ expiredCount: number }>("/admin/payments/expire-stale", { method: "POST" }),
+  reconcileJobReservation: (jobId: string) =>
+    api<{ ok: true; repaired: boolean; jobStatus: string; reservationStatus: string }>(
+      `/admin/payments/jobs/${jobId}/reconcile`,
+      { method: "POST" }
+    ),
+  reconcileByPaynetOrderId: (paynetOrderId: string) =>
+    api<{ ok: true; jobId: number; repaired: boolean }>("/admin/payments/reconcile-by-order", {
+      method: "POST",
+      body: JSON.stringify({ paynetOrderId }),
+    }),
+  listPayouts: (status = "payout_pending") =>
+    api<{ payouts: AdminPayoutListItem[] }>(`/admin/payouts?status=${encodeURIComponent(status)}`),
+  getPayout: (payoutId: string) => api<AdminPayoutDetail>(`/admin/payouts/${payoutId}`),
+  markPayoutPaid: (payoutId: string, note?: string) =>
+    api<{ ok: true; payout: AdminPayoutDetail }>(`/admin/payouts/${payoutId}/mark-paid`, {
+      method: "POST",
+      body: JSON.stringify(note != null && note.trim() ? { note: note.trim() } : {}),
+    }),
+  markPayoutFailed: (payoutId: string, note?: string) =>
+    api<{ ok: true; payout: AdminPayoutDetail }>(`/admin/payouts/${payoutId}/mark-failed`, {
+      method: "POST",
+      body: JSON.stringify(note != null && note.trim() ? { note: note.trim() } : {}),
+    }),
+  markPayoutDisputed: (payoutId: string, note?: string) =>
+    api<{ ok: true; payout: AdminPayoutDetail }>(`/admin/payouts/${payoutId}/mark-disputed`, {
+      method: "POST",
+      body: JSON.stringify(note != null && note.trim() ? { note: note.trim() } : {}),
+    }),
+  markPayoutRetry: (payoutId: string, note?: string) =>
+    api<{ ok: true; payout: AdminPayoutDetail }>(`/admin/payouts/${payoutId}/retry`, {
+      method: "POST",
+      body: JSON.stringify(note != null && note.trim() ? { note: note.trim() } : {}),
+    }),
+  verifyStaffPayoutAccount: (accountId: string) =>
+    api<{ ok: true; account: StaffPayoutAccountDto }>(`/admin/payout-accounts/${accountId}/verify`, { method: "POST" }),
+  rejectStaffPayoutAccount: (accountId: string, reason?: string) =>
+    api<{ ok: true; account: StaffPayoutAccountDto }>(`/admin/payout-accounts/${accountId}/reject`, {
+      method: "POST",
+      body: JSON.stringify(reason?.trim() ? { note: reason.trim() } : {}),
+    }),
 };
 
 export type ReviewItem = {

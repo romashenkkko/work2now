@@ -23,12 +23,14 @@ import {
   CreditCard,
   Trash2,
   MessageCircle,
+  Wallet,
 } from "lucide-react";
 import { coffeemaker } from "@lucide/lab";
 import { useAuth } from "../hooks/useAuth";
 import { getBusinessTotal, roundMoney } from "../utils/salary";
 import { foldForSearch } from "../utils/foldForSearch";
 import { jobsApi, ratingsApi, experiencesApi, branchesApi, type JobCategory, type Branch } from "../api/client";
+import { jobPublishStatusClassName, jobPublishStatusLabel } from "../utils/applicationPayouts";
 import TimePicker from "../components/TimePicker";
 import StarRating from "../components/StarRating";
 import DatePicker from "../components/DatePicker";
@@ -114,6 +116,13 @@ export type Application = {
   isBusinessConfirmed?: boolean;
   workSessions?: { workDate: string; checkedInAt?: string; checkedOutAt?: string }[];
   ratingScore?: number;
+  payout?: {
+    status: string;
+    netPayoutAmount: string;
+    currency: string;
+    payoutDueAt?: string | null;
+    payoutPendingAt?: string | null;
+  };
 };
 
 const SUPPORT_AVATAR_URL = "/Illustration/SupportAvatar.png";
@@ -147,7 +156,7 @@ export function getPublicJobs(): JobRow[] {
   }
 }
 
-export type AddJobResult = { ok: true } | { ok: false; error: string };
+export type AddJobResult = { ok: true; jobId: string } | { ok: false; error: string };
 
 export const DashboardContext = createContext<{
   openPostJobModal: () => void;
@@ -170,6 +179,7 @@ const NAV_ICONS: Record<string, ComponentType<{ className?: string; size?: numbe
   review: Star as ComponentType<{ className?: string; size?: number }>,
   settings: Settings as ComponentType<{ className?: string; size?: number }>,
   creditCard: CreditCard as ComponentType<{ className?: string; size?: number }>,
+  wallet: Wallet as ComponentType<{ className?: string; size?: number }>,
 };
 
 const NAV_CUSTOMER = [
@@ -185,6 +195,7 @@ const NAV_STAFF = [
   { to: "/dashboard/joburi", labelKey: "dashboard.joburi", end: false, icon: "briefcase" },
   { to: "/dashboard/aplicatii", labelKey: "dashboard.myApplications", end: false, icon: "fileText" },
   { to: "/dashboard/chat", labelKey: "dashboard.supportChat", end: false, icon: "messageCircle" },
+  { to: "/dashboard/payout-settings", labelKey: "dashboard.staffPayoutSettingsNav", end: false, icon: "wallet" },
 ];
 
 const NAV_ADMIN = [
@@ -307,6 +318,9 @@ export default function DashboardLayout() {
   const navigate = useNavigate();
   const [showPostJob, setShowPostJob] = useState(false);
   const [jobSubmitted, setJobSubmitted] = useState(false);
+  const [lastCreatedJobId, setLastCreatedJobId] = useState<string | null>(null);
+  const [publishLoading, setPublishLoading] = useState(false);
+  const [publishError, setPublishError] = useState<string | null>(null);
   const [postJobError, setPostJobError] = useState("");
   const [postJobBusy, setPostJobBusy] = useState(false);
   const [postJobFieldErrors, setPostJobFieldErrors] = useState<{
@@ -778,7 +792,7 @@ export default function DashboardLayout() {
         };
         setJobsAdded((prev) => [...prev, newJob]);
       setJobsLoadError(false);
-      return { ok: true };
+      return { ok: true, jobId: String(created.id) };
     } catch (err) {
       console.error("Failed to persist job on server:", err);
       setJobsLoadError(true);
@@ -1261,10 +1275,49 @@ export default function DashboardLayout() {
               <div className="p-6">
                 <h3 className="text-lg font-bold text-gray-900 mb-2">{t("dashboard.jobSaved")}</h3>
                 <p className="text-gray-600 mb-4">{t("dashboard.jobSavedDesc")}</p>
+                {lastCreatedJobId && (
+                  <div className="mb-4 rounded-xl border border-gray-200 bg-gray-50 p-4 space-y-3">
+                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${jobPublishStatusClassName("draft")}`}>
+                      {jobPublishStatusLabel("draft", t)}
+                    </span>
+                    {publishError && (
+                      <p className="text-sm text-red-600">{publishError}</p>
+                    )}
+                    <button
+                      type="button"
+                      disabled={publishLoading}
+                      onClick={async () => {
+                        if (!lastCreatedJobId) return;
+                        setPublishLoading(true);
+                        setPublishError(null);
+                        try {
+                          const res = await jobsApi.publishAndReserve(lastCreatedJobId);
+                          const url = res.paynet?.redirectUrl?.trim();
+                          if (url) {
+                            window.location.assign(url);
+                            return;
+                          }
+                          await fetchJobsForCustomer();
+                        } catch (err) {
+                          setPublishError(err instanceof Error ? err.message : String(err));
+                        } finally {
+                          setPublishLoading(false);
+                        }
+                      }}
+                      className="w-full py-2.5 rounded-xl bg-primary text-white font-medium hover:bg-primary-dark disabled:opacity-50"
+                    >
+                      {publishLoading
+                        ? t("dashboard.loading", "Loading...")
+                        : t("dashboard.publishAndReserve", "Publish and reserve payment")}
+                    </button>
+                  </div>
+                )}
                 <button
                   type="button"
                   onClick={() => { 
-                    setJobSubmitted(false); 
+                    setJobSubmitted(false);
+                    setLastCreatedJobId(null);
+                    setPublishError(null);
                     setShowPostJob(false); 
                     setPostJobStep("choose-type"); 
                     setSelectedJobType(null);
@@ -1279,7 +1332,7 @@ export default function DashboardLayout() {
                     setJobTitleDraft("");
                     setEventNameDraft("");
                   }}
-                  className="w-full py-2.5 rounded-xl bg-primary text-white font-medium hover:bg-primary-dark"
+                  className="w-full py-2.5 rounded-xl border border-gray-300 text-gray-700 font-medium hover:bg-gray-50"
                 >
                   {t("dashboard.close")}
                 </button>
@@ -1620,6 +1673,8 @@ export default function DashboardLayout() {
                       );
                       return;
                     }
+                    setLastCreatedJobId(addResult.jobId);
+                    setPublishError(null);
                     setJobSubmitted(true);
                     setSelectedJobType(null);
                     setPostJobStep("choose-type");

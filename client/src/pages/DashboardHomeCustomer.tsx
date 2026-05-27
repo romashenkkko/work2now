@@ -5,6 +5,11 @@ import { useAuth } from "../hooks/useAuth";
 import { DashboardContext, type JobRow } from "./DashboardLayout";
 import { jobsApi, authApi } from "../api/client";
 import { getBusinessTotal, roundMoney, BUSINESS_TAX_RATE, BUSINESS_MAINTENANCE_RATE } from "../utils/salary";
+import {
+  payoutStatusClassName,
+  payoutStatusLabel,
+  type ApplicationPayoutSummary,
+} from "../utils/applicationPayouts";
 
 function hoursBetween(start: string, end: string): number {
   const a = new Date(start).getTime();
@@ -64,6 +69,7 @@ type AppWithSessions = {
   checkedOutAt?: string;
   businessConfirmedAt?: string;
   isBusinessConfirmed?: boolean;
+  payout?: ApplicationPayoutSummary;
 };
 
 export default function DashboardHomeCustomer() {
@@ -76,46 +82,32 @@ export default function DashboardHomeCustomer() {
   const [activeAppsExpanded, setActiveAppsExpanded] = useState(true);
   const [openAppsExpanded, setOpenAppsExpanded] = useState(true);
   const [selectedApplication, setSelectedApplication] = useState<{ job: JobRow; application: AppWithSessions } | null>(null);
-
   const fetchApplications = useCallback(() => {
     jobsApi
       .applications()
       .then((r) => {
         const map: Record<string, AppWithSessions[]> = {};
         Object.entries(r.applications ?? {}).forEach(([jobId, list]) => {
-          map[jobId] = (list || []).map((a) => ({
+          const key = String(jobId).trim();
+          if (!key) return;
+          map[key] = (list || []).map((a) => ({
             id: a.id,
-            jobId: a.jobId ?? jobId,
+            jobId: a.jobId ?? key,
             status: a.status,
             staffId: a.staffId ?? "",
             staffName: a.staffName ?? "",
             staffEmail: a.staffEmail,
             staffAvatar: a.staffAvatar,
-            staffCvFileUrl: (a as any).staffCvFileUrl,
-            staffCvOriginalName: (a as any).staffCvOriginalName,
+            staffCvFileUrl: a.staffCvFileUrl,
+            staffCvOriginalName: a.staffCvOriginalName,
             workSessions: a.workSessions ?? [],
             checkedInAt: a.checkedInAt,
             checkedOutAt: a.checkedOutAt,
             businessConfirmedAt: a.businessConfirmedAt,
             isBusinessConfirmed: a.isBusinessConfirmed ?? false,
+            payout: a.payout,
           }));
         });
-        const apps = r?.applications;
-        if (apps && typeof apps === "object") {
-          Object.entries(apps).forEach(([jobId, list]) => {
-            const key = String(jobId).trim();
-            if (!key) return;
-            const items = Array.isArray(list) ? list : [];
-            map[key] = items.map((a: { status?: string; staffId?: string; staffName?: string; workSessions?: { workDate: string; checkedInAt?: string; checkedOutAt?: string }[]; checkedInAt?: string; checkedOutAt?: string }) => ({
-              status: a.status ?? "",
-              staffId: a.staffId ?? "",
-              staffName: a.staffName ?? "",
-              workSessions: Array.isArray(a.workSessions) ? a.workSessions : [],
-              checkedInAt: a.checkedInAt,
-              checkedOutAt: a.checkedOutAt,
-            }));
-          });
-        }
         setApplicationsByJob(map);
       })
       .catch(() => setApplicationsByJob({}));
@@ -801,6 +793,7 @@ export default function DashboardHomeCustomer() {
           onClose={() => setSelectedApplication(null)}
           job={selectedApplication.job}
           application={selectedApplication.application}
+          onApplicationsChange={fetchApplications}
         />
       )}
     </>
@@ -814,13 +807,18 @@ function ApplicationDetailsModal({
   onClose,
   job,
   application,
+  onApplicationsChange,
 }: {
   open: boolean;
   onClose: () => void;
   job: JobRow;
   application: AppWithSessions;
+  onApplicationsChange?: () => void;
 }) {
   const { t } = useTranslation();
+  const [confirmBusy, setConfirmBusy] = useState(false);
+  const [confirmError, setConfirmError] = useState<string | null>(null);
+  const [approvedOvertimeMinutes, setApprovedOvertimeMinutes] = useState("");
 
   useEffect(() => {
     if (!open) return;
@@ -1246,15 +1244,99 @@ function ApplicationDetailsModal({
             </div>
           )}
 
-          {/* Confirmation Date */}
-          {application.businessConfirmedAt && (
+          {hasAnyCheckOut && !application.businessConfirmedAt && !application.isBusinessConfirmed && application.id && (
+            <div className="rounded-[24px] border border-amber-200 bg-amber-50/80 p-5 sm:p-6 space-y-3">
+              <h3 className="text-base font-semibold text-[#1e1c2f]">{t("dashboard.confirmCompletion", "Confirmă finalizarea")}</h3>
+              {application.payout?.status && (
+                <span className={`inline-flex items-center gap-1 rounded-full border px-3 py-1 text-xs font-semibold ${payoutStatusClassName(application.payout.status)}`}>
+                  {payoutStatusLabel(application.payout.status, t)}
+                </span>
+              )}
+              {confirmError && <p className="text-sm text-red-600">{confirmError}</p>}
+              <label className="block">
+                <span className="text-sm text-gray-700">{t("dashboard.approvedOvertimeMinutes", "Minute suplimentare (opțional)")}</span>
+                <input
+                  type="number"
+                  min={0}
+                  value={approvedOvertimeMinutes}
+                  onChange={(e) => setApprovedOvertimeMinutes(e.target.value.replace(/[^\d]/g, ""))}
+                  className="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2 text-sm"
+                />
+              </label>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  disabled={confirmBusy}
+                  onClick={async () => {
+                    if (!application.id) return;
+                    setConfirmBusy(true);
+                    setConfirmError(null);
+                    try {
+                      const ot = approvedOvertimeMinutes.trim() ? Number.parseInt(approvedOvertimeMinutes, 10) : undefined;
+                      await jobsApi.confirmCompletion(application.id, {
+                        confirmed: true,
+                        ...(Number.isFinite(ot) && ot! > 0 ? { approvedOvertimeMinutes: ot } : {}),
+                      });
+                      onApplicationsChange?.();
+                      onClose();
+                    } catch (e) {
+                      setConfirmError(e instanceof Error ? e.message : String(e));
+                    } finally {
+                      setConfirmBusy(false);
+                    }
+                  }}
+                  className="rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary-dark disabled:opacity-50"
+                >
+                  {confirmBusy ? "..." : t("dashboard.confirmCompletion", "Confirmă finalizarea")}
+                </button>
+                <button
+                  type="button"
+                  disabled={confirmBusy}
+                  onClick={async () => {
+                    if (!application.id) return;
+                    setConfirmBusy(true);
+                    setConfirmError(null);
+                    try {
+                      await jobsApi.confirmCompletion(application.id, { confirmed: false });
+                      onApplicationsChange?.();
+                      onClose();
+                    } catch (e) {
+                      setConfirmError(e instanceof Error ? e.message : String(e));
+                    } finally {
+                      setConfirmBusy(false);
+                    }
+                  }}
+                  className="rounded-xl border border-red-200 px-4 py-2 text-sm font-semibold text-red-700 hover:bg-red-50 disabled:opacity-50"
+                >
+                  {t("dashboard.refuseCompletion", "Refuz")}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {(application.businessConfirmedAt || application.payout?.status) && (
             <div className="rounded-[24px] border border-primary/10 bg-white/92 shadow-[0_12px_30px_rgba(122,99,241,0.08)] p-5 sm:p-6 space-y-2">
               <h3 className="text-base font-semibold text-[#1e1c2f] border-b border-gray-200/80 pb-2">
-                {t("dashboard.confirmation")}
+                {t("dashboard.payoutStatus", "Stare plată")}
               </h3>
-              <p className="text-sm text-gray-600">
-                {t("dashboard.confirmedOn") || "Confirmat la"}: <span className="font-medium text-gray-900">{formatDateTime(application.businessConfirmedAt)}</span>
-              </p>
+              {application.businessConfirmedAt && (
+                <p className="text-sm text-gray-600">
+                  {t("dashboard.confirmedOn") || "Confirmat la"}:{" "}
+                  <span className="font-medium text-gray-900">{formatDateTime(application.businessConfirmedAt)}</span>
+                </p>
+              )}
+              {application.payout?.status && (
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className={`inline-flex items-center gap-1 rounded-full border px-3 py-1 text-xs font-semibold ${payoutStatusClassName(application.payout.status)}`}>
+                    {payoutStatusLabel(application.payout.status, t)}
+                  </span>
+                  {application.payout.netPayoutAmount && (
+                    <span className="text-xs text-gray-500">
+                      {application.payout.netPayoutAmount} {application.payout.currency || "MDL"}
+                    </span>
+                  )}
+                </div>
+              )}
             </div>
           )}
         </div>
