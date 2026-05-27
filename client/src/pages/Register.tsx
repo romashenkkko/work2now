@@ -1110,7 +1110,6 @@ export default function Register() {
                   setOtpCode("");
                   setOtpError("");
                   setVerifiedPhone("");
-                  setPhoneVerificationToken("");
                 }}
                 className="btn-text w-full py-2 mt-2"
               >
