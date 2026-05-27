@@ -117,12 +117,12 @@ export const authApi = {
       body: JSON.stringify({ email, password }),
     }),
   sendOTP: (phoneNumber: string) =>
-    api<{ message: string }>("/auth/send-otp", {
+    api<{ message: string; smsSent?: boolean; testMode?: boolean }>("/auth/send-otp", {
       method: "POST",
       body: JSON.stringify({ phoneNumber }),
     }),
   verifyOTP: (phoneNumber: string, code: string) =>
-    api<{ verified: boolean; message?: string }>("/auth/verify-otp", {
+    api<{ verified: boolean; message?: string; phoneVerificationToken?: string }>("/auth/verify-otp", {
       method: "POST",
       body: JSON.stringify({ phoneNumber, code }),
     }),
@@ -130,6 +130,7 @@ export const authApi = {
     name: string;
     email: string;
     password: string;
+    phoneNumber?: string;
     role?: string;
     employeeProfile?: {
       firstName: string;
@@ -160,6 +161,8 @@ export const authApi = {
     email: string;
     password: string;
     role?: string;
+    phoneNumber: string;
+    phoneVerificationToken: string;
     employeeProfile?: {
       firstName: string;
       lastName: string;

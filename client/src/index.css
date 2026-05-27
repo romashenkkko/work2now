@@ -2641,6 +2641,44 @@
   flex: 1;
 }
 
+.auth-otp-section {
+  margin-top: 8px;
+  padding: 24px 0 8px;
+  border-top: 1px solid #e8ecf2;
+}
+
+.auth-otp-header h3 {
+  margin: 0 0 8px;
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: #1a1f2e;
+}
+
+.auth-otp-header .auth-muted {
+  margin: 0 0 20px;
+}
+
+.auth-otp-dev-hint {
+  margin: 0 0 16px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #f0f7ff;
+  color: #3d5a80;
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+
+.auth-otp-dev-code {
+  margin: 0 0 16px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: #fff8e6;
+  border: 1px solid #f0d78c;
+  color: #5c4a1a;
+  font-size: 0.9rem;
+  text-align: center;
+}
+
 /* Pagina Register – alegere rol (Staff/Customer) pe aceeași pagină */
 .auth-card--choose-role {
   max-width: 560px;

@@ -19,6 +19,7 @@ import devPaynetRoutes from "./routes/devPaynet";
 import db, { initDatabase } from "./db";
 import { sendTestEmail } from "./email";
 import { startPayoutWorkerIfEnabled } from "./services/payoutAutomationService";
+import { logOtpModeAtStartup } from "./twilio";
 
 const app = express();
 const PORT = process.env.PORT || 5600;
@@ -139,6 +140,7 @@ async function start() {
     // Continue anyway - memory fallback will be used
   }
   await ensureDefaultAdmin().catch((e) => console.error("Seed admin:", e));
+  logOtpModeAtStartup();
   logPaynetConfigAtStartup();
   app.listen(Number(PORT), HOST, () => {
     console.log(`Work2Now API: http://localhost:${PORT}`);

@@ -23,6 +23,15 @@ function getPasswordStrength(password: string): 0 | 1 | 2 | 3 | 4 {
   return 4;
 }
 
+/** Build +373 E.164 from local digits (8 digits for MD mobile). */
+function buildMoldovaPhone(localDigits: string): string {
+  return `+373${localDigits.replace(/\D/g, "")}`;
+}
+
+function isValidMoldovaLocalPhone(localDigits: string): boolean {
+  return /^\d{8}$/.test(localDigits.replace(/\D/g, ""));
+}
+
 const COMPANY_CATEGORY_OPTIONS = [
   { value: "1", labelKey: "auth.companyCategoryCanteen" },
   { value: "2", labelKey: "auth.companyCategoryCatering" },
@@ -91,6 +100,8 @@ export default function Register() {
   const [otpLoading, setOtpLoading] = useState(false);
   const [otpError, setOtpError] = useState("");
   const [verifiedPhone, setVerifiedPhone] = useState("");
+  const [phoneVerificationToken, setPhoneVerificationToken] = useState("");
+  const [otpTestMode, setOtpTestMode] = useState(false);
 
   // Terms & Conditions modal state
   const [showTermsModal, setShowTermsModal] = useState(false);
@@ -191,8 +202,8 @@ export default function Register() {
         setError(t("auth.ageRestriction18"));
         return;
       }
-      if (!phoneNumber.trim()) {
-        setError(t("auth.phoneNumberRequired"));
+      if (!isValidMoldovaLocalPhone(phoneNumber)) {
+        setError(t("auth.phoneNumberInvalid") || "Introduceți un număr valid de 8 cifre (ex: 69123456).");
         return;
       }
     } else if (role === "customer") {
@@ -213,8 +224,8 @@ export default function Register() {
         setError(t("auth.ageRestriction18"));
         return;
       }
-      if (!contactPhoneNumber.trim()) {
-        setError(t("auth.contactPhoneNumberRequired"));
+      if (!isValidMoldovaLocalPhone(contactPhoneNumber)) {
+        setError(t("auth.contactPhoneNumberInvalid") || "Introduceți un număr de contact valid de 8 cifre.");
         return;
       }
       if (!branchName.trim() || !branchAddress.trim() || !branchCity.trim() || !branchPhone.trim()) {
@@ -235,6 +246,8 @@ export default function Register() {
         email,
         password,
         role,
+        phoneNumber:
+          role === "staff" ? buildMoldovaPhone(phoneNumber) : buildMoldovaPhone(contactPhoneNumber),
       };
 
       if (role === "staff") {
@@ -278,10 +291,16 @@ export default function Register() {
       }
     }
 
+    let tokenForRegister = phoneVerificationToken;
+
     // If OTP step, verify OTP first
     if (otpStep === "otp") {
-      if (!otpCode.trim() || otpCode.trim().length < 4) {
+      if (!otpCode.trim() || otpCode.trim().length < 6) {
         setOtpError(t("auth.otpCodeRequired"));
+        return;
+      }
+      if (!verifiedPhone) {
+        setOtpError(t("auth.otpSendError"));
         return;
       }
 
@@ -289,11 +308,12 @@ export default function Register() {
       setOtpError("");
       try {
         const verifyResult = await authApi.verifyOTP(verifiedPhone, otpCode.trim());
-        if (!verifyResult.verified) {
+        if (!verifyResult.verified || !verifyResult.phoneVerificationToken) {
           setOtpError(t("auth.otpInvalid"));
           return;
         }
-        // OTP verified, proceed with registration
+        tokenForRegister = verifyResult.phoneVerificationToken;
+        setPhoneVerificationToken(tokenForRegister);
       } catch (err) {
         setOtpError(err instanceof Error ? err.message : t("auth.otpVerifyError"));
         setOtpLoading(false);
@@ -306,13 +326,19 @@ export default function Register() {
     // Complete registration after OTP is verified
     setLoading(true);
     try {
-      // MIGRATION FIX: Build registration data with profile information
+      if (!verifiedPhone || !tokenForRegister) {
+        setError(t("auth.otpVerifyError"));
+        setLoading(false);
+        return;
+      }
+
       const registerData: any = { 
         name: role === "staff" ? `${firstName.trim()} ${lastName.trim()}` : companyName.trim(), // For backward compatibility
         email, 
         password, 
         role,
-        phoneNumber: verifiedPhone, // Include verified phone number
+        phoneNumber: verifiedPhone,
+        phoneVerificationToken: tokenForRegister,
       };
       
       if (role === "staff") {
@@ -364,18 +390,19 @@ export default function Register() {
   }
 
   async function handleAcceptTerms() {
-    const phoneToVerify = role === "staff" ? `+373${phoneNumber.trim()}` : `+373${contactPhoneNumber.trim()}`;
-    
-    // Validate phone number before sending OTP
-    if (!phoneToVerify) {
-      setOtpError(t("auth.phoneNumberRequired"));
+    const localDigits = role === "staff" ? phoneNumber.trim() : contactPhoneNumber.trim();
+    if (!isValidMoldovaLocalPhone(localDigits)) {
+      setOtpError(t("auth.phoneNumberInvalid") || "Introduceți un număr valid de 8 cifre (ex: 69123456).");
       return;
     }
-    
+    const phoneToVerify = buildMoldovaPhone(localDigits);
+
     setTermsAcceptLoading(true);
     setOtpError("");
+    setPhoneVerificationToken("");
     try {
-      await authApi.sendOTP(phoneToVerify);
+      const sendResult = await authApi.sendOTP(phoneToVerify);
+      setOtpTestMode(sendResult.testMode === true);
       setVerifiedPhone(phoneToVerify);
       setShowTermsModal(false);
       setOtpStep("otp");
@@ -391,7 +418,8 @@ export default function Register() {
     setOtpLoading(true);
     setOtpError("");
     try {
-      await authApi.sendOTP(verifiedPhone);
+      const sendResult = await authApi.sendOTP(verifiedPhone);
+      setOtpTestMode(sendResult.testMode === true);
       setOtpCode("");
       setOtpError("");
     } catch (err) {
@@ -457,7 +485,7 @@ export default function Register() {
         {success && (
           <div className="auth-alert success">{success}</div>
         )}
-        <form onSubmit={handleSubmit} className="auth-form">
+        <form onSubmit={handleSubmit} className="auth-form" style={otpStep === "otp" ? { display: "none" } : undefined}>
           <input type="hidden" name="role" value={role} />
           
           {/* Common fields */}
@@ -902,7 +930,11 @@ export default function Register() {
             <div className="auth-otp-header">
               <h3>{t("auth.verifyPhoneNumber") || "Verifică numărul de telefon"}</h3>
               <p className="auth-muted">
-                {t("auth.otpSentTo") || "Am trimis un cod de verificare la"} <strong>{verifiedPhone}</strong>
+                {otpTestMode ? t("auth.otpTestModeHint") : (
+                  <>
+                    {t("auth.otpSentTo")} <strong>{verifiedPhone}</strong>
+                  </>
+                )}
               </p>
             </div>
             
@@ -923,7 +955,7 @@ export default function Register() {
                   }}
                   required
                   maxLength={6}
-                  placeholder="000000"
+                  placeholder={otpTestMode ? "123456" : "000000"}
                   className="text-center text-2xl tracking-widest font-mono"
                   autoFocus
                 />
@@ -931,7 +963,7 @@ export default function Register() {
               
               <button 
                 type="submit" 
-                disabled={loading || otpLoading || otpCode.length < 4} 
+                disabled={loading || otpLoading || otpCode.length < 6} 
                 className="btn-primary w-full py-3.5 disabled:opacity-50" 
                 style={{ marginTop: "24px" }}
               >
@@ -954,6 +986,7 @@ export default function Register() {
                   setOtpCode("");
                   setOtpError("");
                   setVerifiedPhone("");
+                  setPhoneVerificationToken("");
                 }}
                 className="btn-text w-full py-2 mt-2"
               >

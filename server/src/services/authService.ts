@@ -2,6 +2,12 @@ import { randomUUID } from "crypto";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { prisma } from "../prismaClient";
+import {
+  consumePhoneVerificationToken,
+  getPhoneValidationError,
+  issuePhoneVerificationToken,
+  normalizePhoneE164,
+} from "../phoneVerification";
 import { sendOTP, verifyOTP } from "../twilio";
 import { sendTermsAcceptanceEmail } from "../email";
 import { stringToUserRole, UserRole, userRoleToString } from "../enums";
@@ -30,6 +36,7 @@ type ValidateRegistrationInput = {
   name?: string;
   email?: string;
   password?: string;
+  phoneNumber?: string;
   role?: string;
   employeeProfile?: { firstName?: string; lastName?: string; dateOfBirth?: string; aboutMe?: string };
   businessProfile?: {
@@ -44,6 +51,8 @@ type ValidateRegistrationInput = {
 };
 
 type RegisterInput = ValidateRegistrationInput & {
+  phoneNumber?: string;
+  phoneVerificationToken?: string;
   employeeProfile?: {
     firstName?: string;
     lastName?: string;
@@ -232,6 +241,32 @@ async function ensureEmailAvailable(email: string) {
   if (existing) throw new ServiceError("Email deja folosit.", 400);
 }
 
+async function ensurePhoneAvailable(phoneE164: string) {
+  const existing = await prisma.users.findFirst({
+    where: { PhoneNumber: phoneE164 },
+    select: { Id: true },
+  });
+  if (existing) throw new ServiceError("Numărul de telefon este deja înregistrat.", 400);
+}
+
+function assertValidPhoneOrThrow(phone: string) {
+  const err = getPhoneValidationError(phone);
+  if (err) throw new ServiceError(err, 400);
+}
+
+function requireVerifiedPhoneForRegistration(input: RegisterInput) {
+  const phoneE164 = normalizePhoneE164(String(input.phoneNumber ?? ""));
+  const token = String(input.phoneVerificationToken ?? "").trim();
+  assertValidPhoneOrThrow(phoneE164);
+  if (!token) {
+    throw new ServiceError("Verificarea numărului de telefon este obligatorie. Introduceți codul SMS.", 400);
+  }
+  if (!consumePhoneVerificationToken(phoneE164, token)) {
+    throw new ServiceError("Numărul de telefon nu este verificat sau verificarea a expirat. Retrimiteți codul SMS.", 400);
+  }
+  return phoneE164;
+}
+
 async function loadUserProfile(userId: string) {
   return prisma.users.findUnique({
     where: { Id: userId },
@@ -313,14 +348,24 @@ export async function ensureDefaultAdmin(): Promise<void> {
 export async function validateRegistration(input: ValidateRegistrationInput) {
   const { emailTrim } = validateCommonRegistrationFields(input);
   await ensureEmailAvailable(emailTrim);
+
+  const phoneRaw = String(input.phoneNumber ?? "").trim();
+  if (phoneRaw) {
+    const phoneE164 = normalizePhoneE164(phoneRaw);
+    assertValidPhoneOrThrow(phoneE164);
+    await ensurePhoneAvailable(phoneE164);
+  }
+
   return { valid: true };
 }
 
 export async function registerUser(input: RegisterInput) {
   const { nameTrim, emailTrim, password, allowedRole } = validateCommonRegistrationFields(input);
+  const verifiedPhoneE164 = requireVerifiedPhoneForRegistration(input);
 
   try {
     await ensureEmailAvailable(emailTrim);
+    await ensurePhoneAvailable(verifiedPhoneE164);
     const passwordHash = await bcrypt.hash(password, 10);
     const roleEnum = stringToUserRole(allowedRole);
     const userId = randomUUID();
@@ -332,6 +377,7 @@ export async function registerUser(input: RegisterInput) {
           Email: emailTrim,
           PasswordHash: passwordHash,
           Role: roleEnum,
+          PhoneNumber: verifiedPhoneE164,
           CreatedAt: new Date(),
         },
       });
@@ -725,36 +771,65 @@ export async function setUserBooster(adminUserId: string | undefined, input: Set
   };
 }
 
-export async function sendOtpCode(input: OtpInput) {
-  const phoneNumber = String(input.phoneNumber ?? "").trim();
-  if (!phoneNumber) throw new ServiceError("Numărul de telefon este obligatoriu.", 400);
+function mapTwilioErrorToRomanian(message: string): string {
+  if (/unverified|trial account/i.test(message)) {
+    return "Numărul nu poate primi SMS (cont Twilio trial). Verifică numărul în consola Twilio sau folosește un număr de test.";
+  }
+  if (/max.*attempt|too many/i.test(message)) {
+    return "Prea multe încercări. Așteaptă câteva minute și retrimite codul.";
+  }
+  if (/invalid.*phone|not a valid/i.test(message)) {
+    return "Număr de telefon invalid. Verifică formatul (+373 și 8 cifre).";
+  }
+  return message || "Eroare la trimiterea codului OTP.";
+}
 
-  const normalizedPhone = phoneNumber.replace(/\s+/g, "");
-  if (!/^\+?[1-9]\d{1,14}$/.test(normalizedPhone)) {
-    throw new ServiceError("Format număr de telefon invalid. Folosește formatul internațional (ex: +37312345678).", 400);
+const otpSendCooldown = new Map<string, number>();
+const OTP_SEND_COOLDOWN_MS = 60_000;
+
+export async function sendOtpCode(input: OtpInput) {
+  const phoneE164 = normalizePhoneE164(String(input.phoneNumber ?? ""));
+  assertValidPhoneOrThrow(phoneE164);
+
+  const lastSent = otpSendCooldown.get(phoneE164) ?? 0;
+  if (Date.now() - lastSent < OTP_SEND_COOLDOWN_MS) {
+    const waitSec = Math.ceil((OTP_SEND_COOLDOWN_MS - (Date.now() - lastSent)) / 1000);
+    throw new ServiceError(`Așteaptă ${waitSec} secunde înainte de a retrimite codul.`, 429);
   }
 
-  const result = await sendOTP(normalizedPhone);
-  if (!result.ok) throw new ServiceError(result.error || "Eroare la trimiterea codului OTP.", 400);
-  return { message: "Cod OTP trimis cu succes." };
+  await ensurePhoneAvailable(phoneE164);
+
+  const result = await sendOTP(phoneE164);
+  if (!result.ok) throw new ServiceError(mapTwilioErrorToRomanian(result.error || ""), 400);
+
+  otpSendCooldown.set(phoneE164, Date.now());
+  if (result.smsSent === false) {
+    return {
+      message: "Mod test: introdu codul 123456 (fără SMS). Setează TWILIO_TEST_MODE=false pentru SMS real.",
+      smsSent: false,
+      testMode: true,
+    };
+  }
+  return { message: "Cod OTP trimis prin SMS pe numărul tău.", smsSent: true };
 }
 
 export async function verifyOtpCode(input: VerifyOtpInput) {
-  const phoneNumber = String(input.phoneNumber ?? "").trim();
+  const phoneE164 = normalizePhoneE164(String(input.phoneNumber ?? ""));
   const code = String(input.code ?? "").trim();
-  if (!phoneNumber) throw new ServiceError("Numărul de telefon este obligatoriu.", 400);
+  assertValidPhoneOrThrow(phoneE164);
   if (!code) throw new ServiceError("Codul OTP este obligatoriu.", 400);
 
-  const normalizedPhone = phoneNumber.replace(/\s+/g, "");
-  if (!/^\+?[1-9]\d{1,14}$/.test(normalizedPhone)) {
-    throw new ServiceError("Format număr de telefon invalid.", 400);
-  }
-
-  const result = await verifyOTP(normalizedPhone, code);
+  const result = await verifyOTP(phoneE164, code);
   if (!result.ok || !result.verified) {
     throw new ServiceError(result.error || "Cod OTP invalid sau expirat.", 400);
   }
-  return { verified: true, message: "Număr de telefon verificat cu succes." };
+
+  const phoneVerificationToken = issuePhoneVerificationToken(phoneE164);
+  return {
+    verified: true,
+    message: "Număr de telefon verificat cu succes.",
+    phoneVerificationToken,
+  };
 }
 
 export type SupportCrudUserRole = "support" | "staff" | "customer";
