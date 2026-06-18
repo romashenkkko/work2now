@@ -79,6 +79,18 @@ export function DashboardThemeProvider({ children }: { children: ReactNode }) {
     return theme;
   }, [theme, systemDark]);
 
+  useEffect(() => {
+    const root = document.documentElement;
+    if (resolvedTheme === "dark") {
+      root.classList.add("dark");
+    } else {
+      root.classList.remove("dark");
+    }
+    return () => {
+      root.classList.remove("dark");
+    };
+  }, [resolvedTheme]);
+
   const setTheme = useCallback(
     (t: DashboardThemeChoice) => {
       const current = themeRef.current;

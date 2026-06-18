@@ -23,7 +23,6 @@ import {
   CreditCard,
   Trash2,
   MessageCircle,
-  Wallet,
 } from "lucide-react";
 import { coffeemaker } from "@lucide/lab";
 import { useAuth } from "../hooks/useAuth";
@@ -179,7 +178,6 @@ const NAV_ICONS: Record<string, ComponentType<{ className?: string; size?: numbe
   review: Star as ComponentType<{ className?: string; size?: number }>,
   settings: Settings as ComponentType<{ className?: string; size?: number }>,
   creditCard: CreditCard as ComponentType<{ className?: string; size?: number }>,
-  wallet: Wallet as ComponentType<{ className?: string; size?: number }>,
 };
 
 const NAV_CUSTOMER = [
@@ -195,7 +193,6 @@ const NAV_STAFF = [
   { to: "/dashboard/joburi", labelKey: "dashboard.joburi", end: false, icon: "briefcase" },
   { to: "/dashboard/aplicatii", labelKey: "dashboard.myApplications", end: false, icon: "fileText" },
   { to: "/dashboard/chat", labelKey: "dashboard.supportChat", end: false, icon: "messageCircle" },
-  { to: "/dashboard/payout-settings", labelKey: "dashboard.staffPayoutSettingsNav", end: false, icon: "wallet" },
 ];
 
 const NAV_ADMIN = [
@@ -1022,7 +1019,7 @@ export default function DashboardLayout() {
   const closeSidebar = () => setSidebarOpen(false);
 
   return (
-    <div className="flex min-h-screen bg-gray-100">
+    <div className="flex min-h-screen bg-gray-100 overflow-x-hidden w-full max-w-[100vw]">
       {/* Mobile header – vizibil doar pe ecrane mici */}
       <header
         className="md:hidden fixed top-0 left-0 right-0 z-40 bg-white border-b border-gray-200 shadow-sm"

@@ -2,6 +2,12 @@ import { useRef, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 
+const PAYMENT_LOGOS = [
+  { src: "/Illustration/logosistemdeplata/visa.png", alt: "Visa" },
+  { src: "/Illustration/logosistemdeplata/mastercard.png", alt: "Mastercard" },
+  { src: "/Illustration/logosistemdeplata/paynet.png", alt: "Paynet" },
+] as const;
+
 export default function Footer() {
   const { t } = useTranslation();
   const ref = useRef<HTMLElement>(null);
@@ -33,6 +39,22 @@ export default function Footer() {
               <span className="font-bold text-[1.1rem] text-[#1e1c2f] hover:text-[#7a63f1] transition-colors">Work2Now</span>
             </Link>
             <p className="text-[#6b748a] text-[0.95rem] leading-relaxed mt-3">{t("footer.tagline")}</p>
+            <address className="not-italic mt-5 pt-5 border-t border-[rgba(224,216,247,0.4)] flex flex-col gap-2 text-[0.88rem] text-[#6b748a] leading-relaxed">
+              <p className="font-semibold text-[#1e1c2f]">{t("footer.companyLegalName")}</p>
+              <p>
+                <span className="font-medium text-[#4d5874]">{t("footer.addressLabel")}: </span>
+                {t("footer.companyAddress")}
+              </p>
+              <p>
+                <span className="font-medium text-[#4d5874]">{t("footer.emailLabel")}: </span>
+                <a
+                  href={`mailto:${t("footer.companyEmail")}`}
+                  className="hover:text-[#7a63f1] transition-colors break-all"
+                >
+                  {t("footer.companyEmail")}
+                </a>
+              </p>
+            </address>
           </div>
           <div className="footer-appear__block footer-appear__block--1 flex flex-col gap-2.5 min-w-[150px]">
             <Link to="/about" className="text-[#6b748a] text-[0.95rem] font-medium hover:text-[#7a63f1] transition-colors">{t("footer.about")}</Link>
@@ -52,7 +74,22 @@ export default function Footer() {
             <Link to="/locations" className="text-[#6b748a] text-[0.95rem] font-medium hover:text-[#7a63f1] transition-colors">{t("footer.locations")}</Link>
           </div>
         </div>
-        <div className="footer-appear__block footer-appear__block--4 mt-10 pt-8 border-t border-[rgba(224,216,247,0.5)] flex flex-wrap justify-between items-center gap-4 text-[0.9rem] text-[#9a8bc4]">
+        <div className="footer-appear__block footer-appear__block--4 mt-10 pt-8 border-t border-[rgba(224,216,247,0.5)] flex flex-wrap justify-between items-center gap-6">
+          <p className="text-[0.85rem] font-medium text-[#6b748a]">{t("footer.paymentMethods")}</p>
+          <div className="flex flex-wrap items-center gap-3" aria-label={t("footer.paymentMethods")}>
+            {PAYMENT_LOGOS.map((logo) => (
+              <img
+                key={logo.alt}
+                src={logo.src}
+                alt={logo.alt}
+                className="h-6 w-auto object-contain"
+                loading="lazy"
+                decoding="async"
+              />
+            ))}
+          </div>
+        </div>
+        <div className="footer-appear__block footer-appear__block--5 mt-6 flex flex-wrap justify-between items-center gap-4 text-[0.9rem] text-[#9a8bc4]">
           <p>{t("footer.copyright")}</p>
           <div>
             <a href="#" className="text-[#9a8bc4] hover:text-[#7a63f1] transition-colors">{t("footer.privacy")}</a>

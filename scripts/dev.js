@@ -1,8 +1,28 @@
 const net = require("net");
+const os = require("os");
 const path = require("path");
 const http = require("http");
 const fs = require("fs");
 const { spawn } = require("child_process");
+
+/** IPv4 LAN pentru acces din rețea (preferă 192.168.x.x; exclude adaptoare virtuale Hyper-V/WSL). */
+function getLanIPv4() {
+  const candidates = [];
+  const nets = os.networkInterfaces();
+  for (const name of Object.keys(nets)) {
+    const iface = nets[name];
+    if (!iface) continue;
+    for (const addr of iface) {
+      if (addr.family !== "IPv4" || addr.internal) continue;
+      const ip = addr.address;
+      if (ip.startsWith("172.20.") || ip.startsWith("172.17.") || ip.startsWith("169.254.")) continue;
+      const score = ip.startsWith("192.168.") ? 3 : ip.startsWith("10.") ? 2 : 1;
+      candidates.push({ ip, score });
+    }
+  }
+  candidates.sort((a, b) => b.score - a.score);
+  return candidates[0]?.ip ?? null;
+}
 
 /** Load server/.env into a plain object for the backend child process. */
 function loadServerEnv(rootDir) {
@@ -105,23 +125,56 @@ function prefixOutput(stream, prefix) {
   });
 }
 
+function portFromEnvUrl(url, fallback) {
+  if (!url || typeof url !== "string") return fallback;
+  try {
+    const u = new URL(url.trim());
+    if (u.port) return Number(u.port);
+    return u.protocol === "https:" ? 443 : 80;
+  } catch {
+    return fallback;
+  }
+}
+
 async function main() {
-  const backendPort = await findFreePort(5600);
-  const frontendPort = await findFreePort(5500, new Set([backendPort]));
-
-  console.log(`Starting dev with free ports -> frontend:${frontendPort} backend:${backendPort}`);
-
   const rootDir = process.cwd();
+  const serverEnv = loadServerEnv(rootDir);
+  const preferredBackend = portFromEnvUrl(serverEnv.GOOGLE_CALLBACK_URL, 5600);
+  const preferredFrontend = portFromEnvUrl(serverEnv.FRONTEND_URL, 5500);
+
+  let backendPort = preferredBackend;
+  let frontendPort = preferredFrontend;
+  if (!(await isPortFree(backendPort))) {
+    backendPort = await findFreePort(preferredBackend);
+  }
+  if (!(await isPortFree(frontendPort)) || frontendPort === backendPort) {
+    frontendPort = await findFreePort(preferredFrontend, new Set([backendPort]));
+  }
+
+  const googleCallbackUrl = `http://localhost:${backendPort}/api/auth/google/callback`;
+  if (backendPort !== preferredBackend || frontendPort !== preferredFrontend) {
+    console.warn(
+      `\n⚠ Porturile din server/.env (${preferredFrontend}/${preferredBackend}) sunt ocupate → folosesc ${frontendPort}/${backendPort}.`
+    );
+    console.warn(
+      `  Adaugă în Google Cloud Console → OAuth → Authorized redirect URIs:\n  ${googleCallbackUrl}\n`
+    );
+  }
+
+  const lanIp = getLanIPv4();
+  console.log(`Starting dev -> frontend:${frontendPort} backend:${backendPort}`);
+
   const serverDir = path.join(rootDir, "server");
   const clientDir = path.join(rootDir, "client");
 
-  const serverEnv = loadServerEnv(rootDir);
   const commonEnv = { ...process.env, ...serverEnv };
+  // Google OAuth acceptă doar localhost (nu IP privat 172.x / 192.x) la redirect URI.
   const backendEnv = {
     ...commonEnv,
+    HOST: "0.0.0.0",
     PORT: String(backendPort),
     FRONTEND_URL: `http://localhost:${frontendPort}`,
-    GOOGLE_CALLBACK_URL: `http://localhost:${backendPort}/api/auth/google/callback`,
+    GOOGLE_CALLBACK_URL: googleCallbackUrl,
     // Aliniat cu PHONE_OTP_ENABLED=false din Register.tsx (dev fără SMS obligatoriu)
     PHONE_REGISTRATION_OTP_REQUIRED: "false",
   };
@@ -129,7 +182,17 @@ async function main() {
     ...commonEnv,
     VITE_PORT: String(frontendPort),
     VITE_API_PORT: String(backendPort),
+    HOST: "0.0.0.0",
   };
+
+  console.log(`\n  Local:   http://localhost:${frontendPort}`);
+  console.log(`  API:     http://localhost:${backendPort}/api`);
+  if (lanIp) {
+    console.log(`  Rețea:   http://${lanIp}:${frontendPort}`);
+    console.log(`  API LAN: http://${lanIp}:${backendPort}/api`);
+  }
+  console.log(`  Google redirect (copiază în Google Console dacă lipsește):`);
+  console.log(`           ${googleCallbackUrl}\n`);
 
   const isWin = process.platform === "win32";
   const runCmd = isWin ? "cmd.exe" : "npm";

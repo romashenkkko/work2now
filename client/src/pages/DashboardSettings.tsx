@@ -1,12 +1,14 @@
 import { useState, useContext, useEffect } from "react";
 import { useTranslation } from "react-i18next";
-import { Lock, Eye, EyeOff, MapPin, Briefcase, MessageCircle, Phone } from "lucide-react";
+import { useSearchParams } from "react-router-dom";
+import { Lock, Eye, EyeOff, MapPin, Briefcase, MessageCircle, Phone, Wallet } from "lucide-react";
 import StarRating from "../components/StarRating";
 import { authApi } from "../api/client";
 import { useAuth } from "../hooks/useAuth";
 import { DashboardContext } from "./DashboardLayout";
 import BranchesSection from "../components/BranchesSection";
 import ExperiencesSection from "../components/ExperiencesSection";
+import DashboardStaffPayoutSettings from "./DashboardStaffPayoutSettings";
 import {
   CHAT_SOUND_SETTINGS_CHANGED,
   isChatCallSoundEnabled,
@@ -34,7 +36,18 @@ const LANGUAGES = [
 ] as const;
 const SUPPORT_AVATAR_URL = "/Illustration/SupportAvatar.png";
 
-type Section = "change-password" | "change-language" | "account-privacy" | "faq" | "contact" | "job-preferences" | "profile-info" | "branches" | "experiences" | "cv";
+type Section =
+  | "change-password"
+  | "change-language"
+  | "account-privacy"
+  | "faq"
+  | "contact"
+  | "job-preferences"
+  | "profile-info"
+  | "branches"
+  | "experiences"
+  | "cv"
+  | "payout";
 
 const MENU_ICONS: Record<Section, React.ReactNode> = {
   "change-password": (
@@ -83,6 +96,7 @@ const MENU_ICONS: Record<Section, React.ReactNode> = {
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
     </svg>
   ),
+  payout: <Wallet className="w-5 h-5 text-gray-500 flex-shrink-0" />,
 };
 
 /** 0 = none, 1 = weak, 2 = fair, 3 = good, 4 = strong */
@@ -111,13 +125,22 @@ const MENU_BUTTONS: { id: Section; labelKey: string }[] = [
   { id: "branches", labelKey: "profile.branches.title" },
   { id: "experiences", labelKey: "profile.experiences.title" },
   { id: "cv", labelKey: "profile.cv.title" },
+  { id: "payout", labelKey: "profile.payout.title" },
 ];
 
 export default function DashboardSettings() {
   const { t, i18n } = useTranslation();
   const { user } = useAuth();
   const { availableToWork, setAvailableToWork, userRating } = useContext(DashboardContext);
+  const [searchParams] = useSearchParams();
   const [activeSection, setActiveSection] = useState<Section | null>(null);
+
+  useEffect(() => {
+    const section = searchParams.get("section");
+    if (section === "payout" && user?.role === "staff") {
+      setActiveSection("payout");
+    }
+  }, [searchParams, user?.role]);
   const [msgSoundOn, setMsgSoundOn] = useState(() => isChatMessageSoundEnabled());
   const [callSoundOn, setCallSoundOn] = useState(() => isChatCallSoundEnabled());
 
@@ -231,7 +254,7 @@ export default function DashboardSettings() {
                   return user?.role === "customer";
                 }
                 // Show experiences only for staff users
-                if (id === "experiences" || id === "cv") {
+                if (id === "experiences" || id === "cv" || id === "payout") {
                   return user?.role === "staff";
                 }
                 return true;
@@ -667,6 +690,9 @@ export default function DashboardSettings() {
         )}
         {activeSection === "cv" && (
           <CvSection onBack={() => setActiveSection(null)} t={t} />
+        )}
+        {activeSection === "payout" && (
+          <DashboardStaffPayoutSettings embedded onBack={() => setActiveSection(null)} />
         )}
           </div>
         )}

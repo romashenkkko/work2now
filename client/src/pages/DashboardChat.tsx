@@ -15,8 +15,10 @@ import {
   Phone,
   Search,
   Send,
+  Moon,
   Settings,
   Smile,
+  Sun,
   Trash2,
   Undo2,
   UserPlus,
@@ -25,6 +27,7 @@ import {
 import { authApi } from "../api/client";
 import { useAuth } from "../hooks/useAuth";
 import { useDashboardTheme } from "../context/DashboardThemeContext";
+import { useTranslation } from "react-i18next";
 import { copyTextToClipboard } from "../lib/copyToClipboard";
 import {
   CHAT_SOUND_SETTINGS_CHANGED,
@@ -231,10 +234,220 @@ function formatRelativeTime(iso?: string | null): string {
   return `acum ${d} z`;
 }
 
+function ChatThemeSwitch({
+  isDark,
+  onToggle,
+  lightLabel,
+  darkLabel,
+}: {
+  isDark: boolean;
+  onToggle: () => void;
+  lightLabel: string;
+  darkLabel: string;
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={isDark}
+      aria-label={isDark ? darkLabel : lightLabel}
+      title={isDark ? lightLabel : darkLabel}
+      onClick={onToggle}
+      className={`relative inline-flex h-8 w-[52px] shrink-0 items-center rounded-full border p-0.5 shadow-sm transition-colors duration-200 ${
+        isDark
+          ? "border-slate-600 bg-slate-800/90"
+          : "border-slate-200/90 bg-white/95"
+      }`}
+    >
+      <Sun
+        className={`pointer-events-none absolute left-1.5 h-3.5 w-3.5 transition-opacity ${
+          isDark ? "text-slate-500 opacity-35" : "text-amber-500 opacity-100"
+        }`}
+        aria-hidden
+      />
+      <Moon
+        className={`pointer-events-none absolute right-1.5 h-3.5 w-3.5 transition-opacity ${
+          isDark ? "text-violet-300 opacity-100" : "text-slate-400 opacity-35"
+        }`}
+        aria-hidden
+      />
+      <span
+        className={`pointer-events-none h-6 w-6 rounded-full shadow-md ring-1 ring-black/5 transition-transform duration-200 ease-out ${
+          isDark ? "translate-x-[22px] bg-slate-700" : "translate-x-0 bg-white"
+        }`}
+      />
+    </button>
+  );
+}
+
 export default function DashboardChat() {
+  const { t } = useTranslation();
   const { user } = useAuth();
-  const { resolvedTheme } = useDashboardTheme();
+  const { resolvedTheme, setTheme } = useDashboardTheme();
   const isDark = resolvedTheme === "dark";
+  const chatUi = useMemo(
+    () =>
+      isDark
+        ? {
+            aside:
+              "flex max-h-[min(42vh,400px)] flex-col overflow-y-auto rounded-2xl border border-slate-700/55 bg-slate-900/95 p-4 shadow-[0_12px_40px_-16px_rgba(0,0,0,0.35)] backdrop-blur-xl lg:max-h-none lg:min-h-0",
+            sidebarHeader:
+              "flex items-center justify-between gap-2 rounded-2xl border border-slate-600/40 bg-slate-800/60 px-3 py-2.5 shadow-sm backdrop-blur-sm",
+            myConversationsPanel:
+              "mt-4 rounded-2xl border border-slate-700/40 bg-slate-900/50 p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]",
+            myConversationsLabel:
+              "mb-2 px-0.5 text-[11px] font-semibold uppercase tracking-wider text-slate-400",
+            emptyConversationCard:
+              "flex flex-col items-center justify-center gap-3 rounded-2xl border border-slate-700/60 bg-gradient-to-b from-slate-800/95 via-slate-900/90 to-slate-950/95 px-4 py-8 text-center shadow-[0_8px_32px_-16px_rgba(0,0,0,0.35)]",
+            emptyConversationIcon:
+              "flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-900/50 to-blue-900/40 shadow-[0_4px_14px_-4px_rgba(124,58,237,0.35)] ring-1 ring-slate-700/50",
+            emptyConversationIconColor: "h-6 w-6 text-violet-400",
+            emptyConversationTitle: "text-sm font-medium text-slate-200",
+            emptyConversationBody: "text-xs leading-relaxed text-slate-400",
+            mainSection:
+              "flex min-h-0 min-h-[320px] flex-1 flex-col overflow-hidden rounded-2xl border border-slate-700/55 bg-gradient-to-b from-slate-900/95 via-slate-900/85 to-slate-950 shadow-[0_12px_40px_-16px_rgba(0,0,0,0.4)] lg:min-h-0",
+            mainHeader:
+              "border-b border-slate-700/50 bg-slate-900/60 px-5 py-4 shadow-sm backdrop-blur-lg",
+            messagesArea:
+              "relative flex-1 overflow-y-auto bg-gradient-to-b from-slate-950/60 via-slate-900/50 to-slate-950/60 p-6 shadow-[inset_0_8px_28px_-12px_rgba(0,0,0,0.35)]",
+            welcomeCard:
+              "flex max-w-sm flex-col items-center gap-6 rounded-2xl border border-slate-600/50 bg-slate-800/90 p-8 text-center shadow-[0_20px_56px_-16px_rgba(0,0,0,0.45)] ring-1 ring-slate-700/40 backdrop-blur-sm",
+            welcomeIconWrap:
+              "flex h-20 w-20 items-center justify-center rounded-full border border-violet-500/30 bg-gradient-to-br from-slate-800 to-violet-950/50 shadow-[0_8px_28px_-8px_rgba(124,58,237,0.35)]",
+            welcomeIcon: "h-10 w-10 text-violet-400",
+            welcomeTitle: "text-base font-semibold text-slate-100",
+            welcomeBody: "mt-2 text-sm leading-relaxed text-slate-400",
+            searchIcon:
+              "pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500",
+            searchInput:
+              "w-full rounded-[14px] border border-slate-600 bg-slate-800 py-2.5 pl-10 pr-3 text-sm text-slate-100 shadow-[0_2px_8px_-2px_rgba(0,0,0,0.25)] transition-all duration-200 placeholder:text-slate-500 focus:border-violet-500/50 focus:outline-none focus:ring-2 focus:ring-violet-500/25",
+            sidebarTitle: "text-sm font-semibold tracking-tight text-slate-300",
+            sidebarTitlePulse:
+              "text-sm font-semibold tracking-tight bg-gradient-to-r from-violet-400 to-blue-400 bg-clip-text text-transparent",
+            liveOk: "bg-emerald-500/15 text-emerald-300 ring-1 ring-emerald-500/20",
+            liveWait: "bg-amber-500/15 text-amber-200 ring-1 ring-amber-500/25",
+            iconActive:
+              "border-violet-500/60 bg-gradient-to-br from-violet-500/20 to-blue-500/15 text-violet-300 ring-2 ring-violet-500/25",
+            iconIdle:
+              "border-violet-500/40 bg-gradient-to-br from-violet-500/10 to-blue-500/10 text-violet-400 hover:border-violet-400/60 hover:text-violet-300",
+            settingsBtn:
+              "inline-flex h-8 w-8 items-center justify-center rounded-xl border border-slate-600 bg-slate-800/80 text-slate-400 shadow-sm transition-all duration-200 hover:border-violet-500/40 hover:text-violet-300 hover:shadow-md hover:scale-[1.03] active:scale-[0.98]",
+            panelCard:
+              "overflow-hidden rounded-2xl border border-slate-600/70 bg-slate-900 p-4 shadow-[0_12px_40px_-16px_rgba(0,0,0,0.45)]",
+            panelTitle: "text-[13px] font-semibold tracking-tight text-slate-100",
+            panelBody: "mt-1 text-[11px] leading-relaxed text-slate-400",
+            panelCloseBtn:
+              "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-600 bg-slate-800/80 text-slate-400 transition hover:border-slate-500 hover:bg-slate-700 hover:text-slate-200",
+            mainTitle:
+              "text-lg font-semibold capitalize leading-tight tracking-tight text-slate-50 sm:text-xl",
+            mainSubtitle: "mt-0.5 truncate text-xs text-slate-400",
+            skeleton: "h-[72px] animate-pulse rounded-[14px] bg-slate-800",
+            convSelected:
+              "border-violet-500/35 bg-gradient-to-r from-violet-500/10 to-blue-500/8 shadow-[0_4px_18px_-6px_rgba(124,58,237,0.22)] ring-1 ring-violet-500/10",
+            convIdle:
+              "border border-transparent bg-slate-800/50 shadow-[0_2px_8px_-4px_rgba(0,0,0,0.2)] hover:border-slate-600",
+            convAvatar:
+              "flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-violet-900/50 to-blue-900/40 text-xs font-semibold text-violet-200 ring-2 ring-slate-900 shadow-sm",
+            convName: "truncate text-[13px] font-semibold text-slate-100",
+            convMeta: "mt-1 text-[11px] text-slate-500 truncate",
+            convTime: "mt-1 text-[10px] text-slate-500",
+            composerWrap:
+              "flex items-end gap-2 rounded-[16px] border border-slate-600 bg-slate-800/90 p-2 shadow-[0_10px_36px_-10px_rgba(0,0,0,0.45)] backdrop-blur-md transition-shadow focus-within:border-violet-500/40 focus-within:ring-2 focus-within:ring-violet-500/20",
+            composerText:
+              "min-h-[44px] max-h-32 min-w-0 flex-1 resize-y rounded-[14px] border-0 bg-transparent px-2 py-2.5 text-sm text-slate-100 outline-none transition placeholder:text-slate-500 focus:ring-0 disabled:bg-transparent disabled:text-slate-500",
+            composerToolBtn:
+              "inline-flex h-11 w-11 items-center justify-center rounded-[12px] border border-slate-600 bg-slate-700/80 text-slate-400 shadow-sm transition-all hover:border-violet-500/40 hover:bg-violet-900/30 hover:text-violet-300",
+            emojiPanel:
+              "absolute bottom-full right-0 z-[80] mb-2 w-[min(calc(100vw-2rem),288px)] rounded-2xl border border-slate-600 bg-slate-900 p-2 shadow-[0_16px_48px_-12px_rgba(0,0,0,0.5)]",
+            errorBanner:
+              "mb-3 rounded-xl border border-red-900/50 bg-red-950/40 px-4 py-2.5 text-xs text-red-200 shadow-sm backdrop-blur-sm",
+            mutedText: "text-slate-400",
+            friendSearchInput:
+              "w-full rounded-xl border border-slate-600 bg-slate-800/50 py-2.5 pl-10 pr-3 text-[13px] text-slate-100 shadow-inner transition placeholder:text-slate-500 focus:border-violet-500/40 focus:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-violet-500/15",
+            friendSearchIcon:
+              "pointer-events-none absolute left-3 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-slate-500",
+          }
+        : {
+            aside:
+              "flex max-h-[min(42vh,400px)] flex-col overflow-y-auto rounded-2xl border border-slate-200/80 bg-white p-4 shadow-[0_8px_32px_-12px_rgba(15,23,42,0.1),0_0_0_1px_rgba(255,255,255,0.95)_inset] lg:max-h-none lg:min-h-0 lg:shadow-[0_4px_24px_-8px_rgba(15,23,42,0.08)]",
+            sidebarHeader:
+              "flex items-center justify-between gap-2 rounded-2xl border border-slate-200/60 bg-white px-3 py-2.5 shadow-sm",
+            myConversationsPanel:
+              "mt-4 rounded-2xl border border-slate-200/60 bg-slate-50/90 p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.95)]",
+            myConversationsLabel:
+              "mb-2 px-0.5 text-[11px] font-semibold uppercase tracking-wider text-slate-500",
+            emptyConversationCard:
+              "flex flex-col items-center justify-center gap-3 rounded-2xl border border-slate-200/80 bg-gradient-to-b from-white via-slate-50 to-slate-100 px-4 py-8 text-center shadow-[0_4px_24px_-12px_rgba(15,23,42,0.1)]",
+            emptyConversationIcon:
+              "flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-100 to-blue-100 shadow-[0_4px_14px_-4px_rgba(124,58,237,0.2)] ring-1 ring-white",
+            emptyConversationIconColor: "h-6 w-6 text-violet-600",
+            emptyConversationTitle: "text-sm font-medium text-slate-800",
+            emptyConversationBody: "text-xs leading-relaxed text-slate-600",
+            mainSection:
+              "flex min-h-0 min-h-[320px] flex-1 flex-col overflow-hidden rounded-2xl border border-slate-200/80 bg-gradient-to-b from-white via-slate-50 to-slate-100 shadow-[0_4px_24px_-10px_rgba(15,23,42,0.08)] lg:min-h-0",
+            mainHeader:
+              "border-b border-slate-200/70 bg-white px-5 py-4 shadow-sm",
+            messagesArea:
+              "relative flex-1 overflow-y-auto bg-gradient-to-b from-slate-50 via-white to-slate-100/90 p-6 shadow-[inset_0_6px_20px_-12px_rgba(15,23,42,0.06)]",
+            welcomeCard:
+              "flex max-w-sm flex-col items-center gap-6 rounded-2xl border border-slate-200/80 bg-white p-8 text-center shadow-[0_16px_48px_-16px_rgba(15,23,42,0.12)] ring-1 ring-slate-200/50",
+            welcomeIconWrap:
+              "flex h-20 w-20 items-center justify-center rounded-full border border-violet-200/60 bg-gradient-to-br from-white to-violet-50 shadow-[0_8px_28px_-8px_rgba(124,58,237,0.2)]",
+            welcomeIcon: "h-10 w-10 text-violet-600",
+            welcomeTitle: "text-base font-semibold text-slate-900",
+            welcomeBody: "mt-2 text-sm leading-relaxed text-slate-600",
+            searchIcon:
+              "pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400",
+            searchInput:
+              "w-full rounded-[14px] border border-slate-200/90 bg-white py-2.5 pl-10 pr-3 text-sm text-slate-800 shadow-[0_2px_8px_-2px_rgba(15,23,42,0.06)] transition-all duration-200 placeholder:text-slate-400 focus:border-violet-400/50 focus:outline-none focus:ring-2 focus:ring-violet-500/20",
+            sidebarTitle: "text-sm font-semibold tracking-tight text-slate-600",
+            sidebarTitlePulse:
+              "text-sm font-semibold tracking-tight bg-gradient-to-r from-violet-600 to-blue-600 bg-clip-text text-transparent",
+            liveOk: "bg-emerald-500/15 text-emerald-700 ring-1 ring-emerald-500/20",
+            liveWait: "bg-amber-500/15 text-amber-800 ring-1 ring-amber-500/25",
+            iconActive:
+              "border-violet-400/80 bg-gradient-to-br from-violet-500/20 to-blue-500/15 text-violet-700 ring-2 ring-violet-400/30",
+            iconIdle:
+              "border-violet-200/80 bg-gradient-to-br from-violet-500/10 to-blue-500/10 text-violet-600 hover:border-violet-400/60 hover:text-violet-700",
+            settingsBtn:
+              "inline-flex h-8 w-8 items-center justify-center rounded-xl border border-slate-200/80 bg-white text-slate-500 shadow-sm transition-all duration-200 hover:border-violet-300/60 hover:text-violet-600 hover:shadow-md hover:scale-[1.03] active:scale-[0.98]",
+            panelCard:
+              "overflow-hidden rounded-2xl border border-slate-200/90 bg-white p-4 shadow-[0_4px_28px_-6px_rgba(15,23,42,0.1),0_0_0_1px_rgba(15,23,42,0.04)]",
+            panelTitle: "text-[13px] font-semibold tracking-tight text-slate-800",
+            panelBody: "mt-1 text-[11px] leading-relaxed text-slate-500",
+            panelCloseBtn:
+              "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-200/90 bg-slate-50/90 text-slate-500 transition hover:border-slate-300 hover:bg-white hover:text-slate-700",
+            mainTitle:
+              "text-lg font-semibold capitalize leading-tight tracking-tight text-slate-900 sm:text-xl",
+            mainSubtitle: "mt-0.5 truncate text-xs text-slate-500",
+            skeleton: "h-[72px] animate-pulse rounded-[14px] bg-slate-100",
+            convSelected:
+              "border-violet-300/50 bg-gradient-to-r from-violet-500/10 to-blue-500/8 shadow-[0_4px_18px_-6px_rgba(124,58,237,0.22)] ring-1 ring-violet-500/10",
+            convIdle:
+              "border border-transparent bg-white shadow-[0_2px_8px_-4px_rgba(15,23,42,0.06)] hover:border-slate-200/90 hover:shadow-md",
+            convAvatar:
+              "flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-violet-100 to-blue-100 text-xs font-semibold text-violet-700 ring-2 ring-white shadow-sm",
+            convName: "truncate text-[13px] font-semibold text-slate-900",
+            convMeta: "mt-1 text-[11px] text-slate-500 truncate",
+            convTime: "mt-1 text-[10px] text-slate-400",
+            composerWrap:
+              "flex items-end gap-2 rounded-[16px] border border-slate-200/80 bg-white p-2 shadow-[0_8px_32px_-10px_rgba(15,23,42,0.12),0_0_0_1px_rgba(15,23,42,0.03)] backdrop-blur-md transition-shadow focus-within:border-violet-400/40 focus-within:shadow-[0_12px_40px_-12px_rgba(124,58,237,0.18)] focus-within:ring-2 focus-within:ring-violet-500/15",
+            composerText:
+              "min-h-[44px] max-h-32 min-w-0 flex-1 resize-y rounded-[14px] border-0 bg-transparent px-2 py-2.5 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:ring-0 disabled:bg-transparent disabled:text-slate-400",
+            composerToolBtn:
+              "inline-flex h-11 w-11 items-center justify-center rounded-[12px] border border-slate-200/80 bg-slate-50/90 text-slate-500 shadow-sm transition-all hover:border-violet-300 hover:bg-violet-50 hover:text-violet-600",
+            emojiPanel:
+              "absolute bottom-full right-0 z-[80] mb-2 w-[min(calc(100vw-2rem),288px)] rounded-2xl border border-slate-200/90 bg-white p-2 shadow-[0_16px_48px_-12px_rgba(15,23,42,0.2)]",
+            errorBanner:
+              "mb-3 rounded-xl border border-red-200/80 bg-red-50/95 px-4 py-2.5 text-xs text-red-700 shadow-sm backdrop-blur-sm",
+            mutedText: "text-slate-500",
+            friendSearchInput:
+              "w-full rounded-xl border border-slate-200/90 bg-slate-50/70 py-2.5 pl-10 pr-3 text-[13px] text-slate-800 shadow-inner transition placeholder:text-slate-400 focus:border-violet-400/50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-violet-500/15",
+            friendSearchIcon:
+              "pointer-events-none absolute left-3 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-slate-400",
+          },
+    [isDark]
+  );
   const role = user?.role?.toLowerCase?.() ?? "";
   const isSupport = role === "support" || role === "admin";
 
@@ -1335,23 +1548,21 @@ export default function DashboardChat() {
 
   const conversationSearchField = (
     <div className="relative">
-      <Search
-        className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 dark:text-slate-500"
-        strokeWidth={1.75}
-        aria-hidden
-      />
+      <Search className={chatUi.searchIcon} strokeWidth={1.75} aria-hidden />
       <input
         value={search}
         onChange={(e) => setSearch(e.target.value)}
         placeholder="Caută conversații…"
-        className="w-full rounded-[14px] border border-slate-200/90 bg-white/95 py-2.5 pl-10 pr-3 text-sm text-slate-800 shadow-[0_2px_8px_-2px_rgba(15,23,42,0.06)] transition-all duration-200 ease-out placeholder:text-slate-400 focus:border-violet-400/50 focus:outline-none focus:ring-2 focus:ring-violet-500/20 dark:border-slate-600 dark:bg-slate-800/90 dark:text-slate-100 dark:placeholder:text-slate-500"
+        className={chatUi.searchInput}
       />
     </div>
   );
 
   return (
     <div
-      className={`mt-4 h-[calc(100vh-156px)] min-h-[560px] font-sans antialiased transition-colors duration-300 ease-out ${isDark ? "dark" : ""}`}
+      className={`mt-4 h-[calc(100vh-156px)] min-h-[560px] font-sans antialiased transition-colors duration-300 ease-out ${
+        isDark ? "bg-slate-950 text-slate-100" : "bg-slate-100 text-slate-900"
+      }`}
     >
       <style>{`
         @keyframes support-modal-fade-in {
@@ -1436,25 +1647,21 @@ export default function DashboardChat() {
         }
       `}</style>
       {error ? (
-        <div className="mb-3 rounded-xl border border-red-200/80 bg-red-50/95 px-4 py-2.5 text-xs text-red-700 shadow-sm backdrop-blur-sm dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-200">
-          {error}
-        </div>
+        <div className={chatUi.errorBanner}>{error}</div>
       ) : null}
       <div className="flex h-full min-h-0 flex-col gap-4 lg:grid lg:h-full lg:min-h-0 lg:grid-cols-[minmax(300px,380px)_1fr] lg:gap-5 lg:overflow-hidden">
-        <aside className="flex max-h-[min(42vh,400px)] flex-col overflow-y-auto rounded-2xl border border-slate-200/60 bg-white/90 p-4 shadow-[0_8px_32px_-12px_rgba(15,23,42,0.1),0_0_0_1px_rgba(255,255,255,0.9)_inset] backdrop-blur-xl dark:border-slate-700/55 dark:bg-slate-900/85 dark:shadow-[0_12px_40px_-16px_rgba(0,0,0,0.35)] lg:max-h-none lg:min-h-0 lg:shadow-[0_4px_24px_-8px_rgba(15,23,42,0.08),0_0_0_1px_rgba(15,23,42,0.03)] dark:lg:shadow-[0_8px_32px_-12px_rgba(0,0,0,0.45)]">
+        <aside className={chatUi.aside}>
           <div className="space-y-3">
-            <div className="flex items-center justify-between gap-2 rounded-2xl border border-slate-200/50 bg-white/70 px-3 py-2.5 shadow-sm backdrop-blur-sm dark:border-slate-600/40 dark:bg-slate-800/40">
+            <div className={chatUi.sidebarHeader}>
               <div className="flex min-w-0 items-center gap-2">
                 <div
-                  className={`text-sm font-semibold tracking-tight ${newMessagePulse ? "bg-gradient-to-r from-violet-600 to-blue-600 bg-clip-text text-transparent dark:from-violet-400 dark:to-blue-400" : "text-slate-600 dark:text-slate-300"}`}
+                  className={newMessagePulse ? chatUi.sidebarTitlePulse : chatUi.sidebarTitle}
                 >
                   Mesaje
                 </div>
                 <span
                   className={`inline-flex shrink-0 items-center rounded-full px-2.5 py-0.5 text-[10px] font-medium transition-all duration-300 ${
-                    sseStatus === "connected"
-                      ? "bg-emerald-500/15 text-emerald-700 ring-1 ring-emerald-500/20 dark:text-emerald-300"
-                      : "bg-amber-500/15 text-amber-800 ring-1 ring-amber-500/25 dark:text-amber-200"
+                    sseStatus === "connected" ? chatUi.liveOk : chatUi.liveWait
                   }`}
                 >
                   {sseStatus === "connected" ? "Live" : "…"}
@@ -1472,9 +1679,7 @@ export default function DashboardChat() {
                     void loadFriendIncomingRequests();
                   }}
                   className={`relative inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border shadow-sm transition-all duration-200 hover:shadow-md ${
-                    addFriendMode
-                      ? "border-violet-400/80 bg-gradient-to-br from-violet-500/20 to-blue-500/15 text-violet-700 ring-2 ring-violet-400/30 dark:border-violet-500/60 dark:text-violet-300 dark:ring-violet-500/25"
-                      : "border-violet-200/80 bg-gradient-to-br from-violet-500/10 to-blue-500/10 text-violet-600 hover:border-violet-400/60 hover:text-violet-700 dark:border-violet-500/40 dark:text-violet-400 dark:hover:text-violet-300"
+                    addFriendMode ? chatUi.iconActive : chatUi.iconIdle
                   }`}
                   title="Adaugă prieten"
                   aria-label="Adaugă prieten"
@@ -1497,9 +1702,7 @@ export default function DashboardChat() {
                       setAddFriendMode(false);
                     }}
                     className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border shadow-sm transition-all duration-200 hover:shadow-md ${
-                      supportRequestMode
-                        ? "border-violet-400/80 bg-gradient-to-br from-violet-500/20 to-blue-500/15 text-violet-700 ring-2 ring-violet-400/30 dark:border-violet-500/60 dark:text-violet-300 dark:ring-violet-500/25"
-                        : "border-violet-200/80 bg-gradient-to-br from-violet-500/10 to-blue-500/10 text-violet-600 hover:border-violet-400/60 hover:text-violet-700 dark:border-violet-500/40 dark:text-violet-400 dark:hover:text-violet-300"
+                      supportRequestMode ? chatUi.iconActive : chatUi.iconIdle
                     }`}
                     title="Solicitare support"
                     aria-label="Solicitare support"
@@ -1507,9 +1710,15 @@ export default function DashboardChat() {
                     <Headphones className="h-4 w-4" strokeWidth={1.75} />
                   </button>
                 )}
+                <ChatThemeSwitch
+                  isDark={isDark}
+                  onToggle={() => setTheme(isDark ? "light" : "dark")}
+                  lightLabel={t("dashboard.chatThemeLight", "Mod luminos (alb)")}
+                  darkLabel={t("dashboard.chatThemeDark", "Mod întunecat (negru)")}
+                />
                 <Link
                   to="/dashboard/settings"
-                  className="inline-flex h-8 w-8 items-center justify-center rounded-xl border border-slate-200/80 bg-white/90 text-slate-500 shadow-sm transition-all duration-200 ease-out hover:border-violet-300/60 hover:text-violet-600 hover:shadow-md hover:scale-[1.03] active:scale-[0.98] dark:border-slate-600 dark:bg-slate-800/80 dark:text-slate-400 dark:hover:border-violet-500/40"
+                  className={chatUi.settingsBtn}
                   aria-label="Setări"
                   title="Setări profil"
                 >
@@ -1519,20 +1728,20 @@ export default function DashboardChat() {
             </div>
             {addFriendMode ? (
               <div
-                className="overflow-hidden rounded-2xl border border-slate-200/90 bg-white p-4 shadow-[0_4px_28px_-6px_rgba(15,23,42,0.1),0_0_0_1px_rgba(15,23,42,0.04)] dark:border-slate-600/70 dark:bg-slate-900 dark:shadow-[0_12px_40px_-16px_rgba(0,0,0,0.45)]"
+                className={chatUi.panelCard}
                 style={{ animation: "modal-element-enter 0.28s ease-out" }}
               >
                 <div className="mb-3 flex items-start justify-between gap-3">
                   <div className="min-w-0 pt-0.5">
-                    <p className="text-[13px] font-semibold tracking-tight text-slate-800 dark:text-slate-100">Adaugă prieten</p>
-                    <p className="mt-1 text-[11px] leading-relaxed text-slate-500 dark:text-slate-400">
+                    <p className={chatUi.panelTitle}>Adaugă prieten</p>
+                    <p className={chatUi.panelBody}>
                       Trimite o cerere sau acceptă cereri primite. Caută după email sau nume (min. 2 caractere). Staff și customer se pot conecta; support poate adăuga orice tip de cont.
                     </p>
                   </div>
                   <button
                     type="button"
                     onClick={exitAddFriendMode}
-                    className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-200/90 bg-slate-50/90 text-slate-500 transition hover:border-slate-300 hover:bg-white hover:text-slate-700 dark:border-slate-600 dark:bg-slate-800/80 dark:text-slate-400 dark:hover:border-slate-500 dark:hover:bg-slate-700 dark:hover:text-slate-200"
+                    className={chatUi.panelCloseBtn}
                     aria-label="Închide"
                     title="Închide"
                   >
@@ -1598,17 +1807,13 @@ export default function DashboardChat() {
                   )}
                 </div>
                 <div className="relative">
-                  <Search
-                    className="pointer-events-none absolute left-3 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-slate-400 dark:text-slate-500"
-                    strokeWidth={2}
-                    aria-hidden
-                  />
+                  <Search className={chatUi.friendSearchIcon} strokeWidth={2} aria-hidden />
                   <input
                     value={friendSearchQuery}
                     onChange={(e) => setFriendSearchQuery(e.target.value)}
                     placeholder="Email sau nume (prenume / nume)…"
                     autoFocus
-                    className="w-full rounded-xl border border-slate-200/90 bg-slate-50/70 py-2.5 pl-10 pr-3 text-[13px] text-slate-800 shadow-inner transition placeholder:text-slate-400 focus:border-violet-400/50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-violet-500/15 dark:border-slate-600 dark:bg-slate-800/50 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-violet-500/40 dark:focus:bg-slate-900"
+                    className={chatUi.friendSearchInput}
                   />
                 </div>
                 <div className="mt-3 max-h-[min(220px,40vh)] overflow-y-auto rounded-xl border border-slate-100 bg-slate-50/40 dark:border-slate-700/60 dark:bg-slate-800/30">
@@ -1656,15 +1861,15 @@ export default function DashboardChat() {
               </div>
             ) : supportRequestMode && !isSupport ? (
               <div
-                className="overflow-hidden rounded-[14px] border border-violet-200/60 bg-gradient-to-b from-violet-50/50 to-white/90 p-3 shadow-[0_8px_28px_-8px_rgba(124,58,237,0.18)] dark:border-violet-500/25 dark:from-violet-950/40 dark:to-slate-900/90"
+                className={chatUi.panelCard}
                 style={{ animation: "modal-element-enter 0.28s ease-out" }}
               >
                 <div className="mb-2 flex items-start justify-between gap-2">
-                  <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">Solicitare support</p>
+                  <p className={chatUi.panelTitle}>Solicitare support</p>
                   <button
                     type="button"
                     onClick={exitSupportRequestMode}
-                    className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-200/80 bg-white/95 text-slate-600 shadow-sm transition hover:bg-slate-100 dark:border-slate-600 dark:bg-slate-800/80 dark:text-slate-300"
+                    className={chatUi.panelCloseBtn}
                     aria-label="Închide"
                     title="Închide"
                   >
@@ -1675,7 +1880,7 @@ export default function DashboardChat() {
                   value={requestDescription}
                   onChange={(e) => setRequestDescription(e.target.value)}
                   placeholder="Descrie problema ta pentru support (minim 5 caractere)…"
-                  className="w-full rounded-[14px] border border-slate-200/80 bg-white/95 px-3 py-2.5 text-xs shadow-sm transition-all duration-200 placeholder:text-slate-400 focus:border-violet-400/50 focus:outline-none focus:ring-2 focus:ring-violet-500/15 dark:border-slate-600 dark:bg-slate-800/80 dark:text-slate-100"
+                  className={chatUi.friendSearchInput}
                   rows={4}
                 />
                 <button
@@ -1980,8 +2185,8 @@ export default function DashboardChat() {
                                   {c.requesterRole || "staff"}
                                 </span>
                               </div>
-                              <div className="mt-1 text-[10px] text-gray-400">{formatRelativeTime(c.updatedAt)}</div>
-                              <div className="mt-1 text-[11px] text-gray-500 truncate">
+                              <div className={chatUi.convTime}>{formatRelativeTime(c.updatedAt)}</div>
+                              <div className={chatUi.convMeta}>
                                 {c.messages && c.messages.length > 0
                                   ? c.messages[c.messages.length - 1].message
                                   : "Fără mesaje încă"}
@@ -2033,16 +2238,16 @@ export default function DashboardChat() {
           {!addFriendMode && !supportRequestMode && (
           <div
             key={sidebarMainEnterTick}
-            className={`mt-4 rounded-2xl border border-slate-200/50 bg-white/40 p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)] dark:border-slate-700/40 dark:bg-slate-900/30 ${
+            className={`${chatUi.myConversationsPanel} ${
               sidebarMainEnterTick > 0 ? "conversations-panel-enter" : ""
             }`}
           >
-            <p className="mb-2 px-0.5 text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Conversațiile mele</p>
+            <p className={chatUi.myConversationsLabel}>Conversațiile mele</p>
             <div className="space-y-2">
               {loading && filteredMine.length === 0 && (
                 <>
-                  <div className="h-[72px] animate-pulse rounded-[14px] bg-slate-100 dark:bg-slate-800" />
-                  <div className="h-[72px] animate-pulse rounded-[14px] bg-slate-100 dark:bg-slate-800" />
+                  <div className={chatUi.skeleton} />
+                  <div className={chatUi.skeleton} />
                 </>
               )}
               {filteredMine.map((c) => {
@@ -2062,13 +2267,11 @@ export default function DashboardChat() {
                     setConversationMenu({ x, y, chatId: c.id });
                   }}
                   className={`w-full rounded-[14px] border p-3 text-left transition-all duration-200 ease-out ${
-                    selectedChatId === c.id
-                      ? "border-violet-300/50 bg-gradient-to-r from-violet-500/10 to-blue-500/8 shadow-[0_4px_18px_-6px_rgba(124,58,237,0.22)] ring-1 ring-violet-500/10 dark:border-violet-500/35"
-                      : "border border-transparent bg-white/85 shadow-[0_2px_8px_-4px_rgba(15,23,42,0.06)] hover:border-slate-200/90 hover:shadow-md dark:bg-slate-800/50 dark:hover:border-slate-600"
+                    selectedChatId === c.id ? chatUi.convSelected : chatUi.convIdle
                   }`}
                 >
                   <div className="flex items-start gap-3">
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-violet-100 to-blue-100 text-xs font-semibold text-violet-700 ring-2 ring-white shadow-sm dark:from-violet-900/50 dark:to-blue-900/40 dark:text-violet-200 dark:ring-slate-900">
+                    <div className={chatUi.convAvatar}>
                       <img
                         src={peerAvatarUrlForSidebar(c, myUid, isSupport)}
                         alt={(isSupport ? c.requesterEmail : c.acceptedByEmail) || "avatar"}
@@ -2077,7 +2280,7 @@ export default function DashboardChat() {
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center justify-between gap-2">
-                        <div className="truncate text-[13px] font-semibold text-slate-900 dark:text-slate-100">
+                        <div className={chatUi.convName}>
                           {peerDisplayNameForSidebar(c, myUid, isSupport)}
                         </div>
                         {(unreadCountByChat[c.id] ?? 0) > 0 && (
@@ -2104,8 +2307,8 @@ export default function DashboardChat() {
                           {sidebarBadgeText}
                         </span>
                       </div>
-                      <div className="mt-1 text-[10px] text-gray-400">{formatRelativeTime(c.updatedAt)}</div>
-                      <div className="mt-1 text-[11px] text-gray-500 truncate">
+                      <div className={chatUi.convTime}>{formatRelativeTime(c.updatedAt)}</div>
+                      <div className={chatUi.convMeta}>
                         {c.messages && c.messages.length > 0
                           ? c.messages[c.messages.length - 1].message
                           : "Fără mesaje încă"}
@@ -2116,13 +2319,13 @@ export default function DashboardChat() {
                 );
               })}
               {filteredMine.length === 0 && !loading && (
-                <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-slate-200/70 bg-gradient-to-b from-white via-slate-50/80 to-slate-100/60 px-4 py-8 text-center shadow-[0_4px_24px_-12px_rgba(15,23,42,0.08),inset_0_1px_0_rgba(255,255,255,0.9)] dark:border-slate-700/60 dark:from-slate-800/90 dark:via-slate-900/70 dark:to-slate-950/80 dark:shadow-[0_8px_32px_-16px_rgba(0,0,0,0.35)]">
-                  <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-100/90 to-blue-100/80 shadow-[0_4px_14px_-4px_rgba(124,58,237,0.25)] ring-1 ring-white/80 dark:from-violet-900/50 dark:to-blue-900/40 dark:ring-slate-700/50">
-                    <Inbox className="h-6 w-6 text-violet-600 dark:text-violet-400" strokeWidth={1.5} aria-hidden />
+                <div className={chatUi.emptyConversationCard}>
+                  <div className={chatUi.emptyConversationIcon}>
+                    <Inbox className={chatUi.emptyConversationIconColor} strokeWidth={1.5} aria-hidden />
                   </div>
                   <div className="max-w-[220px] space-y-1">
-                    <p className="text-sm font-medium text-slate-700 dark:text-slate-200">Nicio conversație încă</p>
-                    <p className="text-xs leading-relaxed text-slate-500 dark:text-slate-400">
+                    <p className={chatUi.emptyConversationTitle}>Nicio conversație încă</p>
+                    <p className={chatUi.emptyConversationBody}>
                       Mesajele tale vor apărea aici. Poți adăuga prieteni sau trimite o solicitare către echipa de support din zona de mai sus.
                     </p>
                   </div>
@@ -2133,8 +2336,8 @@ export default function DashboardChat() {
           )}
         </aside>
 
-        <section className="flex min-h-0 min-h-[320px] flex-1 flex-col overflow-hidden rounded-2xl border border-slate-200/70 bg-gradient-to-b from-white via-slate-50/40 to-slate-100/50 shadow-[inset_0_1px_0_rgba(255,255,255,0.95),0_4px_24px_-10px_rgba(15,23,42,0.07)] dark:border-slate-700/55 dark:from-slate-900/95 dark:via-slate-900/85 dark:to-slate-950 lg:min-h-0 lg:shadow-[0_8px_32px_-12px_rgba(15,23,42,0.1),0_0_0_1px_rgba(15,23,42,0.04)] dark:lg:shadow-[0_12px_40px_-16px_rgba(0,0,0,0.4)]">
-          <div className="border-b border-slate-200/60 bg-white/70 px-5 py-4 shadow-sm backdrop-blur-lg dark:border-slate-700/50 dark:bg-slate-900/50">
+        <section className={chatUi.mainSection}>
+          <div className={chatUi.mainHeader}>
             <div className="flex items-center gap-3">
               {selected && (
                 <div className="relative flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-violet-100 to-blue-100 shadow-md ring-2 ring-white dark:from-violet-900/60 dark:to-blue-900/50 dark:ring-slate-800">
@@ -2143,10 +2346,10 @@ export default function DashboardChat() {
               )}
               <div className="flex min-w-0 flex-1 items-start gap-2">
                 <div className="min-w-0 flex-1">
-                  <h2 className="text-lg font-semibold capitalize leading-tight tracking-tight text-slate-900 dark:text-slate-50 sm:text-xl">
+                  <h2 className={chatUi.mainTitle}>
                     {selected ? selectedPeerName || selectedPeerEmail || `Chat #${selected.id}` : "Selectează o conversație"}
                   </h2>
-                  <p className="mt-0.5 truncate text-xs text-slate-500 dark:text-slate-400">
+                  <p className={chatUi.mainSubtitle}>
                     {selected ? selectedPeerEmail : "Alege o conversație din listă"}
                   </p>
                 </div>
@@ -2273,19 +2476,19 @@ export default function DashboardChat() {
 
           <div
             key={selected?.id ?? "chat-empty"}
-            className="relative flex-1 overflow-y-auto bg-gradient-to-b from-slate-100/70 via-white/50 to-slate-50/80 p-6 shadow-[inset_0_6px_20px_-12px_rgba(15,23,42,0.06)] dark:from-slate-950/50 dark:via-slate-900/40 dark:to-slate-950/50 dark:shadow-[inset_0_8px_28px_-12px_rgba(0,0,0,0.35)]"
+            className={chatUi.messagesArea}
             style={{ animation: "modal-element-enter 0.24s ease-out" }}
             ref={messageListRef}
           >
             {!selected ? (
               <div className="flex h-full min-h-[280px] items-center justify-center px-4">
-                <div className="flex max-w-sm flex-col items-center gap-6 rounded-2xl border border-slate-200/70 bg-white/90 p-8 text-center shadow-[0_16px_48px_-16px_rgba(15,23,42,0.12)] ring-1 ring-slate-200/40 backdrop-blur-sm dark:border-slate-600/50 dark:bg-slate-800/60 dark:shadow-[0_20px_56px_-16px_rgba(0,0,0,0.45)] dark:ring-slate-700/40">
-                  <div className="flex h-20 w-20 items-center justify-center rounded-full border border-violet-200/50 bg-gradient-to-br from-white to-violet-50/90 shadow-[0_8px_28px_-8px_rgba(124,58,237,0.25)] dark:border-violet-500/30 dark:from-slate-800 dark:to-violet-950/50">
-                    <MessageCircle className="h-10 w-10 text-violet-500 dark:text-violet-400" strokeWidth={1.35} />
+                <div className={chatUi.welcomeCard}>
+                  <div className={chatUi.welcomeIconWrap}>
+                    <MessageCircle className={chatUi.welcomeIcon} strokeWidth={1.35} />
                   </div>
                   <div>
-                    <p className="text-base font-semibold text-slate-800 dark:text-slate-100">Bine ai venit</p>
-                    <p className="mt-2 text-sm leading-relaxed text-slate-500 dark:text-slate-400">
+                    <p className={chatUi.welcomeTitle}>Bine ai venit</p>
+                    <p className={chatUi.welcomeBody}>
                       Selectează o conversație din listă sau pornește una nouă (prieteni sau solicitare către echipa de support).
                     </p>
                   </div>
@@ -2551,7 +2754,7 @@ export default function DashboardChat() {
                 />
               </div>
             )}
-            <div className="flex items-end gap-2 rounded-[16px] border border-slate-200/80 bg-white/95 p-2 shadow-[0_8px_32px_-10px_rgba(15,23,42,0.12),0_0_0_1px_rgba(15,23,42,0.03)] backdrop-blur-md transition-shadow duration-300 ease-out focus-within:border-violet-400/40 focus-within:shadow-[0_12px_40px_-12px_rgba(124,58,237,0.18)] focus-within:ring-2 focus-within:ring-violet-500/15 dark:border-slate-600 dark:bg-slate-800/90 dark:shadow-[0_10px_36px_-10px_rgba(0,0,0,0.45)]">
+            <div className={chatUi.composerWrap}>
               <textarea
                 value={draft}
                 onChange={(e) => {
@@ -2612,7 +2815,7 @@ export default function DashboardChat() {
                         ? "Așteaptă: un agent support trebuie să accepte solicitarea."
                       : "Scrie mesaj... (Shift+Enter newline, Ctrl+Enter send)"
                 }
-                className="min-h-[44px] max-h-32 min-w-0 flex-1 resize-y rounded-[14px] border-0 bg-transparent px-2 py-2.5 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:ring-0 disabled:bg-transparent disabled:text-slate-400 dark:text-slate-100"
+                className={chatUi.composerText}
                 rows={1}
               />
               <div className="relative shrink-0 self-end" ref={emojiPickerRef}>
@@ -2620,7 +2823,7 @@ export default function DashboardChat() {
                   type="button"
                   onClick={() => setEmojiPickerOpen((v) => !v)}
                   disabled={!selected || isSelectedClosed || isWaitingSupportAccept}
-                  className={`inline-flex h-11 w-11 items-center justify-center rounded-[12px] border border-slate-200/80 bg-slate-50/90 text-slate-500 shadow-sm transition-all duration-200 hover:border-violet-300 hover:bg-violet-50 hover:text-violet-600 dark:border-slate-600 dark:bg-slate-700/80 dark:text-slate-400 dark:hover:border-violet-500/40 ${
+                  className={`${chatUi.composerToolBtn} ${
                     !selected || isSelectedClosed || isWaitingSupportAccept ? "pointer-events-none cursor-not-allowed opacity-50" : ""
                   }`}
                   title="Emoji"
@@ -2630,10 +2833,7 @@ export default function DashboardChat() {
                   <Smile className="h-[18px] w-[18px]" strokeWidth={1.75} aria-hidden />
                 </button>
                 {emojiPickerOpen && !(!selected || isSelectedClosed || isWaitingSupportAccept) ? (
-                  <div
-                    className="absolute bottom-full right-0 z-[80] mb-2 w-[min(calc(100vw-2rem),288px)] rounded-2xl border border-slate-200/90 bg-white p-2 shadow-[0_16px_48px_-12px_rgba(15,23,42,0.2)] dark:border-slate-600 dark:bg-slate-900"
-                    role="listbox"
-                  >
+                  <div className={chatUi.emojiPanel} role="listbox">
                     <div className="grid max-h-[min(40vh,220px)] grid-cols-8 gap-0.5 overflow-y-auto overflow-x-hidden p-1">
                       {CHAT_CUSTOM_EMOJIS.length === 0 ? (
                         <div className="col-span-8 px-2 py-4 text-center text-[11px] text-slate-500 dark:text-slate-400">

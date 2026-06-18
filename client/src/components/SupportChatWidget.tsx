@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { MessageCircle, Send } from "lucide-react";
 import { authApi } from "../api/client";
 import { useAuth } from "../hooks/useAuth";
@@ -164,6 +165,17 @@ export default function SupportChatWidget({ forceOpen = false, hideFloatingButto
     if (forceOpen) setOpen(true);
   }, [forceOpen]);
 
+  const isPanelOpen = open || forceOpen;
+
+  useEffect(() => {
+    if (!isPanelOpen) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [isPanelOpen]);
+
   const requestSupport = async () => {
     const description = requestDescription.trim();
     if (description.length < 5) {
@@ -250,7 +262,7 @@ export default function SupportChatWidget({ forceOpen = false, hideFloatingButto
 
   if (!user) return null;
 
-  return (
+  const widgetUi = (
     <>
       <style>{`
         @keyframes support-modal-fade-in {
@@ -260,6 +272,10 @@ export default function SupportChatWidget({ forceOpen = false, hideFloatingButto
         @keyframes support-modal-pop-in {
           from { opacity: 0; transform: translateY(10px) scale(0.97); }
           to { opacity: 1; transform: translateY(0) scale(1); }
+        }
+        @keyframes support-drawer-enter {
+          from { transform: translateX(100%); }
+          to { transform: translateX(0); }
         }
       `}</style>
       {!hideFloatingButton && (
@@ -273,11 +289,21 @@ export default function SupportChatWidget({ forceOpen = false, hideFloatingButto
         </button>
       )}
 
-      <div
-        className={`fixed top-0 right-0 h-full w-[92vw] max-w-md bg-white border-l border-gray-200 shadow-2xl z-50 transform transition-transform duration-300 ${
-          open ? "translate-x-0" : "translate-x-full"
-        }`}
-      >
+      {isPanelOpen ? (
+        <>
+          <button
+            type="button"
+            className="fixed inset-0 z-[45] bg-black/40"
+            aria-label="Închide mesaje"
+            onClick={() => setOpen(false)}
+          />
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label={isSupport ? "Support chat" : "Mesaje"}
+            className="fixed top-0 right-0 z-50 h-full w-full max-w-md bg-white border-l border-gray-200 shadow-2xl"
+            style={{ animation: "support-drawer-enter 280ms ease-out both" }}
+          >
         <div className="h-full flex flex-col">
           <div className="p-4 border-b border-gray-100 flex items-center justify-between">
             <div>
@@ -304,7 +330,11 @@ export default function SupportChatWidget({ forceOpen = false, hideFloatingButto
                 Open full console
               </button>
             </div>
-            <button className="text-sm text-gray-600 hover:text-gray-900" onClick={() => setOpen(false)}>
+            <button
+              type="button"
+              className="text-sm text-gray-600 hover:text-gray-900"
+              onClick={() => setOpen(false)}
+            >
               Închide
             </button>
           </div>
@@ -520,7 +550,9 @@ export default function SupportChatWidget({ forceOpen = false, hideFloatingButto
             )}
           </div>
         </div>
-      </div>
+          </div>
+        </>
+      ) : null}
       {deleteConfirmOpen && selectedChatId && (
         <div
           className="fixed inset-0 z-[70] flex items-center justify-center bg-black/45 p-4"
@@ -555,5 +587,8 @@ export default function SupportChatWidget({ forceOpen = false, hideFloatingButto
       )}
     </>
   );
+
+  if (typeof document === "undefined") return widgetUi;
+  return createPortal(widgetUi, document.body);
 }
 

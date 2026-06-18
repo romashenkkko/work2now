@@ -1126,6 +1126,10 @@
   animation: footerAppear 0.55s cubic-bezier(0.22, 1, 0.36, 1) forwards;
   animation-delay: 0.24s;
 }
+.footer-appear.footer-in-view .footer-appear__block--5 {
+  animation: footerAppear 0.55s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  animation-delay: 0.3s;
+}
 
 @media (prefers-reduced-motion: reduce) {
   .footer-appear .footer-appear__block {
@@ -3380,3 +3384,4 @@
     max-height: none !important;
   }
 }
+

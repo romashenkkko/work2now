@@ -726,6 +726,9 @@ export async function initDatabase(): Promise<void> {
     } catch {
       /* ignore */
     }
+    await ensureColumn(conn, "jobs", "gallery_image_urls", "TEXT NULL");
+    await ensureColumn(conn, "jobs", "publish_blocked_reason", "TEXT NULL");
+    await ensureColumn(conn, "jobs", "published_at", "TIMESTAMP NULL");
 
     await conn.query(`
       CREATE TABLE IF NOT EXISTS \`applications\` (
@@ -1012,6 +1015,48 @@ export async function initDatabase(): Promise<void> {
         CONSTRAINT \`fk_support_chat_csat_chat_id\` FOREIGN KEY (\`chat_id\`) REFERENCES \`support_chats\`(\`id\`) ON DELETE CASCADE
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
     `);
+
+    // Staff payout accounts (Prisma / Alex branch — idempotent for dev DBs fără migrate deploy)
+    await conn.query(`
+      CREATE TABLE IF NOT EXISTS \`staff_payout_accounts\` (
+        \`id\` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+        \`staff_user_id\` ${GUID_COL} NOT NULL,
+        \`is_default\` TINYINT(1) NOT NULL DEFAULT 0,
+        \`status\` ENUM('draft', 'submitted', 'verified', 'rejected', 'disabled') NOT NULL DEFAULT 'draft',
+        \`type\` ENUM('iban', 'card', 'phone') NOT NULL,
+        \`beneficiary_name\` VARCHAR(200) NOT NULL,
+        \`beneficiary_country\` VARCHAR(2) NULL,
+        \`iban\` VARCHAR(34) NULL,
+        \`bank_name\` VARCHAR(200) NULL,
+        \`card_token\` VARCHAR(200) NULL,
+        \`card_last4\` VARCHAR(4) NULL,
+        \`card_brand\` VARCHAR(50) NULL,
+        \`phone_e164\` VARCHAR(20) NULL,
+        \`wallet_provider\` VARCHAR(50) NULL,
+        \`verification_provider\` VARCHAR(50) NULL,
+        \`verification_reference\` VARCHAR(100) NULL,
+        \`verified_at\` TIMESTAMP NULL,
+        \`rejected_at\` TIMESTAMP NULL,
+        \`rejection_reason\` TEXT NULL,
+        \`created_at\` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        \`updated_at\` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        PRIMARY KEY (\`id\`),
+        INDEX \`idx_staff_payout_accounts_staff_user_id\` (\`staff_user_id\`),
+        INDEX \`idx_staff_payout_accounts_status\` (\`status\`)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+    if (!(await fkExists(conn, "staff_payout_accounts", "fk_staff_payout_accounts_staff_user_id"))) {
+      try {
+        await conn.query(`
+          ALTER TABLE \`staff_payout_accounts\`
+          ADD CONSTRAINT \`fk_staff_payout_accounts_staff_user_id\`
+          FOREIGN KEY (\`staff_user_id\`) REFERENCES \`users\`(\`Id\`)
+          ON DELETE CASCADE ON UPDATE RESTRICT
+        `);
+      } catch (e) {
+        console.warn("[DB] Could not add FK fk_staff_payout_accounts_staff_user_id:", e);
+      }
+    }
 
     // Allow one rating per (application, rater): both customer and staff can rate the same application
     const [idxRows] = await conn.query<RowDataPacket[]>(
